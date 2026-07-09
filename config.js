@@ -24,7 +24,7 @@ const INSTANCE_MAP = {
     'MISC': 'ESF26-MISC-'        // 'MISC' for non-bookable facilities (toilets, first aid, etc.)
 };
 
-const HCC_COUNCIL_EMAIL = 'foodand.health&safety@hullcc.gov.uk'; // <--- NEW CONSTANT
+let HCC_COUNCIL_EMAIL = 'foodand.health&safety@hullcc.gov.uk'; // <--- NEW CONSTANT
 
 // ===================================================================
 // === SECURITY: HTML Escaping Utilities ===
@@ -115,8 +115,8 @@ function safeError(err) {
 // === SECURITY: Bulk Email Rate Limiter ===
 // ===================================================================
 const _emailRateLog = [];
-const EMAIL_RATE_LIMIT = 10;       // max emails per window
-const EMAIL_RATE_WINDOW_MS = 60000; // 1 minute
+let EMAIL_RATE_LIMIT = 10;       // max emails per window
+let EMAIL_RATE_WINDOW_MS = 60000; // 1 minute
 
 function checkEmailRateLimit() {
     const now = Date.now();
@@ -397,19 +397,40 @@ async function loadStallCosts(sb) {
         if (error) throw error;
         if (data) {
             data.forEach(item => {
-                const num = parseFloat(item.value);
-                if (!isNaN(num)) {
-                    if (item.key === 'stall_cost_food') {
-                        UI_CONFIG.STALL_COST.FOOD = num;
-                    } else if (item.key === 'stall_cost_general') {
-                        UI_CONFIG.STALL_COST.GENERAL = num;
-                    } else if (item.key === 'stall_cost_dev') {
-                        UI_CONFIG.STALL_COST.DEV = num;
-                    }
+                const val = item.value;
+                if (item.key === 'stall_cost_food') {
+                    const num = parseFloat(val);
+                    if (!isNaN(num)) UI_CONFIG.STALL_COST.FOOD = num;
+                } else if (item.key === 'stall_cost_general') {
+                    const num = parseFloat(val);
+                    if (!isNaN(num)) UI_CONFIG.STALL_COST.GENERAL = num;
+                } else if (item.key === 'stall_cost_dev') {
+                    const num = parseFloat(val);
+                    if (!isNaN(num)) UI_CONFIG.STALL_COST.DEV = num;
+                } else if (item.key === 'turnstile_site_key') {
+                    if (typeof ESF_PUBLIC_CONFIG !== 'undefined') ESF_PUBLIC_CONFIG.TURNSTILE_SITE_KEY = val;
+                } else if (item.key === 'bank_details') {
+                    if (typeof ESF_PUBLIC_CONFIG !== 'undefined') ESF_PUBLIC_CONFIG.BANK_DETAILS = val;
+                } else if (item.key === 'base_url') {
+                    if (typeof ESF_PUBLIC_CONFIG !== 'undefined') ESF_PUBLIC_CONFIG.BASE_URL = val;
+                } else if (item.key === 'cancel_url') {
+                    if (typeof ESF_PUBLIC_CONFIG !== 'undefined') ESF_PUBLIC_CONFIG.CANCEL_URL = val;
+                } else if (item.key === 'portal_url') {
+                    if (typeof ESF_PUBLIC_CONFIG !== 'undefined') ESF_PUBLIC_CONFIG.PORTAL_URL = val;
+                } else if (item.key === 'bucket_name') {
+                    if (typeof ESF_PUBLIC_CONFIG !== 'undefined') ESF_PUBLIC_CONFIG.BUCKET_NAME = val;
+                } else if (item.key === 'hcc_council_email') {
+                    HCC_COUNCIL_EMAIL = val;
+                } else if (item.key === 'email_rate_limit') {
+                    const num = parseInt(val, 10);
+                    if (!isNaN(num)) EMAIL_RATE_LIMIT = num;
+                } else if (item.key === 'email_rate_window_ms') {
+                    const num = parseInt(val, 10);
+                    if (!isNaN(num)) EMAIL_RATE_WINDOW_MS = num;
                 }
             });
         }
     } catch (e) {
-        console.warn("Failed to load stall costs from database settings, using defaults:", e);
+        console.warn("Failed to load settings from database, using defaults:", e);
     }
 }

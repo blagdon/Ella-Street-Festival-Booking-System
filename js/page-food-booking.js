@@ -1,12 +1,28 @@
-import { getPublicSupabaseClient, ESF_PUBLIC_CONFIG } from '../supabase-public.js';
+import { getPublicSupabaseClient, loadPublicSettings, ESF_PUBLIC_CONFIG } from '../supabase-public.js';
 
 // Wait for DOM to load
-document.addEventListener('DOMContentLoaded', function () {
+document.addEventListener('DOMContentLoaded', async function () {
+    const sb = getPublicSupabaseClient();
+    await loadPublicSettings();
+
+    // Bind Turnstile Key from database dynamically
+    const siteKey = window.ESF_PUBLIC_CONFIG?.TURNSTILE_SITE_KEY;
+    if (siteKey) {
+        document.querySelectorAll('.cf-turnstile').forEach(el => {
+            el.setAttribute('data-sitekey', siteKey);
+        });
+    }
+
+    // Dynamically load Turnstile script
+    const script = document.createElement('script');
+    script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js";
+    script.async = true;
+    script.defer = true;
+    document.head.appendChild(script);
 
     // --- CONFIGURATION ---
     const BUCKET_NAME = ESF_PUBLIC_CONFIG.BUCKET_NAME || 'esf-documents';
     const PREFIX = "ESF26-FOOD-";
-    const sb = getPublicSupabaseClient();
 
     // Check if bookings are open dynamically from Supabase
     async function checkBookingsOpen() {

@@ -3,6 +3,7 @@ import { initNavigation } from './nav.js';
 import { showToast } from './ui.js';
 import { auditLog } from './api.js';
 import { CONFIG } from './config.js';
+import { ESF_PUBLIC_CONFIG } from '../supabase-public.js';
 
 const sb = getSupabaseClient();
 
@@ -12,6 +13,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         initNavigation();
         initToggles();
         initStallCosts();
+        initSystemConstants();
     } catch (e) {
         // Redirection handled in requireAuth
     }
@@ -161,6 +163,98 @@ async function initStallCosts() {
         } finally {
             btnSave.disabled = false;
             btnSave.textContent = "Save Costs";
+        }
+    });
+}
+
+async function initSystemConstants() {
+    const txtTurnstile = document.getElementById('turnstile-key');
+    const txtBank = document.getElementById('bank-details');
+    const txtBaseUrl = document.getElementById('base-url');
+    const txtCancelUrl = document.getElementById('cancel-url');
+    const txtPortalUrl = document.getElementById('portal-url');
+    const txtCouncilEmail = document.getElementById('council-email');
+    const txtBucket = document.getElementById('bucket-name');
+    const txtLimit = document.getElementById('rate-limit');
+    const txtWindow = document.getElementById('rate-window');
+    const btnSave = document.getElementById('btn-save-constants');
+
+    if (!txtTurnstile || !txtBank || !txtBaseUrl || !txtCancelUrl || !txtPortalUrl || !txtCouncilEmail || !txtBucket || !txtLimit || !txtWindow || !btnSave) return;
+
+    // Load active settings from public config and CONFIG
+    txtTurnstile.value = ESF_PUBLIC_CONFIG?.TURNSTILE_SITE_KEY || '';
+    txtBank.value = ESF_PUBLIC_CONFIG?.BANK_DETAILS || '';
+    txtBaseUrl.value = ESF_PUBLIC_CONFIG?.BASE_URL || '';
+    txtCancelUrl.value = ESF_PUBLIC_CONFIG?.CANCEL_URL || '';
+    txtPortalUrl.value = ESF_PUBLIC_CONFIG?.PORTAL_URL || '';
+    txtBucket.value = ESF_PUBLIC_CONFIG?.BUCKET_NAME || '';
+    txtCouncilEmail.value = CONFIG.HCC_COUNCIL_EMAIL || '';
+    txtLimit.value = CONFIG.EMAIL_RATE_LIMIT || '';
+    txtWindow.value = CONFIG.EMAIL_RATE_WINDOW_MS || '';
+
+    btnSave.addEventListener('click', async () => {
+        const valTurnstile = txtTurnstile.value.trim();
+        const valBank = txtBank.value.trim();
+        const valBaseUrl = txtBaseUrl.value.trim();
+        const valCancelUrl = txtCancelUrl.value.trim();
+        const valPortalUrl = txtPortalUrl.value.trim();
+        const valCouncilEmail = txtCouncilEmail.value.trim();
+        const valBucket = txtBucket.value.trim();
+        const valLimit = parseInt(txtLimit.value, 10);
+        const valWindow = parseInt(txtWindow.value, 10);
+
+        if (!valTurnstile || !valBank || !valBaseUrl || !valCancelUrl || !valPortalUrl || !valCouncilEmail || !valBucket || isNaN(valLimit) || valLimit < 1 || isNaN(valWindow) || valWindow < 1000) {
+            showToast("All fields are required and rate limits must be valid positive numbers", "error");
+            return;
+        }
+
+        btnSave.disabled = true;
+        btnSave.textContent = "Saving...";
+
+        try {
+            const { data: { session } } = await sb.auth.getSession();
+            const userEmail = session?.user?.email || 'admin';
+            const now = new Date().toISOString();
+
+            const updates = [
+                { key: 'turnstile_site_key', value: valTurnstile, updated_at: now, updated_by: userEmail },
+                { key: 'bank_details', value: valBank, updated_at: now, updated_by: userEmail },
+                { key: 'base_url', value: valBaseUrl, updated_at: now, updated_by: userEmail },
+                { key: 'cancel_url', value: valCancelUrl, updated_at: now, updated_by: userEmail },
+                { key: 'portal_url', value: valPortalUrl, updated_at: now, updated_by: userEmail },
+                { key: 'hcc_council_email', value: valCouncilEmail, updated_at: now, updated_by: userEmail },
+                { key: 'bucket_name', value: valBucket, updated_at: now, updated_by: userEmail },
+                { key: 'email_rate_limit', value: valLimit.toString(), updated_at: now, updated_by: userEmail },
+                { key: 'email_rate_window_ms', value: valWindow.toString(), updated_at: now, updated_by: userEmail }
+            ];
+
+            const { error } = await sb.from('settings').upsert(updates);
+            if (error) throw error;
+
+            // Update in-memory configuration
+            if (ESF_PUBLIC_CONFIG) {
+                ESF_PUBLIC_CONFIG.TURNSTILE_SITE_KEY = valTurnstile;
+                ESF_PUBLIC_CONFIG.BANK_DETAILS = valBank;
+                ESF_PUBLIC_CONFIG.BASE_URL = valBaseUrl;
+                ESF_PUBLIC_CONFIG.CANCEL_URL = valCancelUrl;
+                ESF_PUBLIC_CONFIG.PORTAL_URL = valPortalUrl;
+                ESF_PUBLIC_CONFIG.BUCKET_NAME = valBucket;
+            }
+            CONFIG.HCC_COUNCIL_EMAIL = valCouncilEmail;
+            CONFIG.EMAIL_RATE_LIMIT = valLimit;
+            CONFIG.EMAIL_RATE_WINDOW_MS = valWindow;
+
+            showToast("System constants saved successfully");
+            await auditLog('update_system_constants', 'system', {
+                turnstile_key: valTurnstile,
+                base_url: valBaseUrl,
+                council_email: valCouncilEmail
+            });
+        } catch (err) {
+            showToast(`Failed to save system constants: ${err.message}`, 'error');
+        } finally {
+            btnSave.disabled = false;
+            btnSave.textContent = "Save System Constants";
         }
     });
 }

@@ -98,20 +98,45 @@ export async function loadStallCosts(sb) {
         if (error) throw error;
         if (data) {
             data.forEach(item => {
-                const num = parseFloat(item.value);
-                if (!isNaN(num)) {
-                    if (item.key === 'stall_cost_food') {
-                        CONFIG.UI.STALL_COST.FOOD = num;
-                    } else if (item.key === 'stall_cost_general') {
-                        CONFIG.UI.STALL_COST.GENERAL = num;
-                    } else if (item.key === 'stall_cost_dev') {
-                        CONFIG.UI.STALL_COST.DEV = num;
-                    }
+                const val = item.value;
+                if (item.key === 'stall_cost_food') {
+                    const num = parseFloat(val);
+                    if (!isNaN(num)) CONFIG.UI.STALL_COST.FOOD = num;
+                } else if (item.key === 'stall_cost_general') {
+                    const num = parseFloat(val);
+                    if (!isNaN(num)) CONFIG.UI.STALL_COST.GENERAL = num;
+                } else if (item.key === 'stall_cost_dev') {
+                    const num = parseFloat(val);
+                    if (!isNaN(num)) CONFIG.UI.STALL_COST.DEV = num;
+                } else if (item.key === 'turnstile_site_key') {
+                    ESF_PUBLIC_CONFIG.TURNSTILE_SITE_KEY = val;
+                } else if (item.key === 'bank_details') {
+                    ESF_PUBLIC_CONFIG.BANK_DETAILS = val;
+                    CONFIG.BANK_DETAILS = val;
+                } else if (item.key === 'base_url') {
+                    ESF_PUBLIC_CONFIG.BASE_URL = val;
+                    CONFIG.URLS.BASE = val;
+                } else if (item.key === 'cancel_url') {
+                    ESF_PUBLIC_CONFIG.CANCEL_URL = val;
+                    CONFIG.URLS.CANCEL_URL = val;
+                } else if (item.key === 'portal_url') {
+                    ESF_PUBLIC_CONFIG.PORTAL_URL = val;
+                    CONFIG.URLS.PORTAL_URL = val;
+                } else if (item.key === 'bucket_name') {
+                    ESF_PUBLIC_CONFIG.BUCKET_NAME = val;
+                } else if (item.key === 'hcc_council_email') {
+                    CONFIG.HCC_COUNCIL_EMAIL = val;
+                } else if (item.key === 'email_rate_limit') {
+                    const num = parseInt(val, 10);
+                    if (!isNaN(num)) CONFIG.EMAIL_RATE_LIMIT = num;
+                } else if (item.key === 'email_rate_window_ms') {
+                    const num = parseInt(val, 10);
+                    if (!isNaN(num)) CONFIG.EMAIL_RATE_WINDOW_MS = num;
                 }
             });
         }
     } catch (e) {
-        console.warn("Failed to load stall costs from database settings, using defaults:", e);
+        console.warn("Failed to load settings from database, using defaults:", e);
     }
 }
 

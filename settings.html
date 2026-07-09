@@ -127,6 +127,67 @@
                 </div>
             </div>
 
+            <!-- System Constants Card -->
+            <div class="bg-white p-6 rounded-xl border border-gray-200 shadow-sm hover-card col-span-1 md:col-span-2">
+                <div class="flex items-start justify-between mb-4">
+                    <div class="icon-box bg-gray-100 text-gray-600 p-3 rounded-lg">
+                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z">
+                            </path>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                        </svg>
+                    </div>
+                </div>
+                <h3 class="text-lg font-bold text-gray-800 mb-1">System Constants</h3>
+                <p class="text-xs text-gray-400 mb-4">Configure environment URLs, Turnstile keys, and communication parameters.</p>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                    <div>
+                        <label for="turnstile-key" class="block text-xs font-semibold text-gray-500 mb-1">CLOUDFLARE TURNSTILE SITE KEY</label>
+                        <input type="text" id="turnstile-key" class="w-full p-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:outline-none">
+                    </div>
+                    <div>
+                        <label for="bank-details" class="block text-xs font-semibold text-gray-500 mb-1">BANK DETAILS FOR CONFIRMATIONS</label>
+                        <input type="text" id="bank-details" class="w-full p-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:outline-none">
+                    </div>
+                    <div>
+                        <label for="base-url" class="block text-xs font-semibold text-gray-500 mb-1">BASE PORTAL URL</label>
+                        <input type="url" id="base-url" class="w-full p-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:outline-none">
+                    </div>
+                    <div>
+                        <label for="cancel-url" class="block text-xs font-semibold text-gray-500 mb-1">CANCELLATION PAGE URL</label>
+                        <input type="url" id="cancel-url" class="w-full p-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:outline-none">
+                    </div>
+                    <div>
+                        <label for="portal-url" class="block text-xs font-semibold text-gray-500 mb-1">STALLHOLDER PORTAL REDIRECT URL</label>
+                        <input type="url" id="portal-url" class="w-full p-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:outline-none">
+                    </div>
+                    <div>
+                        <label for="council-email" class="block text-xs font-semibold text-gray-500 mb-1">HULL CITY COUNCIL EMAIL</label>
+                        <input type="email" id="council-email" class="w-full p-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:outline-none">
+                    </div>
+                    <div>
+                        <label for="bucket-name" class="block text-xs font-semibold text-gray-500 mb-1">SUPABASE STORAGE BUCKET NAME</label>
+                        <input type="text" id="bucket-name" class="w-full p-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:outline-none">
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label for="rate-limit" class="block text-xs font-semibold text-gray-500 mb-1">EMAIL RATE LIMIT (QTY)</label>
+                            <input type="number" id="rate-limit" min="1" class="w-full p-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:outline-none">
+                        </div>
+                        <div>
+                            <label for="rate-window" class="block text-xs font-semibold text-gray-500 mb-1">WINDOW (MS)</label>
+                            <input type="number" id="rate-window" min="1000" step="1000" class="w-full p-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:outline-none">
+                        </div>
+                    </div>
+                </div>
+                <button id="btn-save-constants" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded transition text-xs tracking-wider uppercase mt-4 cursor-pointer shadow-sm">
+                    Save System Constants
+                </button>
+            </div>
+
         </div>
 
         <div class="mt-12 text-center text-xs text-gray-400">

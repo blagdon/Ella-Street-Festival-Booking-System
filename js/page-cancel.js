@@ -1,9 +1,24 @@
-import { getPublicSupabaseClient } from '../supabase-public.js';
+import { getPublicSupabaseClient, loadPublicSettings } from '../supabase-public.js';
 import { safeError } from './utils.js';
 
-const sb = getPublicSupabaseClient(); // From supabase-public.js
+document.addEventListener('DOMContentLoaded', async () => {
+    const sb = getPublicSupabaseClient(); // From supabase-public.js
+    await loadPublicSettings();
 
-document.addEventListener('DOMContentLoaded', () => {
+    // Bind Turnstile Key from database dynamically
+    const siteKey = window.ESF_PUBLIC_CONFIG?.TURNSTILE_SITE_KEY;
+    if (siteKey) {
+        document.querySelectorAll('.cf-turnstile').forEach(el => {
+            el.setAttribute('data-sitekey', siteKey);
+        });
+    }
+
+    // Dynamically load Turnstile script
+    const script = document.createElement('script');
+    script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js";
+    script.async = true;
+    script.defer = true;
+    document.head.appendChild(script);
     // --- 1. READ TOKEN FROM URL ---
     const params = new URLSearchParams(window.location.search);
     const cancelToken = params.get('token');
