@@ -88,8 +88,8 @@ export async function addNote(id, note) {
 }
 
 /**
- * Directly sends an email via Zoho Mail REST API.
- * Refreshes OAuth2 access token on the fly.
+ * Directly sends an email via the Supabase send-email Edge Function.
+ * Bypasses CORS by running Zoho OAuth2/REST calls on the server.
  * 
  * @param {string} recipient 
  * @param {string} subject 
@@ -99,94 +99,28 @@ export async function addNote(id, note) {
 export async function sendEmailViaZoho(recipient, subject, body, bcc = null) {
     const sb = getSupabaseClient();
     
-    // Fetch Zoho credentials from database
-    const { data: settingsData, error: settingsError } = await sb
-        .from('settings')
-        .select('key, value')
-        .in('key', [
-            'zoho_client_id',
-            'zoho_client_secret',
-            'zoho_refresh_token',
-            'zoho_account_id',
-            'zoho_from_address',
-            'zoho_api_domain',
-            'zoho_accounts_domain'
-        ]);
-
-    if (settingsError) throw new Error("Failed to load Zoho settings from database: " + settingsError.message);
-    
-    const settings = {};
-    settingsData.forEach(item => {
-        settings[item.key] = item.value;
+    // Call the Edge Function using the Supabase client
+    const { data, error } = await sb.functions.invoke('send-email', {
+        body: { recipient, subject, body, bcc }
     });
 
-    const clientId = settings['zoho_client_id'];
-    const clientSecret = settings['zoho_client_secret'];
-    const refreshToken = settings['zoho_refresh_token'];
-    const accountId = settings['zoho_account_id'];
-    const fromAddress = settings['zoho_from_address'] || 'festival_stalls@elleatreet.co.uk';
-    const apiDomain = settings['zoho_api_domain'] || 'https://mail.zoho.eu';
-    const accountsDomain = settings['zoho_accounts_domain'] || 'https://accounts.zoho.eu';
-
-    if (!clientId || !clientSecret || !refreshToken || !accountId) {
-        throw new Error("Missing required Zoho API configuration settings in database.");
+    if (error) {
+        let errMsg = error.message;
+        if (error.context && typeof error.context.text === 'function') {
+            try {
+                const text = await error.context.text();
+                const json = JSON.parse(text);
+                if (json.error) errMsg = json.error;
+            } catch (e) {}
+        }
+        throw new Error(errMsg || "Failed to invoke send-email function");
     }
 
-    // Refresh the Access Token
-    const tokenUrl = `${accountsDomain}/oauth/v2/token`;
-    const params = new URLSearchParams();
-    params.append('grant_type', 'refresh_token');
-    params.append('refresh_token', refreshToken);
-    params.append('client_id', clientId);
-    params.append('client_secret', clientSecret);
-
-    const tokenResponse = await fetch(tokenUrl, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/x-www-form-urlencoded'
-        },
-        body: params
-    });
-
-    if (!tokenResponse.ok) {
-        const errorText = await tokenResponse.text();
-        throw new Error(`Failed to refresh Zoho access token: ${tokenResponse.statusText}. Details: ${errorText}`);
+    if (data && data.error) {
+        throw new Error(data.error);
     }
 
-    const tokenData = await tokenResponse.json();
-    const accessToken = tokenData.access_token;
-    if (!accessToken) {
-        throw new Error("Zoho token response did not contain an access token.");
-    }
-
-    // Send the Email
-    const sendUrl = `${apiDomain}/api/accounts/${accountId}/messages`;
-    const emailPayload = {
-        fromAddress: fromAddress,
-        toAddress: recipient,
-        subject: subject,
-        content: body,
-        mailFormat: 'html'
-    };
-    if (bcc) {
-        emailPayload.bccAddress = bcc;
-    }
-
-    const sendResponse = await fetch(sendUrl, {
-        method: 'POST',
-        headers: {
-            'Authorization': `Zoho-oauthtoken ${accessToken}`,
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(emailPayload)
-    });
-
-    if (!sendResponse.ok) {
-        const errorText = await sendResponse.text();
-        throw new Error(`Failed to send email via Zoho: ${sendResponse.statusText}. Details: ${errorText}`);
-    }
-
-    return await sendResponse.json();
+    return data;
 }
 
 /**
