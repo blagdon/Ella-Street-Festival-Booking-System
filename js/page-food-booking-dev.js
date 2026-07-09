@@ -2,7 +2,6 @@
 document.addEventListener('DOMContentLoaded', function () {
 
     // --- CONFIGURATION ---
-    const BUCKET_NAME = window.ESF_PUBLIC_CONFIG ? window.ESF_PUBLIC_CONFIG.BUCKET_NAME : 'esf-documents';
     const PREFIX = "ESF26-DEV-"; // <--- CHANGED TO DEV
     const sb = typeof getPublicSupabaseClient === 'function' ? getPublicSupabaseClient() : null;
 

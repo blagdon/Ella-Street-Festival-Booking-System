@@ -9,7 +9,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
   <script type="module" src="supabase-public.js"></script>
 
   <link rel="icon"
@@ -49,7 +48,7 @@
           class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 transition"></textarea>
       </div>
 
-      <div class="cf-turnstile" data-sitekey="0x4AAAAAACZTfDIHzMhGqnER" data-theme="light"></div>
+      <div class="cf-turnstile" data-sitekey="" data-theme="light"></div>
 
       <button type="submit" id="submitBtn"
         class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-4 rounded-lg transition duration-200 shadow-sm flex justify-center items-center">
@@ -58,58 +57,12 @@
     </form>
 
     <div id="statusMessage" class="hidden mt-6 p-4 rounded-lg text-center"></div>
-    </head>
+    <p class="mt-4 text-xs text-gray-400 text-center">
+      This action is irreversible. Your slot will be released immediately.
+    </p>
+  </div>
 
-    <body class="bg-gray-50 min-h-screen py-10 px-4">
-      <div class="max-w-lg mx-auto p-6 bg-white rounded-xl shadow-md border border-gray-200">
-
-        <div class="mb-6 border-b pb-4">
-          <h2 class="text-2xl font-bold text-gray-800">Cancel Booking</h2>
-          <p class="text-sm text-gray-500 mt-1">Please confirm your cancellation below.</p>
-        </div>
-
-        <!-- Invalid / missing token state -->
-        <div id="invalidTokenMsg" class="hidden p-5 bg-yellow-50 border border-yellow-200 rounded-lg text-center">
-          <svg class="w-10 h-10 text-yellow-500 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-              d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z">
-            </path>
-          </svg>
-          <h3 class="text-lg font-bold text-yellow-800 mb-1">Invalid Cancel Link</h3>
-          <p class="text-sm text-yellow-700">This link is missing a valid cancel token. Please use the link from your
-            original confirmation email, or contact us directly.</p>
-        </div>
-
-        <!-- Cancellation form (shown when token is present) -->
-        <form id="cancelForm" class="space-y-4 hidden">
-
-          <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
-            ℹ️ Your booking has been identified from your email link. Please optionally provide a reason below.
-          </div>
-
-          <div>
-            <label class="block text-sm font-bold text-gray-700 mb-1">Reason for Cancellation <span
-                class="font-normal text-gray-400">(optional)</span></label>
-            <textarea id="inputReason" name="reason" rows="3" placeholder="e.g. No longer able to attend..."
-              class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 transition"></textarea>
-          </div>
-
-          <div class="cf-turnstile" data-sitekey="0x4AAAAAACZTfDIHzMhGqnER" data-theme="light"></div>
-
-          <button type="submit" id="submitBtn"
-            class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-4 rounded-lg transition duration-200 shadow-sm flex justify-center items-center">
-            Confirm Cancellation
-          </button>
-        </form>
-
-        <div id="statusMessage" class="hidden mt-6 p-4 rounded-lg text-center"></div>
-
-        <p class="mt-4 text-xs text-gray-400 text-center">
-          This action is irreversible. Your slot will be released immediately.
-        </p>
-      </div>
-
-      <script type="module" src="./js/page-cancel.js"></script>
+  <script type="module" src="./js/page-cancel.js"></script>
     </body>
 
 </html>

@@ -1,11 +1,26 @@
-import { getPublicSupabaseClient } from '../supabase-public.js';
+import { getPublicSupabaseClient, loadPublicSettings } from '../supabase-public.js';
 
 // Wait for DOM to load
-document.addEventListener('DOMContentLoaded', function () {
-    // System initialized
+document.addEventListener('DOMContentLoaded', async function () {
+    const sb = getPublicSupabaseClient();
+    await loadPublicSettings();
+
+    // Bind Turnstile Key from database dynamically
+    const siteKey = window.ESF_PUBLIC_CONFIG?.TURNSTILE_SITE_KEY;
+    if (siteKey) {
+        document.querySelectorAll('.cf-turnstile').forEach(el => {
+            el.setAttribute('data-sitekey', siteKey);
+        });
+    }
+
+    // Dynamically load Turnstile script
+    const script = document.createElement('script');
+    script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js";
+    script.async = true;
+    script.defer = true;
+    document.head.appendChild(script);
 
     const PREFIX = "ESF26-NONFOOD-";
-    const sb = getPublicSupabaseClient();
 
     // Check if bookings are open dynamically from Supabase
     async function checkBookingsOpen() {

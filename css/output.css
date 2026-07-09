@@ -1171,9 +1171,6 @@
   .bg-yellow-500 {
     background-color: var(--color-yellow-500);
   }
-  .bg-yellow-600 {
-    background-color: var(--color-yellow-600);
-  }
   .bg-gradient-to-br {
     --tw-gradient-position: to bottom right in oklab;
     background-image: linear-gradient(var(--tw-gradient-stops));
@@ -2145,13 +2142,6 @@
     &:hover {
       @media (hover: hover) {
         background-color: var(--color-yellow-200);
-      }
-    }
-  }
-  .hover\:bg-yellow-700 {
-    &:hover {
-      @media (hover: hover) {
-        background-color: var(--color-yellow-700);
       }
     }
   }

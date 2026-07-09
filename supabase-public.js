@@ -48,3 +48,35 @@ export function getPublicSupabaseClient() {
 if (typeof window !== 'undefined') {
     window.getPublicSupabaseClient = getPublicSupabaseClient;
 }
+
+export async function loadPublicSettings() {
+    try {
+        const sb = getPublicSupabaseClient();
+        const { data, error } = await sb.from('settings').select('key, value');
+        if (error) throw error;
+        if (data) {
+            data.forEach(item => {
+                const val = item.value;
+                if (item.key === 'turnstile_site_key') {
+                    ESF_PUBLIC_CONFIG.TURNSTILE_SITE_KEY = val;
+                } else if (item.key === 'bank_details') {
+                    ESF_PUBLIC_CONFIG.BANK_DETAILS = val;
+                } else if (item.key === 'base_url') {
+                    ESF_PUBLIC_CONFIG.BASE_URL = val;
+                } else if (item.key === 'cancel_url') {
+                    ESF_PUBLIC_CONFIG.CANCEL_URL = val;
+                } else if (item.key === 'portal_url') {
+                    ESF_PUBLIC_CONFIG.PORTAL_URL = val;
+                } else if (item.key === 'bucket_name') {
+                    ESF_PUBLIC_CONFIG.BUCKET_NAME = val;
+                }
+            });
+        }
+    } catch (e) {
+        console.warn("Failed to load public settings from database, using defaults:", e);
+    }
+}
+
+if (typeof window !== 'undefined') {
+    window.loadPublicSettings = loadPublicSettings;
+}
