@@ -62,9 +62,15 @@ function renderTable() {
     tbody.innerHTML = '';
 
     // 1. CALCULATE OCCUPIED SET
-    const occupiedSet = new Set(
-        globalOccupiedIds.filter(id => id && id !== "")
-    );
+    const occupiedSet = new Set();
+    globalOccupiedIds.forEach(id => {
+        if (id) {
+            id.split(',').forEach(part => {
+                const trimmed = part.trim();
+                if (trimmed) occupiedSet.add(trimmed);
+            });
+        }
+    });
 
     // 2. APPLY FILTER
     const filtered = allBookings.filter(b => {
@@ -81,20 +87,31 @@ function renderTable() {
     filtered.forEach(b => {
         const row = document.createElement('tr');
         row.className = 'hover-row group';
-        const isAssigned = b.location_id && b.location_id !== "";
 
-        const validOptions = sortedLocs.filter(l =>
-            !occupiedSet.has(l.id) || l.id == b.location_id
-        );
+        const assignedLocs = b.location_id 
+            ? b.location_id.split(',').map(s => s.trim()).filter(s => s !== "")
+            : [];
+        const isAssigned = assignedLocs.length > 0;
 
-        let optionsHtml = validOptions.map(l => {
-            const safeId = escapeHtml(l.id);
-            return `<option value="${safeId}" ${l.id == b.location_id ? 'selected' : ''}>${safeId}</option>`;
+        // Render badges
+        const badgesHtml = assignedLocs.map(loc => {
+            const safeLoc = escapeHtml(loc);
+            return `
+            <span class="inline-flex items-center gap-1 bg-blue-100 text-blue-800 text-xs font-bold px-2 py-1 rounded">
+                ${safeLoc}
+                <button data-action="remove-allocated-location" data-booking-id="${b.id}" data-location-id="${safeLoc}" class="text-blue-500 hover:text-blue-700 font-bold ml-0.5 text-sm leading-none focus:outline-none" title="Remove Location">×</button>
+            </span>`;
         }).join('');
 
-        if (b.location_id && !allLocations.find(l => l.id == b.location_id)) {
-            optionsHtml = `<option value="${b.location_id}" selected>${b.location_id} (Custom)</option>` + optionsHtml;
-        }
+        // Find available locations that are not occupied
+        const availableLocs = sortedLocs.filter(l => !occupiedSet.has(l.id));
+
+        const addSelectHtml = `
+        <select data-action="add-allocated-location" data-booking-id="${b.id}" class="hidden inline-block text-xs border-gray-300 rounded bg-white py-0.5 px-1 focus:ring-1 focus:ring-blue-500">
+            <option value="">-- Select location --</option>
+            ${availableLocs.map(l => `<option value="${escapeHtml(l.id)}">${escapeHtml(l.id)}</option>`).join('')}
+            <option value="__cancel__">-- Cancel --</option>
+        </select>`;
 
         row.innerHTML = `
         <td class="px-6 py-4 text-xs font-mono text-gray-400">${b.id}</td>
@@ -107,12 +124,12 @@ function renderTable() {
             ${b.power_required && b.power_required !== 'No power' ? '<span class="ml-1 text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded">⚡ Power</span>' : ''}
         </td>
         <td class="px-6 py-4">
-            <div class="relative">
-                <select data-action="assign-location" data-id="${b.id}" 
-                        class="block w-full text-sm md:text-sm text-xs border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-200 focus:ring-opacity-50 bg-white py-1 pl-2 pr-8 ${isAssigned ? 'font-bold text-blue-700' : 'text-gray-500 italic'}">
-                    <option value="">-- Unassigned --</option>
-                    ${optionsHtml}
-                </select>
+            <div class="flex flex-wrap gap-1.5 items-center">
+                ${badgesHtml}
+                <button data-action="show-add-select" class="inline-flex items-center gap-0.5 bg-gray-100 hover:bg-gray-200 text-gray-600 text-xs font-bold px-2 py-1 rounded transition-colors focus:outline-none" title="Add Location">
+                    + Add
+                </button>
+                ${addSelectHtml}
             </div>
         </td>
         <td class="px-6 py-4 text-center">
@@ -141,7 +158,16 @@ export async function assignLocation(id, newLocId) {
         const b = allBookings.find(x => x.id === id);
         if (b) b.location_id = newLocId;
 
-        if (newLocId) globalOccupiedIds.push(newLocId);
+        // Rebuild globalOccupiedIds based on active local model
+        globalOccupiedIds = [];
+        allBookings.forEach(x => {
+            if (x.location_id) {
+                x.location_id.split(',').forEach(part => {
+                    const trimmed = part.trim();
+                    if (trimmed) globalOccupiedIds.push(trimmed);
+                });
+            }
+        });
 
         renderTable();
         renderMobileCards();
@@ -253,7 +279,10 @@ function renderMobileCards() {
 
     filtered.forEach(booking => {
         const card = document.createElement('div');
-        const isAssigned = booking.location_id && booking.location_id !== '';
+        const assignedLocs = booking.location_id 
+            ? booking.location_id.split(',').map(s => s.trim()).filter(s => s !== "")
+            : [];
+        const isAssigned = assignedLocs.length > 0;
         card.className = `location-card ${isAssigned ? 'assigned' : 'unassigned'}`;
 
         // Create email button element if assigned
@@ -268,6 +297,11 @@ function renderMobileCards() {
                 </button>
             `;
         }
+
+        // Render multiple badges for location display on mobile card
+        const badgesHtml = assignedLocs.map(loc => {
+            return `<span class="bg-blue-100 text-blue-800 text-xs font-bold px-2 py-0.5 rounded">${escapeHtml(loc)}</span>`;
+        }).join('');
 
         card.innerHTML = `
             <div class="flex justify-between items-start mb-3">
@@ -288,13 +322,18 @@ function renderMobileCards() {
             
             <div class="flex justify-between items-center">
                 <div class="text-xs text-gray-400 font-mono">${escapeHtml(booking.id)}</div>
-                <button class="location-btn mobile-action-pill ${isAssigned ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}" 
-                        data-action="open-location-sheet" data-id="${escapeHtml(booking.id)}">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
-                    </svg>
-                    ${isAssigned ? escapeHtml(booking.location_id) : 'Assign Location'}
-                </button>
+                <div class="flex items-center gap-2">
+                    <div class="flex flex-wrap gap-1 max-w-[150px] justify-end">
+                        ${badgesHtml}
+                    </div>
+                    <button class="location-btn mobile-action-pill ${isAssigned ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}" 
+                            data-action="open-location-sheet" data-id="${escapeHtml(booking.id)}">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
+                        </svg>
+                        ${isAssigned ? 'Manage' : 'Assign'}
+                    </button>
+                </div>
             </div>
         `;
 
@@ -320,9 +359,19 @@ export function openLocationSheet(bookingId) {
     }
 
     // Build location options
-    const occupiedSet = new Set(
-        globalOccupiedIds.filter(id => id && id !== "")
-    );
+    const occupiedSet = new Set();
+    globalOccupiedIds.forEach(id => {
+        if (id) {
+            id.split(',').forEach(part => {
+                const trimmed = part.trim();
+                if (trimmed) occupiedSet.add(trimmed);
+            });
+        }
+    });
+
+    const assignedLocs = booking.location_id 
+        ? booking.location_id.split(',').map(s => s.trim()).filter(s => s !== "")
+        : [];
 
     const sortedLocs = [...allLocations].sort((a, b) =>
         a.id.toString().localeCompare(b.id.toString(), undefined, { numeric: true })
@@ -332,26 +381,13 @@ export function openLocationSheet(bookingId) {
     if (optionsContainer) {
         optionsContainer.innerHTML = '';
 
-        // Add unassigned
-        const unassignedOption = document.createElement('div');
-        unassignedOption.className = 'location-option' + (!booking.location_id ? ' current' : ' available');
-        unassignedOption.innerHTML = `
-            <div>
-                <div class="font-semibold text-gray-700">Unassigned</div>
-                <div class="text-xs text-gray-500">No location assigned</div>
-            </div>
-            ${!booking.location_id ? '<svg class="w-5 h-5 text-blue-600" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg>' : ''}
-        `;
-        unassignedOption.addEventListener('click', () => assignMobileLocation(null));
-        optionsContainer.appendChild(unassignedOption);
-
         sortedLocs.forEach(loc => {
-            const isOccupied = occupiedSet.has(loc.id) && loc.id !== booking.location_id;
-            const isCurrent = loc.id === booking.location_id;
+            const isCurrent = assignedLocs.includes(loc.id);
+            const isOccupied = occupiedSet.has(loc.id) && !isCurrent;
 
             if (!isOccupied || isCurrent) {
                 const option = document.createElement('div');
-                option.className = `location-option ${isCurrent ? 'current' : 'available'}`;
+                option.className = `location-option ${isCurrent ? 'current' : 'available'} cursor-pointer`;
 
                 option.innerHTML = `
                     <div class="flex-1">
@@ -366,7 +402,17 @@ export function openLocationSheet(bookingId) {
                         : ''}
                 `;
 
-                option.addEventListener('click', () => assignMobileLocation(loc.id));
+                option.addEventListener('click', async () => {
+                    let newAssignedLocs;
+                    if (isCurrent) {
+                        newAssignedLocs = assignedLocs.filter(x => x !== loc.id);
+                    } else {
+                        newAssignedLocs = [...assignedLocs, loc.id];
+                    }
+                    const newLocationString = newAssignedLocs.join(', ');
+                    await assignLocation(bookingId, newLocationString);
+                    openLocationSheet(bookingId); // Re-open dynamically to refresh option list
+                });
                 optionsContainer.appendChild(option);
             }
         });

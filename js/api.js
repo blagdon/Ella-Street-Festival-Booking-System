@@ -379,7 +379,17 @@ export async function fetchMapData(currentInstance) {
     if (mapBErr) throw mapBErr;
 
     // 3. Join Data
-    const bookingMap = new Map((bData || []).map(b => [b.location_id, b]));
+    const bookingMap = new Map();
+    (bData || []).forEach(b => {
+        if (b.location_id) {
+            b.location_id.split(',').forEach(part => {
+                const trimmed = part.trim();
+                if (trimmed) {
+                    bookingMap.set(trimmed, b);
+                }
+            });
+        }
+    });
 
     return safeMapLocs.map(l => {
         const booking = bookingMap.get(l.id);
