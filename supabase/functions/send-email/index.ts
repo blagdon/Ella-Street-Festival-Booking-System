@@ -36,7 +36,71 @@ Deno.serve(async (req) => {
     }
 
     // Parse request body
-    const { recipient, subject, body, bcc } = await req.json()
+    const reqBody = await req.json()
+    const { action } = reqBody
+
+    // -------------------------------------------------------------
+    // ACTION: GET_ACCOUNTS (Retrieve numeric account IDs for user config)
+    // -------------------------------------------------------------
+    if (action === 'get_accounts') {
+      const { clientId, clientSecret, refreshToken, accountsDomain, apiDomain } = reqBody
+      if (!clientId || !clientSecret || !refreshToken) {
+        return new Response(JSON.stringify({ error: 'Missing Client ID, Secret, or Refresh Token' }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        })
+      }
+
+      const tokenUrl = `${accountsDomain || 'https://accounts.zoho.eu'}/oauth/v2/token`
+      const params = new URLSearchParams()
+      params.append('grant_type', 'refresh_token')
+      params.append('refresh_token', refreshToken)
+      params.append('client_id', clientId)
+      params.append('client_secret', clientSecret)
+
+      const tokenResponse = await fetch(tokenUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        body: params
+      })
+
+      if (!tokenResponse.ok) {
+        const errorText = await tokenResponse.text()
+        throw new Error(`Failed to refresh Zoho token: ${errorText}`)
+      }
+
+      const tokenData = await tokenResponse.json()
+      const accessToken = tokenData.access_token
+      if (!accessToken) {
+        throw new Error('Zoho token response did not contain an access token.')
+      }
+
+      const accountsUrl = `${apiDomain || 'https://mail.zoho.eu'}/api/accounts`
+      const accountsResponse = await fetch(accountsUrl, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Zoho-oauthtoken ${accessToken}`
+        }
+      })
+
+      if (!accountsResponse.ok) {
+        const errorText = await accountsResponse.text()
+        throw new Error(`Failed to fetch Zoho accounts: ${errorText}`)
+      }
+
+      const accountsData = await accountsResponse.json()
+      return new Response(JSON.stringify({ success: true, data: accountsData }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200,
+      })
+    }
+
+    // -------------------------------------------------------------
+    // ACTION: DEFAULT (Send Email)
+    // -------------------------------------------------------------
+    const { recipient, subject, body, bcc } = reqBody
     if (!recipient || !subject || !body) {
       return new Response(JSON.stringify({ error: 'Missing required fields: recipient, subject, body' }), {
         status: 400,

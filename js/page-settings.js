@@ -352,4 +352,72 @@ async function initZohoSettings() {
             btnSaveZoho.textContent = "Save Zoho Settings";
         }
     });
+
+    // Auto-Fetch Account ID handler
+    const btnFetchAccountId = document.getElementById('btn-fetch-account-id');
+    if (btnFetchAccountId) {
+        btnFetchAccountId.addEventListener('click', async () => {
+            const valClientId = txtClientId.value.trim();
+            const valClientSecret = txtClientSecret.value.trim();
+            const valRefreshToken = txtRefreshToken.value.trim();
+            const valApiDomain = selApiDomain.value;
+            const valAccountsDomain = selAccountsDomain.value;
+            const valFromAddress = txtFromAddress.value.trim();
+
+            if (!valClientId || !valClientSecret || !valRefreshToken) {
+                showToast("Please enter Client ID, Client Secret, and Refresh Token first to fetch the Account ID.", "error");
+                return;
+            }
+
+            btnFetchAccountId.disabled = true;
+            btnFetchAccountId.textContent = "Fetching...";
+
+            try {
+                const { data, error } = await sb.functions.invoke('send-email', {
+                    body: {
+                        action: 'get_accounts',
+                        clientId: valClientId,
+                        clientSecret: valClientSecret,
+                        refreshToken: valRefreshToken,
+                        accountsDomain: valAccountsDomain,
+                        apiDomain: valApiDomain
+                    }
+                });
+
+                if (error) {
+                    let errMsg = error.message;
+                    if (error.context && typeof error.context.text === 'function') {
+                        try {
+                            const text = await error.context.text();
+                            const json = JSON.parse(text);
+                            if (json.error) errMsg = json.error;
+                        } catch (e) {}
+                    }
+                    throw new Error(errMsg || "Failed to fetch accounts");
+                }
+
+                if (data && data.error) {
+                    throw new Error(data.error);
+                }
+
+                if (data && data.data && data.data.data && data.data.data.length > 0) {
+                    const accountsList = data.data.data;
+                    // Find account matching our fromAddress, or default to the first one
+                    let matchedAccount = accountsList.find(acc => acc.accountName.toLowerCase() === valFromAddress.toLowerCase());
+                    if (!matchedAccount) {
+                        matchedAccount = accountsList[0];
+                    }
+                    txtAccountId.value = matchedAccount.accountId;
+                    showToast(`Successfully fetched Account ID: ${matchedAccount.accountId} (associated with ${matchedAccount.accountName})`, "success");
+                } else {
+                    throw new Error("No accounts found in your Zoho profile.");
+                }
+            } catch (err) {
+                showToast(`Failed to fetch Account ID: ${err.message}`, 'error');
+            } finally {
+                btnFetchAccountId.disabled = false;
+                btnFetchAccountId.textContent = "(Auto-Fetch)";
+            }
+        });
+    }
 }
