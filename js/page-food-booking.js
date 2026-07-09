@@ -21,7 +21,6 @@ document.addEventListener('DOMContentLoaded', async function () {
     document.head.appendChild(script);
 
     // --- CONFIGURATION ---
-    const BUCKET_NAME = ESF_PUBLIC_CONFIG.BUCKET_NAME || 'esf-documents';
     const PREFIX = "ESF26-FOOD-";
 
     // Check if bookings are open dynamically from Supabase
