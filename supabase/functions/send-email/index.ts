@@ -135,7 +135,7 @@ Deno.serve(async (req) => {
     const clientSecret = settings['zoho_client_secret']
     const refreshToken = settings['zoho_refresh_token']
     const accountId = settings['zoho_account_id']
-    const fromAddress = settings['zoho_from_address'] || 'festival_stalls@elleatreet.co.uk'
+    const fromAddress = settings['zoho_from_address'] || 'festival_stalls@ellastreet.co.uk'
     const apiDomain = settings['zoho_api_domain'] || 'https://mail.zoho.eu'
     const accountsDomain = settings['zoho_accounts_domain'] || 'https://accounts.zoho.eu'
 
