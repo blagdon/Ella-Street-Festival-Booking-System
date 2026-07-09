@@ -188,6 +188,67 @@
                 </button>
             </div>
 
+            <!-- Zoho Mail API Settings Card -->
+            <div class="bg-white p-6 rounded-xl border border-gray-200 shadow-sm hover-card col-span-1 md:col-span-2">
+                <div class="flex items-start justify-between mb-4">
+                    <div class="icon-box bg-gray-100 text-gray-600 p-3 rounded-lg">
+                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z">
+                            </path>
+                        </svg>
+                    </div>
+                </div>
+                <h3 class="text-lg font-bold text-gray-800 mb-1">Zoho Mail API Settings</h3>
+                <p class="text-xs text-gray-400 mb-4">Configure credentials to send emails via Zoho Mail REST API instead of Gmail/GAS.</p>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                    <div>
+                        <label for="zoho-client-id" class="block text-xs font-semibold text-gray-500 mb-1">ZOHO CLIENT ID</label>
+                        <input type="text" id="zoho-client-id" class="w-full p-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:outline-none">
+                    </div>
+                    <div>
+                        <label for="zoho-client-secret" class="block text-xs font-semibold text-gray-500 mb-1">ZOHO CLIENT SECRET</label>
+                        <input type="password" id="zoho-client-secret" class="w-full p-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:outline-none">
+                    </div>
+                    <div>
+                        <label for="zoho-refresh-token" class="block text-xs font-semibold text-gray-500 mb-1">ZOHO REFRESH TOKEN</label>
+                        <input type="password" id="zoho-refresh-token" class="w-full p-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:outline-none">
+                    </div>
+                    <div>
+                        <label for="zoho-account-id" class="block text-xs font-semibold text-gray-500 mb-1">ZOHO ACCOUNT ID</label>
+                        <input type="text" id="zoho-account-id" class="w-full p-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:outline-none" placeholder="e.g. 10002345678">
+                    </div>
+                    <div>
+                        <label for="zoho-from-address" class="block text-xs font-semibold text-gray-500 mb-1">SENDER EMAIL ADDRESS (FROM)</label>
+                        <input type="email" id="zoho-from-address" class="w-full p-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:outline-none" placeholder="festival_stalls@elleatreet.co.uk">
+                    </div>
+                    <div>
+                        <label for="zoho-api-domain" class="block text-xs font-semibold text-gray-500 mb-1">ZOHO MAIL API DOMAIN</label>
+                        <select id="zoho-api-domain" class="w-full p-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:outline-none">
+                            <option value="https://mail.zoho.eu">https://mail.zoho.eu (Europe)</option>
+                            <option value="https://mail.zoho.com">https://mail.zoho.com (US / Global)</option>
+                            <option value="https://mail.zoho.com.cn">https://mail.zoho.com.cn (China)</option>
+                            <option value="https://mail.zoho.in">https://mail.zoho.in (India)</option>
+                            <option value="https://mail.zoho.com.au">https://mail.zoho.com.au (Australia)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="zoho-accounts-domain" class="block text-xs font-semibold text-gray-500 mb-1">ZOHO ACCOUNTS DOMAIN</label>
+                        <select id="zoho-accounts-domain" class="w-full p-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:outline-none">
+                            <option value="https://accounts.zoho.eu">https://accounts.zoho.eu (Europe)</option>
+                            <option value="https://accounts.zoho.com">https://accounts.zoho.com (US / Global)</option>
+                            <option value="https://accounts.zoho.com.cn">https://accounts.zoho.com.cn (China)</option>
+                            <option value="https://accounts.zoho.in">https://accounts.zoho.in (India)</option>
+                            <option value="https://accounts.zoho.com.au">https://accounts.zoho.com.au (Australia)</option>
+                        </select>
+                    </div>
+                </div>
+                <button id="btn-save-zoho" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded transition text-xs tracking-wider uppercase mt-4 cursor-pointer shadow-sm">
+                    Save Zoho Settings
+                </button>
+            </div>
+
         </div>
 
         <div class="mt-12 text-center text-xs text-gray-400">

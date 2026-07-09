@@ -3,7 +3,7 @@ import { requireAuth, getSupabaseClient } from './supabase.js';
 import { CONFIG } from './config.js';
 import { showToast } from './ui.js';
 import { safeError, escapeHtml } from './utils.js';
-import { auditLog } from './api.js';
+import { auditLog, sendEmailDirect } from './api.js';
 
 const sb = getSupabaseClient();
 let currentData = [];
@@ -432,15 +432,8 @@ async function sendBulkEmail() {
             ? userEmail
             : CONFIG.HCC_COUNCIL_EMAIL;
 
-        // Queue Email
-        const { error: emailErr } = await sb.from('email_queue').insert({
-            recipient: recipientEmail,
-            subject: emailSubject,
-            body: emailBody,
-            status: 'Pending',
-            instance_prefix: prefix
-        });
-        if (emailErr) throw emailErr;
+        // Send Email directly via Zoho
+        await sendEmailDirect(recipientEmail, emailSubject, emailBody, null, prefix);
 
         // Update Records Status
         const { error: updateErr } = await sb

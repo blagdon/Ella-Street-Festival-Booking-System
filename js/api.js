@@ -88,7 +88,155 @@ export async function addNote(id, note) {
 }
 
 /**
- * Queues an email in the database.
+ * Directly sends an email via Zoho Mail REST API.
+ * Refreshes OAuth2 access token on the fly.
+ * 
+ * @param {string} recipient 
+ * @param {string} subject 
+ * @param {string} body 
+ * @param {string|null} bcc 
+ */
+export async function sendEmailViaZoho(recipient, subject, body, bcc = null) {
+    const sb = getSupabaseClient();
+    
+    // Fetch Zoho credentials from database
+    const { data: settingsData, error: settingsError } = await sb
+        .from('settings')
+        .select('key, value')
+        .in('key', [
+            'zoho_client_id',
+            'zoho_client_secret',
+            'zoho_refresh_token',
+            'zoho_account_id',
+            'zoho_from_address',
+            'zoho_api_domain',
+            'zoho_accounts_domain'
+        ]);
+
+    if (settingsError) throw new Error("Failed to load Zoho settings from database: " + settingsError.message);
+    
+    const settings = {};
+    settingsData.forEach(item => {
+        settings[item.key] = item.value;
+    });
+
+    const clientId = settings['zoho_client_id'];
+    const clientSecret = settings['zoho_client_secret'];
+    const refreshToken = settings['zoho_refresh_token'];
+    const accountId = settings['zoho_account_id'];
+    const fromAddress = settings['zoho_from_address'] || 'festival_stalls@elleatreet.co.uk';
+    const apiDomain = settings['zoho_api_domain'] || 'https://mail.zoho.eu';
+    const accountsDomain = settings['zoho_accounts_domain'] || 'https://accounts.zoho.eu';
+
+    if (!clientId || !clientSecret || !refreshToken || !accountId) {
+        throw new Error("Missing required Zoho API configuration settings in database.");
+    }
+
+    // Refresh the Access Token
+    const tokenUrl = `${accountsDomain}/oauth/v2/token`;
+    const params = new URLSearchParams();
+    params.append('grant_type', 'refresh_token');
+    params.append('refresh_token', refreshToken);
+    params.append('client_id', clientId);
+    params.append('client_secret', clientSecret);
+
+    const tokenResponse = await fetch(tokenUrl, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        body: params
+    });
+
+    if (!tokenResponse.ok) {
+        const errorText = await tokenResponse.text();
+        throw new Error(`Failed to refresh Zoho access token: ${tokenResponse.statusText}. Details: ${errorText}`);
+    }
+
+    const tokenData = await tokenResponse.json();
+    const accessToken = tokenData.access_token;
+    if (!accessToken) {
+        throw new Error("Zoho token response did not contain an access token.");
+    }
+
+    // Send the Email
+    const sendUrl = `${apiDomain}/api/accounts/${accountId}/messages`;
+    const emailPayload = {
+        fromAddress: fromAddress,
+        toAddress: recipient,
+        subject: subject,
+        content: body,
+        mailFormat: 'html'
+    };
+    if (bcc) {
+        emailPayload.bccAddress = bcc;
+    }
+
+    const sendResponse = await fetch(sendUrl, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Zoho-oauthtoken ${accessToken}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(emailPayload)
+    });
+
+    if (!sendResponse.ok) {
+        const errorText = await sendResponse.text();
+        throw new Error(`Failed to send email via Zoho: ${sendResponse.statusText}. Details: ${errorText}`);
+    }
+
+    return await sendResponse.json();
+}
+
+/**
+ * Sends an email directly, writes log to email_queue, and records audit trail.
+ * 
+ * @param {string} recipient 
+ * @param {string} subject 
+ * @param {string} body 
+ * @param {string|null} bookingId 
+ * @param {string|null} instancePrefix 
+ * @param {string|null} bcc 
+ */
+export async function sendEmailDirect(recipient, subject, body, bookingId = null, instancePrefix = null, bcc = null) {
+    let status = 'Sent';
+    let errorMessage = null;
+
+    try {
+        await sendEmailViaZoho(recipient, subject, body, bcc);
+    } catch (e) {
+        status = 'Error';
+        errorMessage = e.message;
+        console.error("Zoho Send Error:", e);
+    }
+
+    // Log to email_queue table
+    const sb = getSupabaseClient();
+    const { error: insertErr } = await sb.from(TBL_EMAIL_QUEUE).insert({
+        recipient: recipient,
+        subject: subject,
+        body: body,
+        bcc: bcc || null,
+        status: status,
+        error_message: errorMessage,
+        instance_prefix: instancePrefix || localStorage.getItem('ESF_INSTANCE') || 'DEV'
+    });
+
+    if (insertErr) {
+        console.warn("Failed to write to email_queue log:", insertErr.message);
+    }
+
+    if (status === 'Error') {
+        throw new Error(`Failed to send email: ${errorMessage}`);
+    }
+
+    await auditLog('email_sent', bookingId, { subject: subject, recipient: recipient });
+    return { status: 'success', message: 'Email sent successfully via Zoho.' };
+}
+
+/**
+ * Sends a booking email directly using the Zoho API and records audit logs.
  * @param {string} id 
  * @param {string} subject 
  * @param {string} body 
@@ -106,17 +254,7 @@ export async function sendEmail(id, subject, body) {
 
     if (fetchErr || !emailData || !emailData.email) throw new Error("Could not find email address.");
 
-    const { error } = await sb.from(TBL_EMAIL_QUEUE).insert({
-        recipient: emailData.email,
-        subject: subject,
-        body: body,
-        status: 'Pending',
-        instance_prefix: emailData.instance_prefix
-    });
-
-    if (error) throw error;
-    await auditLog('email_queued', id, { subject: subject, recipient: emailData.email });
-    return { status: 'success', message: 'Email queued.' };
+    return await sendEmailDirect(emailData.email, subject, body, id, emailData.instance_prefix);
 }
 
 /**

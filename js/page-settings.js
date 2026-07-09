@@ -14,6 +14,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         initToggles();
         initStallCosts();
         initSystemConstants();
+        initZohoSettings();
     } catch (e) {
         // Redirection handled in requireAuth
     }
@@ -255,6 +256,100 @@ async function initSystemConstants() {
         } finally {
             btnSave.disabled = false;
             btnSave.textContent = "Save System Constants";
+        }
+    });
+}
+
+async function initZohoSettings() {
+    const txtClientId = document.getElementById('zoho-client-id');
+    const txtClientSecret = document.getElementById('zoho-client-secret');
+    const txtRefreshToken = document.getElementById('zoho-refresh-token');
+    const txtAccountId = document.getElementById('zoho-account-id');
+    const txtFromAddress = document.getElementById('zoho-from-address');
+    const selApiDomain = document.getElementById('zoho-api-domain');
+    const selAccountsDomain = document.getElementById('zoho-accounts-domain');
+    const btnSaveZoho = document.getElementById('btn-save-zoho');
+
+    if (!txtClientId || !txtClientSecret || !txtRefreshToken || !txtAccountId || !txtFromAddress || !selApiDomain || !selAccountsDomain || !btnSaveZoho) return;
+
+    // Load active settings from Supabase
+    try {
+        const { data, error } = await sb
+            .from('settings')
+            .select('key, value')
+            .in('key', [
+                'zoho_client_id',
+                'zoho_client_secret',
+                'zoho_refresh_token',
+                'zoho_account_id',
+                'zoho_from_address',
+                'zoho_api_domain',
+                'zoho_accounts_domain'
+            ]);
+
+        if (error) throw error;
+
+        if (data) {
+            data.forEach(item => {
+                if (item.key === 'zoho_client_id') txtClientId.value = item.value || '';
+                else if (item.key === 'zoho_client_secret') txtClientSecret.value = item.value || '';
+                else if (item.key === 'zoho_refresh_token') txtRefreshToken.value = item.value || '';
+                else if (item.key === 'zoho_account_id') txtAccountId.value = item.value || '';
+                else if (item.key === 'zoho_from_address') txtFromAddress.value = item.value || '';
+                else if (item.key === 'zoho_api_domain') selApiDomain.value = item.value || 'https://mail.zoho.eu';
+                else if (item.key === 'zoho_accounts_domain') selAccountsDomain.value = item.value || 'https://accounts.zoho.eu';
+            });
+        }
+    } catch (err) {
+        showToast("Failed to load Zoho settings: " + err.message, "error");
+    }
+
+    // Save handler
+    btnSaveZoho.addEventListener('click', async () => {
+        const valClientId = txtClientId.value.trim();
+        const valClientSecret = txtClientSecret.value.trim();
+        const valRefreshToken = txtRefreshToken.value.trim();
+        const valAccountId = txtAccountId.value.trim();
+        const valFromAddress = txtFromAddress.value.trim();
+        const valApiDomain = selApiDomain.value;
+        const valAccountsDomain = selAccountsDomain.value;
+
+        if (!valClientId || !valClientSecret || !valRefreshToken || !valAccountId || !valFromAddress) {
+            showToast("All Zoho fields are required.", "error");
+            return;
+        }
+
+        btnSaveZoho.disabled = true;
+        btnSaveZoho.textContent = "Saving...";
+
+        try {
+            const { data: { session } } = await sb.auth.getSession();
+            const userEmail = session?.user?.email || 'admin';
+            const now = new Date().toISOString();
+
+            const updates = [
+                { key: 'zoho_client_id', value: valClientId, updated_at: now, updated_by: userEmail },
+                { key: 'zoho_client_secret', value: valClientSecret, updated_at: now, updated_by: userEmail },
+                { key: 'zoho_refresh_token', value: valRefreshToken, updated_at: now, updated_by: userEmail },
+                { key: 'zoho_account_id', value: valAccountId, updated_at: now, updated_by: userEmail },
+                { key: 'zoho_from_address', value: valFromAddress, updated_at: now, updated_by: userEmail },
+                { key: 'zoho_api_domain', value: valApiDomain, updated_at: now, updated_by: userEmail },
+                { key: 'zoho_accounts_domain', value: valAccountsDomain, updated_at: now, updated_by: userEmail }
+            ];
+
+            const { error } = await sb.from('settings').upsert(updates);
+            if (error) throw error;
+
+            showToast("Zoho Mail API settings saved successfully!");
+            await auditLog('update_zoho_settings', 'system', {
+                from_address: valFromAddress,
+                api_domain: valApiDomain
+            });
+        } catch (err) {
+            showToast(`Failed to save Zoho settings: ${err.message}`, 'error');
+        } finally {
+            btnSaveZoho.disabled = false;
+            btnSaveZoho.textContent = "Save Zoho Settings";
         }
     });
 }
