@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>HCC Checks Dashboard</title>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://challenges.cloudflare.com https://cdn.tailwindcss.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com https://cdn.tailwindcss.com; connect-src 'self' https://rsnxhuhibglieofikkpo.supabase.co https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; img-src 'self' data: https:; font-src 'self' https://fonts.gstatic.com;">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+    <link href="./css/admin.css" rel="stylesheet">
+    <style>
+        /* Selected mobile card highlight */
+        .hcc-card.selected {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+            background-color: #eff6ff;
+        }
+
+        /* Ensure min tap target for mobile buttons */
+        @media (max-width: 640px) {
+
+            #btnSaveAll,
+            #btnBulkEmail {
+                width: 100%;
+                justify-content: center;
+            }
+        }
+    </style>
+
+    <!-- Global Fallback -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <!-- MODULES -->
+    <script type="module" src="./js/page-hcc-dashboard.js"></script>
+</head>
+
+<body class="bg-gray-100 min-h-screen font-sans text-gray-800 relative">
+
+    <!-- NEW: Container for injected navigation -->
+    <div id="nav-container"></div>
+
+    <div class="max-w-7xl mx-auto px-4 md:px-6 py-4 md:py-8">
+
+        <!-- Controls -->
+        <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-6 gap-3">
+            <h2 class="text-xl md:text-2xl font-bold text-gray-800">HCC Checks</h2>
+
+            <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                <!-- Status Filter -->
+                <div class="relative">
+                    <select id="statusFilter"
+                        class="w-full sm:w-auto bg-white border border-gray-300 text-sm text-gray-700 rounded-lg py-2.5 sm:py-2 pl-3 pr-8 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer min-h-11 sm:min-h-0 font-medium">
+                        <option value="All">All Statuses</option>
+                        <option value="Pending">⏳ Pending</option>
+                        <option value="Email Sent">📧 Email Sent</option>
+                        <option value="Approved">✅ Approved</option>
+                        <option value="Rejected">❌ Rejected</option>
+                    </select>
+                    <span id="filterCount" class="text-xs text-gray-400 ml-1"></span>
+                </div>
+
+                <span id="statusMsg"
+                    class="text-sm font-bold text-blue-600 hidden transition-opacity duration-300 text-center">Saving...</span>
+
+                <button id="btnBulkEmail"
+                    class="hidden bg-purple-600 hover:bg-purple-700 active:bg-purple-800 text-white font-bold py-3 sm:py-2 px-4 rounded shadow transition flex items-center justify-center gap-2 min-h-11">
+                    <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z">
+                        </path>
+                    </svg>
+                    Email Selected (<span id="selectedCount">0</span>)
+                </button>
+
+                <button id="btnSaveAll"
+                    class="bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold py-3 sm:py-2 px-4 rounded shadow transition flex items-center justify-center gap-2 min-h-11">
+                    <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4">
+                        </path>
+                    </svg>
+                    Save All Changes
+                </button>
+            </div>
+        </div>
+        <!-- Desktop: Table View -->
+        <div class="desktop-table bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Booking</th>
+                            <th class="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Business Details
+                            </th>
+                            <th class="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Submitted</th>
+                            <th class="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Council Status
+                            </th>
+                            <th class="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Approval Date</th>
+                            <th class="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Updated By</th>
+                            <th class="px-6 py-3 text-right text-xs font-bold text-gray-500 uppercase">Action</th>
+                            <th class="px-6 py-3 text-center text-xs font-bold text-gray-500 uppercase">Select</th>
+                        </tr>
+                    </thead>
+                    <tbody id="hccTableBody" class="bg-white divide-y divide-gray-200">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Mobile: Card View -->
+        <div class="mobile-cards space-y-3" id="mobile-cards">
+            <!-- Cards populated by JavaScript -->
+        </div>
+
+        <div id="loading" class="text-center py-10 text-gray-500">Loading records...</div>
+    </div>
+
+
+
+</body>
+
+</html>

@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>More Tools — ESF26 Admin</title>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://challenges.cloudflare.com https://cdn.tailwindcss.com https://vercel.live; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com https://cdn.tailwindcss.com; connect-src 'self' https://rsnxhuhibglieofikkpo.supabase.co https://challenges.cloudflare.com https://vercel.live https://cdn.jsdelivr.net https://unpkg.com; frame-src https://challenges.cloudflare.com https://vercel.live; img-src 'self' data: https:; font-src 'self' https://fonts.gstatic.com;">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="./css/output.css" rel="stylesheet">
+    <style>
+        .hover-card {
+            transition: all 0.2s ease-in-out;
+        }
+
+        .hover-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+
+        .icon-box {
+            transition: background-color 0.2s;
+        }
+
+        .hover-card:hover .icon-box {
+            background-color: #eff6ff;
+            color: #2563eb;
+        }
+
+        @media (max-width: 768px) {
+            .hover-card:active {
+                transform: scale(0.98);
+            }
+        }
+
+        .hover-card {
+            min-height: 44px;
+            -webkit-tap-highlight-color: rgba(0, 0, 0, 0.1);
+        }
+    </style>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <script type="module" src="./js/page-more.js"></script>
+
+    <link rel="icon"
+        href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎪</text></svg>">
+</head>
+
+<body class="bg-gray-50 min-h-screen font-sans text-gray-800">
+
+    <div id="nav-container"></div>
+
+    <div class="max-w-7xl mx-auto px-4 md:px-6 py-6 md:py-10">
+
+        <!-- Page Header with back button -->
+        <div class="mb-6 md:mb-8 flex items-center gap-3">
+            <a href="index.html"
+                class="inline-flex items-center text-gray-500 hover:text-blue-600 transition-colors group bg-white px-3 py-2 rounded-lg border border-gray-200 text-xs font-bold uppercase tracking-wide shadow-sm">
+                <svg class="w-3 h-3 mr-1.5 group-hover:-translate-x-0.5 transition-transform" fill="none"
+                    stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+                </svg>
+                Back to Hub
+            </a>
+            <div>
+                <h1 class="text-xl font-bold text-gray-800">More Tools</h1>
+                <p class="text-sm text-gray-500">Additional admin utilities.</p>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
+
+            <!-- System Settings -->
+            <a href="settings.html"
+                class="bg-white p-4 md:p-6 rounded-xl border border-gray-200 shadow-sm cursor-pointer hover-card group">
+                <div class="flex items-start justify-between mb-4">
+                    <div
+                        class="icon-box bg-gray-100 text-gray-600 p-3 rounded-lg group-hover:bg-blue-50 group-hover:text-blue-600">
+                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z">
+                            </path>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                        </svg>
+                    </div>
+                </div>
+                <h3 class="text-lg font-bold text-gray-800 mb-1">System Settings</h3>
+                <p class="text-sm text-gray-500">Manage booking forms availability and default stall costs.</p>
+            </a>
+
+            <!-- Email Templates -->
+            <a href="email_admin.html"
+                class="bg-white p-4 md:p-6 rounded-xl border border-gray-200 shadow-sm cursor-pointer hover-card group">
+                <div class="flex items-start justify-between mb-4">
+                    <div
+                        class="icon-box bg-gray-100 text-gray-600 p-3 rounded-lg group-hover:bg-blue-50 group-hover:text-blue-600">
+                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z">
+                            </path>
+                        </svg>
+                    </div>
+                </div>
+                <h3 class="text-lg font-bold text-gray-800 mb-1">Email Templates</h3>
+                <p class="text-sm text-gray-500">Edit automated email wording.</p>
+            </a>
+
+            <!-- Booking Editor -->
+            <a href="update_details.html"
+                class="bg-white p-4 md:p-6 rounded-xl border border-gray-200 shadow-sm cursor-pointer hover-card group">
+                <div class="flex items-start justify-between mb-4">
+                    <div
+                        class="icon-box bg-gray-100 text-gray-600 p-3 rounded-lg group-hover:bg-blue-50 group-hover:text-blue-600">
+                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z">
+                            </path>
+                        </svg>
+                    </div>
+                </div>
+                <h3 class="text-lg font-bold text-gray-800 mb-1">Booking Editor</h3>
+                <p class="text-sm text-gray-500">Manually edit individual booking details.</p>
+            </a>
+
+            <!-- User Management -->
+            <a href="manage_users.html"
+                class="bg-white p-4 md:p-6 rounded-xl border border-gray-200 shadow-sm cursor-pointer hover-card group">
+                <div class="flex items-start justify-between mb-4">
+                    <div
+                        class="icon-box bg-gray-100 text-gray-600 p-3 rounded-lg group-hover:bg-blue-50 group-hover:text-blue-600">
+                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z">
+                            </path>
+                        </svg>
+                    </div>
+                </div>
+                <h3 class="text-lg font-bold text-gray-800 mb-1">User Management</h3>
+                <p class="text-sm text-gray-500">Create and view admin &amp; steward accounts.</p>
+            </a>
+
+            <!-- Add Misc Entry -->
+            <a href="add_misc.html"
+                class="bg-white p-4 md:p-6 rounded-xl border border-gray-200 shadow-sm cursor-pointer hover-card group">
+                <div class="flex items-start justify-between mb-4">
+                    <div
+                        class="icon-box bg-gray-100 text-gray-600 p-3 rounded-lg group-hover:bg-indigo-50 group-hover:text-indigo-600">
+                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z">
+                            </path>
+                        </svg>
+                    </div>
+                </div>
+                <h3 class="text-lg font-bold text-gray-800 mb-1">Add Misc Entry</h3>
+                <p class="text-sm text-gray-500">Manually insert confirmed misc records.</p>
+            </a>
+
+            <!-- Food Stall Booking Form -->
+            <a href="Food_Stall_booking.html" target="_blank"
+                class="bg-white p-4 md:p-6 rounded-xl border border-gray-200 shadow-sm cursor-pointer hover-card group block">
+                <div class="flex items-start justify-between mb-4">
+                    <div
+                        class="icon-box bg-gray-100 text-gray-600 p-3 rounded-lg group-hover:bg-red-50 group-hover:text-red-600">
+                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z">
+                            </path>
+                        </svg>
+                    </div>
+                </div>
+                <h3 class="text-lg font-bold text-gray-800 mb-1">Food Stall Booking</h3>
+                <p class="text-sm text-gray-500">Public application form for food traders.</p>
+            </a>
+
+            <!-- General Booking Form -->
+            <a href="General_Booking.html" target="_blank"
+                class="bg-white p-4 md:p-6 rounded-xl border border-gray-200 shadow-sm cursor-pointer hover-card group block">
+                <div class="flex items-start justify-between mb-4">
+                    <div
+                        class="icon-box bg-gray-100 text-gray-600 p-3 rounded-lg group-hover:bg-blue-50 group-hover:text-blue-600">
+                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z">
+                            </path>
+                        </svg>
+                    </div>
+                </div>
+                <h3 class="text-lg font-bold text-gray-800 mb-1">General Booking</h3>
+                <p class="text-sm text-gray-500">Public application form for non-food traders.</p>
+            </a>
+
+            <!-- Steward View -->
+            <a href="steward.html"
+                class="bg-white p-4 md:p-6 rounded-xl border border-gray-200 shadow-sm cursor-pointer hover-card group">
+                <div class="flex items-start justify-between mb-4">
+                    <div
+                        class="icon-box bg-gray-100 text-gray-600 p-3 rounded-lg group-hover:bg-green-50 group-hover:text-green-600">
+                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z">
+                            </path>
+                        </svg>
+                    </div>
+                </div>
+                <h3 class="text-lg font-bold text-gray-800 mb-1">Steward View</h3>
+                <p class="text-sm text-gray-500">Access the simplified steward dashboard.</p>
+            </a>
+
+            <!-- Performer Admin -->
+            <a href="https://ellafestperformersadmin.vercel.app/" target="_blank"
+                class="bg-white p-4 md:p-6 rounded-xl border border-gray-200 shadow-sm cursor-pointer hover-card group block">
+                <div class="flex items-start justify-between mb-4">
+                    <div
+                        class="icon-box bg-gray-100 text-gray-600 p-3 rounded-lg group-hover:bg-blue-50 group-hover:text-blue-600">
+                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3">
+                            </path>
+                        </svg>
+                    </div>
+                    <div class="text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
+                        </svg>
+                    </div>
+                </div>
+                <h3 class="text-lg font-bold text-gray-800 mb-1">Performer Admin</h3>
+                <p class="text-sm text-gray-500">External app for managing festival performers.</p>
+            </a>
+
+        </div>
+
+        <div class="mt-12 text-center text-xs text-gray-400">
+            <p>Ella Street Festival Management System v3.0 (Cloud Native)</p>
+        </div>
+    </div>
+
+</body>
+
+</html>

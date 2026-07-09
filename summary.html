@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://challenges.cloudflare.com https://vercel.live; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com https://cdn.jsdelivr.net; connect-src 'self' https://rsnxhuhibglieofikkpo.supabase.co https://challenges.cloudflare.com https://vercel.live https://cdn.jsdelivr.net https://unpkg.com; frame-src https://challenges.cloudflare.com https://vercel.live; img-src 'self' data: https:; font-src 'self' https://fonts.gstatic.com; worker-src 'self' blob:;">
+    <link href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css" rel="stylesheet">
+    <title>ESF26 Booking Summary</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <link href="./css/output.css" rel="stylesheet">
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <script type="module" src="./js/page-summary.js"></script>
+
+    <link href="./css/admin.css" rel="stylesheet">
+    <style>
+        /* Specific page styles can remain here if not shared */
+    </style>
+
+    <link rel="icon"
+        href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎪</text></svg>">
+</head>
+
+
+<body class="bg-gray-100 min-h-screen font-sans text-gray-800 flex flex-col">
+    <div id="nav-container"></div>
+
+    <div
+        class="bg-white border-b border-gray-200 px-4 md:px-6 py-4 flex flex-col md:flex-row md:justify-between items-start gap-4 shadow-sm shrink-0 z-20">
+        <div class="flex flex-col">
+            <div class="mb-2 flex items-center gap-2 flex-wrap">
+                <a href="index.html"
+                    class="inline-flex items-center text-gray-500 hover:text-blue-600 transition-colors group bg-gray-50 px-2 py-1 rounded border border-gray-200 text-xs font-bold uppercase tracking-wide">
+                    <svg class="w-3 h-3 mr-1.5 group-hover:-translate-x-0.5 transition-transform" fill="none"
+                        stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+                    </svg>
+                    Back to Hub
+                </a>
+                <div id="pageInstanceBadge"
+                    class="bg-gray-100 text-gray-800 text-xs font-bold px-2 py-1 rounded uppercase tracking-wide">
+                    Loading...</div>
+            </div>
+
+            <h1 class="text-xl font-bold text-gray-800 tracking-tight">Booking Summary</h1>
+            <p class="text-xs text-gray-500 mt-0.5">Searchable database view.</p>
+        </div>
+
+        <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full md:w-auto">
+            <select id="statusFilter"
+                class="bg-white border border-gray-300 text-sm text-gray-700 rounded-lg py-2 pl-3 pr-8 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer w-full sm:w-auto">
+                <option value="All">All Statuses</option>
+                <option value="Pending">Pending</option>
+                <option value="On Hold">On Hold</option>
+                <option value="HCC Checks">HCC Checks</option>
+                <option value="Confirmed">Confirmed</option>
+                <option value="Rejected">Rejected</option>
+                <option value="Cancelled">Cancelled</option>
+            </select>
+
+            <div class="relative flex-1 sm:flex-initial">
+                <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                    </svg>
+                </span>
+                <input type="text" id="searchInput" placeholder="Search bookings..."
+                    class="w-full sm:w-64 pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-sm">
+            </div>
+
+            <button id="btn-export-csv"
+                class="flex items-center gap-2 px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-700 font-medium shadow-sm hover:bg-gray-50 hover:border-gray-400 transition-colors whitespace-nowrap">
+                <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4">
+                    </path>
+                </svg>
+                Export CSV
+            </button>
+            <button id="btn-email-all"
+                class="flex items-center gap-2 px-3 py-2 bg-green-600 hover:bg-green-700 active:bg-green-800 text-white text-sm font-bold rounded-lg shadow-sm transition-colors whitespace-nowrap">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z">
+                    </path>
+                </svg>
+                Email Confirmed
+            </button>
+
+        </div>
+    </div>
+
+    <div class="flex-1 overflow-auto p-4 md:p-6 custom-scrollbar">
+        <!-- Desktop: Table View (hidden on mobile) -->
+        <div class="hidden md:block bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th data-action="sort" data-field="id"
+                            class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:text-gray-800 select-none">
+                            ID <span id="sort-id" class="text-gray-300"></span></th>
+                        <th data-action="sort" data-field="status"
+                            class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:text-gray-800 select-none">
+                            Status <span id="sort-status" class="text-gray-300"></span></th>
+                        <th data-action="sort" data-field="business"
+                            class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:text-gray-800 select-none">
+                            Business <span id="sort-business" class="text-gray-300"></span></th>
+                        <th data-action="sort" data-field="owner"
+                            class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:text-gray-800 select-none">
+                            Owner / Email <span id="sort-owner" class="text-gray-300"></span></th>
+                        <th data-action="sort" data-field="category"
+                            class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:text-gray-800 select-none">
+                            Category <span id="sort-category" class="text-gray-300"></span></th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Power
+                        </th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Location</th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody" class="bg-white divide-y divide-gray-200">
+                    <tr>
+                        <td colspan="7" class="px-6 py-10 text-center text-gray-500 animate-pulse">Loading data...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Mobile: Card View (hidden on desktop) -->
+        <div class="md:hidden relative">
+            <!-- Pull to Refresh Indicator -->
+            <div id="pullToRefresh" class="pull-to-refresh">
+                <svg class="w-5 h-5 mr-2 spinner hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15">
+                    </path>
+                </svg>
+                <span id="pullText">Pull to refresh</span>
+            </div>
+
+            <div id="cardContainer" class="space-y-3">
+                <div class="text-center py-10 text-gray-500 animate-pulse">Loading data...</div>
+            </div>
+        </div>
+
+        <div id="recordCount" class="text-xs text-gray-400 mt-2 text-right">0 records found</div>
+    </div>
+
+    <!-- Bottom Sheet for Mobile Details -->
+    <div id="detailModal" class="modal opacity-0 pointer-events-none fixed inset-0 flex justify-end z-modal-backdrop">
+        <div class="absolute inset-0 bg-gray-900 opacity-20" data-action="close-modal" data-modal="detailModal"></div>
+
+        <div class="bg-white w-full sm:max-w-md h-full shadow-2xl z-modal-panel transform transition-transform duration-300 translate-x-full flex flex-col"
+            id="detailPanel">
+
+            <div class="px-4 md:px-6 py-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
+                <h2 class="text-lg font-bold text-gray-800">Booking Details</h2>
+                <button data-action="close-modal" data-modal="detailModal"
+                    class="text-gray-400 hover:text-gray-600 active:text-gray-800 p-2 -mr-2 min-h-11 min-w-11 flex items-center justify-center">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12">
+                        </path>
+                    </svg>
+                </button>
+            </div>
+
+            <div class="flex-1 overflow-y-auto p-4 md:p-6 custom-scrollbar space-y-6">
+
+                <div class="flex justify-between items-start">
+                    <div>
+                        <span id="d-id"
+                            class="text-[10px] font-mono text-gray-400 uppercase tracking-widest block mb-1">ID</span>
+                        <div id="d-status-badge"
+                            class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                            Pending</div>
+                    </div>
+                    <div class="text-right">
+                        <button id="btn-open-email"
+                            class="text-blue-700 hover:text-blue-900 bg-blue-50 hover:bg-blue-100 border border-blue-200 text-sm font-bold flex items-center px-3 py-2 rounded shadow-sm transition-colors mb-1">
+                            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z">
+                                </path>
+                            </svg> Send Email
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Rejection Reason (shown only when status = Rejected) -->
+                <div id="d-rejection-container" class="hidden bg-red-50 border border-red-200 rounded-lg p-3">
+                    <span class="text-[10px] uppercase text-red-600 font-bold block mb-1">⛔ Rejection Reason</span>
+                    <span id="d-rejection-reason" class="text-sm text-red-800"></span>
+                </div>
+
+                <div>
+                    <h3 id="d-business" class="text-xl font-bold text-gray-900 leading-tight">Business Name</h3>
+                    <p id="d-owner" class="text-sm text-gray-500 mt-1">Owner Name</p>
+                </div>
+
+                <!-- Registered Business Name (if different from trading name) -->
+                <div id="registered-business-container" class="bg-blue-50 border border-blue-200 p-3 rounded-lg hidden">
+                    <span class="text-[10px] uppercase text-blue-600 font-bold block mb-1">Registered Business
+                        Name</span>
+                    <span id="d-registered-business" class="text-sm font-medium text-blue-900">--</span>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4 bg-gray-50 p-3 rounded-lg border border-gray-100">
+                    <div>
+                        <span class="text-[10px] uppercase text-gray-400 font-bold block">Email</span>
+                        <span id="d-email" class="text-sm font-medium text-gray-800 break-words"><a
+                                href="/cdn-cgi/l/email-protection" class="__cf_email__"
+                                data-cfemail="147179757d7854716c75796478713a777b79">[email&#160;protected]</a></span>
+                    </div>
+                    <div>
+                        <span class="text-[10px] uppercase text-gray-400 font-bold block">Phone</span>
+                        <span id="d-phone" class="text-sm font-medium text-gray-800">--</span>
+                    </div>
+                </div>
+
+                <div class="mt-3 bg-gray-50 p-3 rounded-lg border border-gray-100">
+                    <span class="text-[10px] uppercase text-gray-400 font-bold block">Address</span>
+                    <span id="d-address" class="text-sm font-medium text-gray-800">--</span>
+                </div>
+
+                <div class="space-y-3">
+                    <div><span class="text-xs font-bold text-gray-500 uppercase w-20 inline-block">Category:</span>
+                        <span id="d-category" class="text-sm text-gray-800">--</span>
+                    </div>
+                    <div><span class="text-xs font-bold text-gray-500 uppercase w-20 inline-block">Stall Type:</span>
+                        <span id="d-stalltype" class="text-sm text-gray-800">--</span>
+                    </div>
+                    <div><span class="text-xs font-bold text-gray-500 uppercase w-20 inline-block">Power:</span> <span
+                            id="d-power" class="text-sm text-gray-800">--</span></div>
+                    <div><span class="text-xs font-bold text-gray-500 uppercase w-20 inline-block">Location:</span>
+                        <span id="d-location"
+                            class="text-sm font-mono bg-yellow-100 px-1 rounded text-yellow-800">Unassigned</span>
+                    </div>
+                </div>
+
+                <hr>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <span class="text-[10px] uppercase text-gray-400 font-bold block mb-1">Resident</span>
+                        <span id="d-resident" class="inline-block text-xs font-bold px-2 py-1 rounded">--</span>
+                    </div>
+                    <div>
+                        <span class="text-[10px] uppercase text-gray-400 font-bold block mb-1">Charity</span>
+                        <span id="d-charity" class="inline-block text-xs font-bold px-2 py-1 rounded">--</span>
+                    </div>
+                </div>
+
+                <div>
+                    <span class="text-[10px] uppercase text-gray-400 font-bold block mb-1">Description</span>
+                    <p id="d-desc" class="text-sm text-gray-600 leading-relaxed bg-white p-3 border rounded">--</p>
+                </div>
+
+                <div>
+                    <span class="text-[10px] uppercase text-gray-400 font-bold block mb-1">Other Requirements</span>
+                    <div id="d-other"
+                        class="text-sm text-gray-600 bg-gray-50 p-3 rounded border h-24 overflow-y-auto custom-scrollbar">
+                        --</div>
+                </div>
+
+                <div class="grid grid-cols-1 gap-4">
+                    <div>
+                        <span class="text-[10px] uppercase text-gray-400 font-bold block mb-1">Documents</span>
+                        <div id="d-docs" class="text-sm text-gray-800 bg-gray-50 p-3 rounded border break-all">--</div>
+                    </div>
+                    <div>
+                        <span class="text-[10px] uppercase text-gray-400 font-bold block mb-1">Docs Checklist</span>
+                        <div id="d-checklist" class="text-sm text-gray-800 bg-gray-50 p-3 rounded border">--</div>
+                    </div>
+                </div>
+
+                <div>
+                    <span class="text-[10px] uppercase text-gray-400 font-bold block mb-1">Admin Notes</span>
+                    <textarea id="d-notes" class="w-full text-sm p-2 border rounded focus:ring-1 focus:ring-blue-500"
+                        rows="3" placeholder="Add internal notes..."></textarea>
+                    <button id="btn-save-note"
+                        class="mt-2 text-xs bg-gray-200 hover:bg-gray-300 px-3 py-1 rounded font-bold text-gray-700">Save
+                        Note</button>
+                </div>
+            </div>
+
+            <!-- Desktop Status Buttons -->
+            <div class="hidden md:grid p-4 border-t border-gray-200 bg-gray-50 grid-cols-3 gap-2">
+                <button data-action="change-status" data-status="Pending"
+                    class="bg-yellow-100 hover:bg-yellow-200 active:bg-yellow-300 text-yellow-800 text-xs font-bold py-3 min-h-11 rounded transition-colors">Pending</button>
+                <button data-action="change-status" data-status="On Hold"
+                    class="bg-purple-100 hover:bg-purple-200 active:bg-purple-300 text-purple-800 text-xs font-bold py-3 min-h-11 rounded transition-colors">On
+                    Hold</button>
+                <button data-action="change-status" data-status="HCC Checks"
+                    class="bg-orange-100 hover:bg-orange-200 active:bg-orange-300 text-orange-800 text-xs font-bold py-3 min-h-11 rounded transition-colors whitespace-nowrap">HCC</button>
+
+                <button data-action="change-status" data-status="Cancelled"
+                    class="bg-gray-200 hover:bg-gray-300 active:bg-gray-400 text-gray-800 text-xs font-bold py-3 min-h-11 rounded transition-colors">Cancelled</button>
+                <button data-action="change-status" data-status="Rejected"
+                    class="col-span-1 bg-red-600 hover:bg-red-700 active:bg-red-800 text-white text-xs font-bold py-3 min-h-11 rounded shadow-sm transition-colors">Reject</button>
+                <button data-action="change-status" data-status="Confirmed"
+                    class="col-span-1 bg-green-600 hover:bg-green-700 active:bg-green-800 text-white text-xs font-bold py-3 min-h-11 rounded shadow-sm transition-colors">Confirm</button>
+            </div>
+
+            <!-- Mobile Status Buttons (Same Style as Desktop) -->
+            <div class="md:hidden p-4 border-t border-gray-200 bg-gray-50 grid grid-cols-3 gap-2">
+                <button data-action="change-status" data-status="Pending"
+                    class="bg-yellow-100 hover:bg-yellow-200 active:bg-yellow-300 text-yellow-800 text-xs font-bold py-3 min-h-11 rounded transition-colors">Pending</button>
+                <button data-action="change-status" data-status="On Hold"
+                    class="bg-purple-100 hover:bg-purple-200 active:bg-purple-300 text-purple-800 text-xs font-bold py-3 min-h-11 rounded transition-colors">On
+                    Hold</button>
+                <button id="hccChecksMobileBtn" data-action="change-status" data-status="HCC Checks"
+                    class="bg-orange-100 hover:bg-orange-200 active:bg-orange-300 text-orange-800 text-xs font-bold py-3 min-h-11 rounded transition-colors whitespace-nowrap hcc-hidden">HCC</button>
+
+                <button data-action="change-status" data-status="Cancelled"
+                    class="bg-gray-200 hover:bg-gray-300 active:bg-gray-400 text-gray-800 text-xs font-bold py-3 min-h-11 rounded transition-colors">Cancelled</button>
+                <button data-action="change-status" data-status="Rejected"
+                    class="bg-red-600 hover:bg-red-700 active:bg-red-800 text-white text-xs font-bold py-3 min-h-11 rounded shadow-sm transition-colors">Reject</button>
+                <button data-action="change-status" data-status="Confirmed"
+                    class="bg-green-600 hover:bg-green-700 active:bg-green-800 text-white text-xs font-bold py-3 min-h-11 rounded shadow-sm transition-colors">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="confirmTypeModal"
+        class="modal opacity-0 pointer-events-none fixed inset-0 flex items-center justify-center">
+        <div class="absolute inset-0 bg-gray-900 opacity-50"></div>
+        <div class="bg-white w-full max-w-sm rounded-lg shadow-2xl z-50 p-6 relative">
+            <h2 class="text-xl font-bold mb-4 text-green-700">Confirm Booking</h2>
+            <p id="confirmBusinessName" class="text-sm font-bold text-gray-800 mb-2">Business Name</p>
+            <p class="text-sm text-gray-600 mb-4">Is this a Chargeable stall or Free?</p>
+
+            <div id="confirmRecommendation"
+                class="mb-4 p-3 bg-gray-50 text-gray-600 text-xs rounded border border-gray-200">
+                Loading Recommendation...
+            </div>
+
+            <div class="flex flex-col gap-3">
+                <div class="bg-green-50 border border-green-200 rounded-lg p-3">
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="text-sm font-bold text-green-800">Chargeable Stall</span>
+                        <span class="text-xs text-green-600">Editable</span>
+                    </div>
+                    <div class="flex items-center gap-2 mb-3">
+                        <span class="text-green-700 font-bold text-lg">£</span>
+                        <input type="number" id="confirmCostInput" min="0" step="0.01"
+                            class="flex-1 border border-green-300 rounded px-3 py-2 text-green-900 font-bold text-lg focus:outline-none focus:ring-2 focus:ring-green-400 bg-white"
+                            placeholder="0.00">
+                    </div>
+                    <button id="btn-finalize-true"
+                        class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded shadow transition transform hover:-translate-y-0.5">
+                        Confirm as Chargeable
+                    </button>
+                </div>
+                <button id="btn-finalize-false"
+                    class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded shadow flex justify-between px-4 transition transform hover:-translate-y-0.5">
+                    <span>Community / Charity</span>
+                    <span>Free</span>
+                </button>
+                <button data-action="close-modal" data-modal="confirmTypeModal"
+                    class="w-full bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 rounded mt-2">
+                    Cancel
+                </button>
+            </div>
+            <input type="hidden" id="confirmBookingId">
+        </div>
+    </div>
+
+    <div id="rejectReasonModal"
+        class="modal opacity-0 pointer-events-none fixed inset-0 z-50 flex items-center justify-center">
+        <div class="absolute inset-0 bg-gray-900 opacity-50"></div>
+        <div class="bg-white w-full max-w-md rounded-lg shadow-2xl z-50 p-6">
+            <h2 class="text-xl font-bold mb-4 text-red-700">Reject Application</h2>
+            <p class="text-sm text-gray-600 mb-4">Please provide a reason for rejection. This will be saved in the
+                database.</p>
+            <input type="hidden" id="rejectBookingId">
+
+            <textarea id="rejectReason" rows="3" placeholder="Reason for rejection..."
+                class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 mb-4 focus:ring-2 focus:ring-red-500"></textarea>
+
+            <div class="flex justify-end gap-3">
+                <button data-action="close-modal" data-modal="rejectReasonModal"
+                    class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded">Cancel</button>
+                <button id="btn-confirm-rejection"
+                    class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded shadow-md">Reject
+                    Booking</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="emailComposeModal"
+        class="modal opacity-0 pointer-events-none fixed inset-0 flex items-center justify-center">
+        <div class="absolute inset-0 bg-gray-900 opacity-50"></div>
+        <div class="bg-white w-full max-w-lg rounded-lg shadow-2xl z-50 p-6 relative">
+            <h2 class="text-lg font-bold mb-4">Compose Email</h2>
+            <input type="hidden" id="emailBookingId">
+            <input id="emailSubject" class="w-full border p-2 rounded mb-2 text-sm" placeholder="Subject">
+            <textarea id="emailBody" rows="5" class="w-full border p-2 rounded mb-4 text-sm"
+                placeholder="Message..."></textarea>
+            <div class="flex justify-end gap-2">
+                <button data-action="close-modal" data-modal="emailComposeModal"
+                    class="px-4 py-2 text-gray-500 hover:text-gray-700 text-sm font-bold">Cancel</button>
+                <button id="btn-send-system-email"
+                    class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-bold">Send
+                    Email</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bulk Email Compose Modal -->
+    <div id="bulkEmailModal"
+        class="modal opacity-0 pointer-events-none fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div class="absolute inset-0 bg-gray-900 opacity-50"></div>
+        <div class="bg-white w-full max-w-2xl rounded-xl shadow-2xl z-50 flex flex-col relative mx-4"
+            style="max-height:90vh">
+
+            <!-- Header -->
+            <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-start">
+                <div>
+                    <h2 class="text-lg font-bold text-gray-800">Email All Confirmed Bookings</h2>
+                    <p id="bulkEmailCount" class="text-xs text-green-700 font-semibold mt-0.5"></p>
+                </div>
+                <button data-action="close-modal" data-modal="bulkEmailModal"
+                    class="text-gray-400 hover:text-gray-600 mt-0.5">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12">
+                        </path>
+                    </svg>
+                </button>
+            </div>
+
+            <!-- Body -->
+            <div class="p-6 flex-1 overflow-y-auto space-y-4">
+                <div>
+                    <label class="block text-sm font-bold text-gray-700 mb-1">Subject</label>
+                    <input id="bulkEmailSubject" type="text"
+                        placeholder="e.g. Important update about your stall booking"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-bold text-gray-700 mb-1">Message</label>
+                    <div id="bulkEmailEditorContainer"
+                        class="bg-white border border-gray-300 rounded-lg overflow-hidden">
+                        <div id="bulkEmailToolbar">
+                            <span class="ql-formats">
+                                <button class="ql-bold"></button>
+                                <button class="ql-italic"></button>
+                                <button class="ql-underline"></button>
+                            </span>
+                            <span class="ql-formats">
+                                <button class="ql-list" value="ordered"></button>
+                                <button class="ql-list" value="bullet"></button>
+                            </span>
+                            <span class="ql-formats">
+                                <button class="ql-link"></button>
+                                <button class="ql-clean"></button>
+                            </span>
+                        </div>
+                        <div id="bulkEmailEditor" style="height: 300px;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Footer -->
+            <div class="px-6 py-4 border-t border-gray-200 bg-gray-50 flex justify-end gap-3 rounded-b-xl">
+                <button data-action="close-modal" data-modal="bulkEmailModal"
+                    class="px-4 py-2 text-sm font-bold text-gray-600 bg-gray-200 hover:bg-gray-300 rounded-lg transition">Cancel</button>
+                <button id="btn-send-bulk-email"
+                    class="px-5 py-2 text-sm font-bold text-white bg-green-600 hover:bg-green-700 rounded-lg shadow transition flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z">
+                        </path>
+                    </svg>
+                    Send to All
+                </button>
+            </div>
+        </div>
+    </div>
+
+
+    <script src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
+</body>
+
+</html>

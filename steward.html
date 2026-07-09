@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://challenges.cloudflare.com https://cdn.tailwindcss.com https://vercel.live; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com https://cdn.tailwindcss.com; connect-src 'self' https://rsnxhuhibglieofikkpo.supabase.co https://challenges.cloudflare.com https://vercel.live https://cdn.jsdelivr.net https://unpkg.com; frame-src https://challenges.cloudflare.com https://vercel.live; img-src 'self' data: https:; font-src 'self' https://fonts.gstatic.com;">
+    <title>Steward App (Standalone)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0">
+    <link href="./css/output.css" rel="stylesheet">
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <link rel="manifest" href="manifest.json" crossorigin="use-credentials">
+    <meta name="theme-color" content="#2563eb">
+    <link rel="apple-touch-icon" href="icon-192.png">
+
+    <style>
+        body {
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .touch-card {
+            transition: transform 0.1s;
+        }
+
+        .touch-card:active {
+            transform: scale(0.98);
+            background: #f3f4f6;
+        }
+
+        .offline-badge {
+            display: none;
+        }
+
+        body.is-offline .offline-badge {
+            display: block;
+        }
+
+        @keyframes slideUp {
+            from {
+                transform: translateY(100%);
+            }
+
+            to {
+                transform: translateY(0);
+            }
+        }
+
+        .animate-slide-up {
+            animation: slideUp 0.3s ease-out;
+        }
+
+        /* Custom Select Styling */
+        select {
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+            background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3E%3C/svg%3E");
+            background-position: right 1rem center;
+            background-repeat: no-repeat;
+            background-size: 1.5em 1.5em;
+        }
+    </style>
+
+    <link rel="icon"
+        href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎪</text></svg>">
+</head>
+
+<body class="bg-gray-100 min-h-screen text-gray-800 pb-20">
+
+    <div class="bg-blue-600 text-white p-4 sticky top-0 z-50 shadow-md flex justify-between items-center">
+        <h1 class="font-bold text-lg">🛡️ Steward App</h1>
+        <div class="flex items-center gap-2">
+            <div id="statusIndicator" class="text-xs font-bold bg-green-500 px-2 py-1 rounded shadow-sm">ONLINE</div>
+        </div>
+    </div>
+
+    <div class="offline-badge bg-yellow-500 text-white text-center text-xs py-1 font-bold">
+        OFFLINE MODE - Changes will sync later
+    </div>
+
+    <div class="p-4 bg-white shadow-sm sticky top-14 z-40 border-b border-gray-100">
+        <input type="text" id="searchInput" placeholder="Search name, biz, id..."
+            class="w-full p-4 text-lg border-2 border-gray-300 rounded-xl focus:border-blue-500 focus:outline-none shadow-sm"
+            autocomplete="off">
+    </div>
+
+    <div id="resultsList" class="p-4 space-y-4"></div>
+
+    <div id="loading" class="text-center mt-10 text-gray-400">
+        <div class="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full mx-auto mb-2"></div>
+        <p>Loading data...</p>
+    </div>
+
+    <div id="editModal"
+        class="fixed inset-0 bg-black bg-opacity-60 z-50 hidden flex items-end sm:items-center justify-center backdrop-blur-sm">
+        <div class="bg-white w-full sm:w-96 p-6 rounded-t-2xl sm:rounded-xl shadow-2xl animate-slide-up">
+            <div class="flex justify-between items-start mb-4">
+                <h3 class="text-xl font-bold text-gray-900">Reassign Pitch</h3>
+                <button data-action="close-modal" class="text-gray-400 text-2xl leading-none">&times;</button>
+            </div>
+
+            <p id="modalBizName" class="text-gray-600 mb-6 text-sm font-medium bg-gray-50 p-3 rounded-lg"></p>
+
+            <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Select Available
+                Location</label>
+
+            <select id="newLocationInput"
+                class="w-full p-4 border-2 border-gray-300 rounded-xl text-xl font-bold mb-6 bg-white text-gray-800 focus:border-blue-500 focus:outline-none">
+                <option value="">Loading locations...</option>
+            </select>
+
+            <div class="flex gap-3">
+                <button data-action="close-modal"
+                    class="flex-1 py-4 bg-gray-100 text-gray-600 rounded-xl font-bold active:bg-gray-200">Cancel</button>
+                <button id="btn-save-location"
+                    class="flex-1 py-4 bg-blue-600 text-white rounded-xl font-bold shadow-lg active:bg-blue-700">Save
+                    Update</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="./js/page-steward.js"></script>
+</body>
+
+</html>

@@ -1,0 +1,195 @@
+/* --- SCROLLBARS --- */
+.custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+}
+
+tr.hover-row:hover td {
+    background-color: #f0f9ff;
+    cursor: pointer;
+    transition: background-color 0.1s;
+}
+
+/* Modal Transitions & Z-Index */
+.modal {
+    transition: opacity 0.2s ease-in-out;
+}
+
+body.modal-active {
+    overflow: hidden;
+}
+
+/* Z-INDEX STACKING */
+.z-modal-backdrop {
+    z-index: 60;
+}
+
+.z-modal-panel {
+    z-index: 70;
+}
+
+#emailComposeModal {
+    z-index: 105;
+}
+
+/* Above bottom sheet */
+#confirmTypeModal {
+    z-index: 105;
+}
+
+/* Above bottom sheet */
+#rejectReasonModal {
+    z-index: 105;
+}
+
+/* Above bottom sheet */
+#flashToast {
+    z-index: 110;
+}
+
+/* === MOBILE SWIPE ACTIONS === */
+.swipe-card {
+    position: relative;
+    touch-action: pan-y;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.swipe-card.swiping {
+    transition: none;
+}
+
+.swipe-actions {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 80px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: bold;
+    color: white;
+    z-index: 1;
+}
+
+.swipe-actions.left {
+    left: 0;
+    background: linear-gradient(90deg, #10b981, #059669);
+    border-radius: 0.5rem 0 0 0.5rem;
+}
+
+.swipe-actions.right {
+    right: 0;
+    background: linear-gradient(90deg, #f59e0b, #d97706);
+    border-radius: 0 0.5rem 0.5rem 0;
+}
+
+/* === MOBILE DETAIL PANEL (Kanban Style) === */
+@media (max-width: 768px) {
+    #detailModal {
+        display: flex !important;
+        justify-content: flex-end;
+    }
+
+    #detailPanel {
+        width: 100%;
+        max-width: 100%;
+    }
+}
+
+/* === MOBILE ACTION BUTTONS === */
+.mobile-action-btn {
+    flex: 1;
+    padding: 16px;
+    font-weight: 600;
+    border-radius: 0.75rem;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: all 0.2s;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.mobile-action-btn:active {
+    transform: scale(0.98);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+/* HCC Button visibility control */
+.hcc-hidden {
+    display: none !important;
+}
+
+.hcc-visible {
+    display: flex !important;
+}
+
+/* Extra specific rule for the HCC button when visible */
+#hccChecksBtn.hcc-visible {
+    display: flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+}
+
+/* === PULL TO REFRESH === */
+.pull-to-refresh {
+    position: absolute;
+    top: -60px;
+    left: 0;
+    right: 0;
+    height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #6b7280;
+    font-size: 14px;
+    font-weight: 500;
+    transition: transform 0.3s ease;
+}
+
+.pull-to-refresh.pulling {
+    transform: translateY(60px);
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.pull-to-refresh .spinner {
+    animation: spin 1s linear infinite;
+}
+
+/* === MOBILE TABLE/CARD TOGGLE === */
+@media (max-width: 768px) {
+    .desktop-table {
+        display: none !important;
+    }
+}
+
+.mobile-cards {
+    display: none;
+}
+
+@media (max-width: 768px) {
+    .mobile-cards {
+        display: block !important;
+    }
+}

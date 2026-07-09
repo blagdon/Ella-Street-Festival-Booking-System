@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://challenges.cloudflare.com https://cdn.tailwindcss.com https://vercel.live; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com https://cdn.tailwindcss.com; connect-src 'self' https://rsnxhuhibglieofikkpo.supabase.co https://challenges.cloudflare.com https://vercel.live https://cdn.jsdelivr.net https://unpkg.com; frame-src https://challenges.cloudflare.com https://vercel.live; img-src 'self' data: https:; font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com;">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Payments Dashboard - ESF2026</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script type="module" src="./js/page-payments.js"></script>
+    <link href="./css/admin.css" rel="stylesheet">
+
+    <style>
+        /* Hide table on mobile, show cards */
+        @media (max-width: 768px) {
+            .desktop-table {
+                display: none;
+            }
+        }
+
+        /* Mobile card view */
+        .mobile-cards {
+            display: none;
+        }
+
+        @media (max-width: 768px) {
+            .mobile-cards {
+                display: block;
+            }
+        }
+
+        /* Payment card styles */
+        .payment-card {
+            transition: all 0.2s;
+            min-height: 44px;
+        }
+
+        .payment-card:active {
+            transform: scale(0.98);
+        }
+
+        .payment-card.paid {
+            border-left: 4px solid #10b981;
+            background: linear-gradient(90deg, #ecfdf5 0%, #ffffff 100%);
+        }
+
+        .payment-card.unpaid {
+            border-left: 4px solid #ef4444;
+            background: linear-gradient(90deg, #fef2f2 0%, #ffffff 100%);
+        }
+    </style>
+
+    <link rel="icon"
+        href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎪</text></svg>">
+</head>
+
+<body class="bg-gray-50 text-gray-900">
+
+    <div id="nav-container"></div>
+
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+        <div class="flex justify-between items-center mb-6">
+            <h1 class="text-2xl font-bold text-gray-900">Payments Dashboard</h1>
+            <div
+                class="flex items-center gap-2 md:gap-4 bg-white px-4 py-2 rounded-lg shadow-sm border border-gray-200">
+                <div class="flex flex-col text-right text-xs md:text-sm">
+                    <div class="flex items-center justify-end gap-1 md:gap-2">
+                        <span
+                            class="text-[10px] md:text-xs text-gray-500 font-bold uppercase tracking-wider">Paid</span>
+                        <span id="total-paid" class="text-xs md:text-sm font-bold text-green-600">£0.00</span>
+                    </div>
+                    <div class="flex items-center justify-end gap-1 md:gap-2">
+                        <span
+                            class="text-[10px] md:text-xs text-gray-500 font-bold uppercase tracking-wider">Pending</span>
+                        <span id="total-outstanding" class="text-xs md:text-sm font-bold text-red-600">£0.00</span>
+                    </div>
+                </div>
+                <button id="btn-refresh" class="text-gray-500 hover:text-blue-600 p-2 border-l pl-2 md:pl-4">
+                    <i class="fas fa-sync-alt text-sm md:text-base"></i>
+                </button>
+            </div>
+        </div>
+
+        <div class="bg-white p-3 md:p-4 rounded-lg shadow mb-4 md:mb-6">
+            <div class="flex flex-col sm:flex-row gap-3 md:gap-4 items-stretch sm:items-center justify-between">
+                <div class="flex flex-col sm:flex-row gap-3 md:gap-4 flex-1">
+                    <select id="filter-status"
+                        class="border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm">
+                        <option value="all">All Payment Statuses</option>
+                        <option value="paid">Paid</option>
+                        <option value="unpaid">Unpaid</option>
+                    </select>
+                    <input type="text" id="search-input" placeholder="Search business..."
+                        class="border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm flex-1">
+                </div>
+                <div class="flex items-center gap-3">
+                    <div class="text-xs md:text-sm text-gray-500 text-center sm:text-right">
+                        Showing <span id="count-display">0</span> records
+                    </div>
+                    <button id="btn-export-csv"
+                        class="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-300 rounded-md text-xs text-gray-700 font-medium shadow-sm hover:bg-gray-50 hover:border-gray-400 transition-colors whitespace-nowrap">
+                        <svg class="w-3.5 h-3.5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                        </svg>
+                        Export CSV
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Desktop: Table View -->
+        <div class="desktop-table bg-white shadow overflow-hidden rounded-lg">
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th scope="col"
+                                class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Booking & Status
+                            </th>
+                            <th scope="col"
+                                class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Business
+                            </th>
+                            <th scope="col"
+                                class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Cost
+                            </th>
+                            <th scope="col"
+                                class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Paid?
+                            </th>
+                            <th scope="col"
+                                class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Date Paid
+                            </th>
+                            <th scope="col"
+                                class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Reference
+                            </th>
+                            <th scope="col"
+                                class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Updated By
+                            </th>
+                            <th scope="col" class="relative px-6 py-3 pr-12">
+                                <span class="sr-only">Actions</span>
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody id="payments-body" class="bg-white divide-y divide-gray-200">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Mobile: Card View -->
+        <div class="mobile-cards space-y-3" id="mobile-cards">
+            <!-- Cards populated by JavaScript -->
+        </div>
+    </div>
+
+    <div id="edit-modal" class="fixed z-10 inset-0 overflow-y-auto hidden" aria-labelledby="modal-title" role="dialog"
+        aria-modal="true">
+        <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div id="modal-overlay" class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"
+                aria-hidden="true"></div>
+            <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+            <div
+                class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+                <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                    <h3 class="text-lg leading-6 font-medium text-gray-900" id="modal-title">Update Payment Details</h3>
+                    <div class="mt-4 space-y-4">
+                        <input type="hidden" id="modal-id">
+
+                        <div class="flex items-center justify-between bg-gray-50 p-3 rounded">
+                            <span class="text-sm font-medium text-gray-700">Payment Received?</span>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="modal-paid" class="sr-only peer">
+                                <div
+                                    class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600">
+                                </div>
+                            </label>
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Date Paid</label>
+                            <input type="date" id="modal-date"
+                                class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border p-2">
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Bank Reference / Notes</label>
+                            <input type="text" id="modal-ref"
+                                class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border p-2">
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Updated By (Your Name)</label>
+                            <input type="text" id="modal-editor"
+                                class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border p-2">
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+                    <button type="button" id="btn-save-payment"
+                        class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 focus:outline-none sm:ml-3 sm:w-auto sm:text-sm">
+                        Save Changes
+                    </button>
+                    <button type="button" id="btn-cancel-payment"
+                        class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+
+
+</body>
+
+</html>

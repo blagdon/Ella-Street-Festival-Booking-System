@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>User Management — ESF26 Admin</title>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://challenges.cloudflare.com https://cdn.tailwindcss.com https://vercel.live; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com https://cdn.tailwindcss.com; connect-src 'self' https://rsnxhuhibglieofikkpo.supabase.co https://challenges.cloudflare.com https://vercel.live https://cdn.jsdelivr.net https://unpkg.com; frame-src https://challenges.cloudflare.com https://vercel.live; img-src 'self' data: https:; font-src 'self' https://fonts.gstatic.com;">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="./css/output.css" rel="stylesheet">
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <style>
+        input:focus,
+        select:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+
+        .role-badge-admin {
+            background: #dbeafe;
+            color: #1d4ed8;
+        }
+
+        .role-badge-steward {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .fade-in {
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(4px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+    </style>
+
+    <link rel="icon"
+        href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎪</text></svg>">
+</head>
+
+<body class="bg-gray-50 min-h-screen font-sans text-gray-800">
+
+    <div id="nav-container"></div>
+
+    <div class="max-w-4xl mx-auto px-4 md:px-6 py-6 md:py-10">
+
+        <!-- Header -->
+        <div class="mb-6 md:mb-8 flex items-center gap-3">
+            <a href="more.html"
+                class="inline-flex items-center text-gray-500 hover:text-blue-600 transition-colors group bg-white px-3 py-2 rounded-lg border border-gray-200 text-xs font-bold uppercase tracking-wide shadow-sm">
+                <svg class="w-3 h-3 mr-1.5 group-hover:-translate-x-0.5 transition-transform" fill="none"
+                    stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+                </svg>
+                Back
+            </a>
+            <div>
+                <h1 class="text-xl font-bold text-gray-800">User Management</h1>
+                <p class="text-sm text-gray-500">Create and view admin &amp; steward accounts.</p>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+            <!-- CREATE USER FORM -->
+            <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+                <h2 class="text-base font-bold text-gray-800 mb-4 flex items-center gap-2">
+                    <svg class="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z">
+                        </path>
+                    </svg>
+                    Create New Account
+                </h2>
+
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 mb-1">Email Address</label>
+                        <input type="email" id="newEmail" placeholder="user@example.com"
+                            class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm bg-white shadow-sm">
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 mb-1">Temporary Password</label>
+                        <input type="password" id="newPassword" placeholder="Min. 8 characters"
+                            class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm bg-white shadow-sm">
+                        <p class="text-xs text-gray-400 mt-1">The user should change this on first login.</p>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 mb-1">Role</label>
+                        <select id="newRole"
+                            class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm bg-white shadow-sm">
+                            <option value="admin">Admin</option>
+                            <option value="steward">Steward</option>
+                        </select>
+                    </div>
+
+                    <div id="createMsg" class="hidden text-sm font-semibold rounded-lg px-3 py-2"></div>
+
+                    <button id="createBtn"
+                        class="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold py-2.5 px-4 rounded-lg shadow-sm transition-all">
+                        Create Account
+                    </button>
+                </div>
+
+                <div class="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                    <p class="text-xs text-yellow-800 font-semibold">⚠️ Security Note</p>
+                    <p class="text-xs text-yellow-700 mt-0.5">The new user must verify their email before they can log
+                        in. Share the temporary password securely.</p>
+                </div>
+            </div>
+
+            <!-- USER LIST -->
+            <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-base font-bold text-gray-800 flex items-center gap-2">
+                        <svg class="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z">
+                            </path>
+                        </svg>
+                        Assigned Roles
+                    </h2>
+                    <button id="btn-refresh-users"
+                        class="text-xs text-blue-600 hover:text-blue-800 font-semibold flex items-center gap-1">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15">
+                            </path>
+                        </svg>
+                        Refresh
+                    </button>
+                </div>
+
+                <div id="userList" class="space-y-2">
+                    <div class="text-center py-6 text-gray-400 text-sm">Loading...</div>
+                </div>
+                <p class="text-xs text-gray-400 mt-3">Only users with assigned roles are shown here.</p>
+            </div>
+
+        </div>
+    </div>
+
+    <script type="module" src="./js/page-manage-users.js"></script>
+</body>
+
+</html>

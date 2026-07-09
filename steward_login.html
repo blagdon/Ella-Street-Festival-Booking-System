@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://challenges.cloudflare.com https://cdn.tailwindcss.com https://vercel.live; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com https://cdn.tailwindcss.com; connect-src 'self' https://rsnxhuhibglieofikkpo.supabase.co https://challenges.cloudflare.com https://vercel.live https://cdn.jsdelivr.net https://unpkg.com; frame-src https://challenges.cloudflare.com https://vercel.live; img-src 'self' data: https:; font-src 'self' https://fonts.gstatic.com;">
+  <title>Steward Login</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0">
+  <link href="./css/output.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <meta name="theme-color" content="#2563eb">
+  <style>
+    body {
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    input:focus {
+      ring: 2px;
+      ring-color: #2563eb;
+      outline: none;
+      border-color: #2563eb;
+    }
+  </style>
+
+  <link rel="icon"
+    href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎪</text></svg>">
+</head>
+
+<body class="bg-blue-600 min-h-screen flex flex-col items-center justify-center p-6">
+
+  <div class="text-white text-center mb-8">
+    <div class="text-6xl mb-2">🛡️</div>
+    <h1 class="text-3xl font-bold">Steward Access</h1>
+    <p class="text-blue-200 mt-2">Ella Street Festival 2026</p>
+  </div>
+
+  <div class="bg-white w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden p-8">
+    <form id="loginForm" class="space-y-6">
+
+      <div id="errorMsg"
+        class="hidden bg-red-50 text-red-600 text-sm p-3 rounded-lg border border-red-100 font-bold text-center">
+        Invalid credentials
+      </div>
+
+      <div>
+        <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Email</label>
+        <input type="email" id="email" required
+          class="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl text-lg font-medium text-gray-900 placeholder-gray-400 focus:bg-white transition-colors"
+          placeholder="steward@ellastreet.co.uk">
+      </div>
+
+      <div>
+        <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Password</label>
+        <input type="password" id="password" required
+          class="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl text-lg font-medium text-gray-900 placeholder-gray-400 focus:bg-white transition-colors"
+          placeholder="••••••••">
+      </div>
+
+      <button type="submit" id="loginBtn"
+        class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-lg py-4 rounded-xl shadow-lg transform transition active:scale-95">
+        Sign In
+      </button>
+      </head>
+
+      <body class="bg-blue-600 min-h-screen flex flex-col items-center justify-center p-6">
+
+        <div class="text-white text-center mb-8">
+          <div class="text-6xl mb-2">🛡️</div>
+          <h1 class="text-3xl font-bold">Steward Access</h1>
+          <p class="text-blue-200 mt-2">Ella Street Festival 2026</p>
+        </div>
+
+        <div class="bg-white w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden p-8">
+          <form id="loginForm" class="space-y-6">
+
+            <div id="errorMsg"
+              class="hidden bg-red-50 text-red-600 text-sm p-3 rounded-lg border border-red-100 font-bold text-center">
+              Invalid credentials
+            </div>
+
+            <div>
+              <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Email</label>
+              <input type="email" id="email" required
+                class="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl text-lg font-medium text-gray-900 placeholder-gray-400 focus:bg-white transition-colors"
+                placeholder="steward@ellastreet.co.uk">
+            </div>
+
+            <div>
+              <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Password</label>
+              <input type="password" id="password" required
+                class="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl text-lg font-medium text-gray-900 placeholder-gray-400 focus:bg-white transition-colors"
+                placeholder="••••••••">
+            </div>
+
+            <button type="submit" id="loginBtn"
+              class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-lg py-4 rounded-xl shadow-lg transform transition active:scale-95">
+              Sign In
+            </button>
+
+          </form>
+        </div>
+
+        <p class="mt-8 text-blue-200 text-xs font-mono">v1.0 • Offline Capable</p>
+
+        <script type="module" src="./js/page-steward-login.js"></script>
+
+      </body>
+
+</html>

@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://challenges.cloudflare.com https://cdn.tailwindcss.com https://vercel.live; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com https://cdn.tailwindcss.com; connect-src 'self' https://rsnxhuhibglieofikkpo.supabase.co https://challenges.cloudflare.com https://vercel.live https://cdn.jsdelivr.net https://unpkg.com; frame-src https://challenges.cloudflare.com https://vercel.live; img-src 'self' data: https:; font-src 'self' https://fonts.gstatic.com;">
+    <title>Booking Editor</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <link href="./css/output.css" rel="stylesheet">
+    <link href="./css/admin.css" rel="stylesheet">
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    
+
+    <style>
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #c1c1c1;
+            border-radius: 4px;
+        }
+
+        /* Input Focus Styles */
+        input:focus,
+        textarea:focus,
+        select:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+
+        .field-dirty {
+            border-color: #f59e0b !important;
+            background-color: #fffbeb !important;
+        }
+
+        /* Mobile: full-screen list ↔ detail pane toggle */
+        @media (max-width: 767px) {
+
+            /* Default: show list, hide form */
+            .sidebar-list {
+                display: flex !important;
+                flex: 1;
+            }
+
+            .edit-panel {
+                display: none !important;
+            }
+
+            /* When a booking is selected: hide list, show form */
+            .mobile-detail-active .sidebar-list {
+                display: none !important;
+            }
+
+            .mobile-detail-active .edit-panel {
+                display: flex !important;
+                flex: 1;
+            }
+        }
+
+        /* Back button: only visible on mobile */
+        .mobile-back-btn {
+            display: none;
+        }
+
+        @media (max-width: 767px) {
+            .mobile-back-btn {
+                display: flex;
+            }
+        }
+    </style>
+
+    <link rel="icon"
+        href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎪</text></svg>">
+</head>
+
+<body class="bg-gray-100 min-h-screen font-sans text-gray-800 flex flex-col">
+
+    <div
+        class="bg-white border-b border-gray-200 px-4 md:px-6 py-4 flex flex-col md:flex-row md:justify-between items-start md:items-center gap-4 shadow-sm shrink-0 z-20">
+        <div class="flex flex-col">
+            <div class="mb-2 flex items-center gap-2 flex-wrap">
+                <a href="index.html"
+                    class="inline-flex items-center text-gray-500 hover:text-blue-600 transition-colors group bg-gray-50 px-2 py-1 rounded border border-gray-200 text-xs font-bold uppercase tracking-wide">
+                    <svg class="w-3 h-3 mr-1.5 group-hover:-translate-x-0.5 transition-transform" fill="none"
+                        stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+                    </svg>
+                    Back to Hub
+                </a>
+                <div id="instanceBadge"
+                    class="bg-gray-100 text-gray-800 text-xs font-bold px-2 py-1 rounded uppercase tracking-wide">
+                    Loading...</div>
+            </div>
+
+            <h1 class="text-xl font-bold text-gray-800 tracking-tight">Booking Editor</h1>
+            <p class="text-xs text-gray-500 mt-0.5">Edit contact details and requirements.</p>
+        </div>
+
+        <div class="bg-blue-50 text-blue-700 px-3 py-1 rounded text-xs font-bold border border-blue-100">
+            Admin Mode
+        </div>
+    </div>
+
+    <div id="mobile-view-container" class="flex-1 flex flex-col md:flex-row overflow-hidden">
+
+        <!-- Sidebar: Booking List -->
+        <div
+            class="sidebar-list md:w-1/3 bg-white border-b md:border-b-0 md:border-r border-gray-200 flex flex-col z-10 overflow-hidden">
+            <div class="p-3 md:p-4 border-b border-gray-200 bg-gray-50">
+                <input type="text" id="searchInput" placeholder="Search Name, ID, or Email..."
+                    class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm bg-white shadow-sm">
+                <div id="countDisplay" class="text-xs text-gray-400 mt-2 text-right">Loading bookings...</div>
+            </div>
+            <div id="bookingList" class="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1 min-h-0">
+            </div>
+        </div>
+
+        <!-- Main Content: Edit Form -->
+        <div class="edit-panel md:w-2/3 bg-gray-50 flex flex-col relative flex-1">
+
+            <!-- Mobile: Back to list button -->
+            <div class="mobile-back-btn items-center gap-2 px-4 py-3 bg-white border-b border-gray-200 shadow-sm">
+                <button id="btn-back-to-list"
+                    class="inline-flex items-center text-gray-600 hover:text-blue-600 font-bold text-sm transition-colors">
+                    <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+                    </svg>
+                    Back to List
+                </button>
+            </div>
+
+            <div id="emptyState"
+                class="absolute inset-0 flex flex-col items-center justify-center text-gray-400 bg-gray-50 z-20">
+                <svg class="w-12 h-12 md:w-16 md:h-16 mb-3 md:mb-4 text-gray-300" fill="none" stroke="currentColor"
+                    viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                        d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z">
+                    </path>
+                </svg>
+                <p class="text-base md:text-lg font-medium">Select a booking to edit</p>
+            </div>
+
+            <div id="formContainer"
+                class="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-8 opacity-0 transition-opacity duration-300">
+
+                <div class="flex justify-between items-center mb-6">
+                    <div class="inline-block bg-gray-200 text-gray-700 px-3 py-1 rounded text-xs font-mono font-bold tracking-wider"
+                        id="edit-id-badge">ID: --</div>
+                    <div id="status-badge"
+                        class="px-3 py-1 rounded-full text-xs font-bold uppercase bg-gray-100 text-gray-500">--</div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+                    <div class="space-y-4">
+                        <h3 class="text-sm font-bold text-gray-900 uppercase tracking-wider border-b pb-1">Business
+                            Details</h3>
+
+                        <div>
+                            <label class="block text-xs font-bold text-gray-500 mb-1">Business Name</label>
+                            <input id="editBusiness"
+                                class="w-full p-2 border border-gray-300 rounded text-sm font-bold text-gray-800">
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-bold text-gray-500 mb-1">Owner Name</label>
+                            <input id="editOwner" class="w-full p-2 border border-gray-300 rounded text-sm">
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-bold text-gray-500 mb-1">Category</label>
+                            <input id="editCategory"
+                                class="w-full p-2 border border-gray-300 rounded text-sm bg-gray-50 text-gray-600">
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-bold text-gray-500 mb-1">Stall Type</label>
+                            <select id="editType" class="w-full p-2 border border-gray-300 rounded text-sm bg-white">
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="space-y-4">
+                        <h3 class="text-sm font-bold text-gray-900 uppercase tracking-wider border-b pb-1">Contact &
+                            Logistics</h3>
+
+                        <div>
+                            <label class="block text-xs font-bold text-gray-500 mb-1">Email Address</label>
+                            <input id="editEmail" class="w-full p-2 border border-gray-300 rounded text-sm">
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-bold text-gray-500 mb-1">Phone</label>
+                            <input id="editPhone" class="w-full p-2 border border-gray-300 rounded text-sm">
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-bold text-gray-500 mb-1">Power Required</label>
+                            <select id="editPower" class="w-full p-2 border border-gray-300 rounded text-sm bg-white">
+                                <option value="">Please select...</option>
+                                <option value="No power">No power</option>
+                                <option value="Electricity supplied by fest organisors">Electricity supplied by fest
+                                    organisors</option>
+                                <option value="Generator suppied by stall owner">Generator suppied by stall owner
+                                </option>
+                                <option value="Gas suppied by stall owner">Gas suppied by stall owner</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-bold text-gray-500 mb-1">Address / House No.</label>
+                            <input id="editHouse" class="w-full p-2 border border-gray-300 rounded text-sm">
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-bold text-gray-500 mb-1">Resident?</label>
+                                <select id="editResident"
+                                    class="w-full p-2 border border-gray-300 rounded text-sm bg-white">
+                                    <option value="false">No</option>
+                                    <option value="true">Yes</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-gray-500 mb-1">Charity Status</label>
+                                <select id="editCharity"
+                                    class="w-full p-2 border border-gray-300 rounded text-sm bg-white">
+                                    <option value="Commercial">Commercial</option>
+                                    <option value="Charity">Charity</option>
+                                    <option value="Not for profit">Not for profit</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-span-1 md:col-span-2 space-y-4">
+                        <h3 class="text-sm font-bold text-gray-900 uppercase tracking-wider border-b pb-1">Descriptions
+                        </h3>
+
+                        <div>
+                            <label class="block text-xs font-bold text-gray-500 mb-1">Description</label>
+                            <textarea id="editDesc" rows="3"
+                                class="w-full p-2 border border-gray-300 rounded text-sm"></textarea>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-bold text-gray-500 mb-1">Other Requirements</label>
+                            <textarea id="editOther" rows="2"
+                                class="w-full p-2 border border-gray-300 rounded text-sm"></textarea>
+                        </div>
+                    </div>
+
+                </div>
+
+                <div
+                    class="mt-6 md:mt-8 pt-4 md:pt-6 border-t border-gray-100 flex flex-col sm:flex-row justify-end items-stretch sm:items-center gap-3">
+                    <span id="saveStatus"
+                        class="text-xs font-bold text-green-600 hidden text-center sm:text-right">Changes Saved!</span>
+                    <button id="saveBtn" disabled
+                        class="bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold py-3 sm:py-2 px-6 rounded shadow-sm opacity-50 cursor-not-allowed transition-all min-h-11 sm:min-h-0">
+                        Save Changes
+                    </button>
+                </div>
+            </div>
+
+
+
+        </div>
+    </div>
+
+    <!-- Inject UI Config for allowed types if needed (or load from module) -->
+    <!-- Assuming config.js provides UI_CONFIG -->
+
+    <script type="module" src="./js/page-update-details.js"></script>
+</body>
+
+</html>

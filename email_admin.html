@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://challenges.cloudflare.com https://cdn.tailwindcss.com https://vercel.live; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com https://cdn.tailwindcss.com; connect-src 'self' https://rsnxhuhibglieofikkpo.supabase.co https://challenges.cloudflare.com https://vercel.live https://cdn.jsdelivr.net https://unpkg.com; frame-src https://challenges.cloudflare.com https://vercel.live; img-src 'self' data: https:; font-src 'self' https://fonts.gstatic.com;">
+    <title>Email Template Manager</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="./css/output.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <link href="./css/admin.css" rel="stylesheet">
+    <style>
+        /* Specific page styles can remain here */
+        .active-template {
+            border-left: 4px solid #2563eb;
+            background-color: #eff6ff;
+        }
+    </style>
+
+    <link rel="icon"
+        href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎪</text></svg>">
+</head>
+
+<body class="bg-gray-100 min-h-screen font-sans text-gray-800 flex flex-col">
+    <div id="nav-container"></div>
+
+    <div class="flex-1 flex flex-col md:flex-row overflow-hidden">
+
+        <div
+            class="w-full md:w-1/3 lg:w-1/4 bg-white border-r border-gray-200 flex flex-col overflow-y-auto custom-scrollbar shadow-inner">
+            <div class="p-4 border-b border-gray-100 bg-gray-50">
+                <h2 class="text-xs font-bold text-gray-500 uppercase tracking-wider">Available Templates</h2>
+            </div>
+            <div id="templateList" class="flex-1">
+                <div class="p-8 text-center text-gray-400 text-sm italic">Loading templates...</div>
+            </div>
+        </div>
+
+        <div class="w-full md:w-2/3 lg:w-3/4 flex flex-col bg-gray-50 p-6 overflow-y-auto custom-scrollbar"
+            id="editorArea" style="display: none;">
+
+            <div
+                class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col h-full max-w-4xl mx-auto w-full">
+
+                <div class="p-5 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
+                    <div>
+                        <h2 class="text-lg font-bold text-gray-800" id="editorTitle">Edit Template</h2>
+                        <p class="text-xs text-gray-500 mt-1" id="editorDesc">Description here</p>
+                    </div>
+                    <div class="flex gap-2">
+                        <button id="btn-preview-email"
+                            class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded shadow font-bold text-sm transition-colors">
+                            👁️ Preview
+                        </button>
+                        <button id="btn-save-template"
+                            class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded shadow font-bold text-sm transition-colors">
+                            Save Changes
+                        </button>
+                    </div>
+                </div>
+
+                <div class="p-6 flex-1 flex flex-col space-y-4">
+
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-1">Subject Line</label>
+                        <input type="text" id="inputSubject"
+                            class="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                    </div>
+
+                    <div class="flex-1 flex flex-col">
+                        <label class="block text-sm font-bold text-gray-700 mb-1">HTML Body</label>
+                        <textarea id="inputBody"
+                            class="w-full flex-1 p-3 border border-gray-300 rounded font-mono text-sm bg-gray-50 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none custom-scrollbar min-h-[300px]"></textarea>
+                    </div>
+
+                    <div class="bg-blue-50 text-blue-800 p-4 rounded text-xs border border-blue-100">
+                        <p class="font-bold mb-1">Available Placeholders (exact match required):</p>
+                        <ul class="list-disc pl-5 space-y-1 mt-2">
+                            <li><code>{{owner_name}}</code> - Name of the stallholder</li>
+                            <li><code>{{business_name}}</code> - Trading name</li>
+                            <li><code>{{booking_id}}</code> - e.g. ESF26-FOOD-0042</li>
+                            <li><code>{{cancel_link}}</code> - Auto-generated secure cancellation URL</li>
+                            <li><code>{{cost}}</code> - Stall price (Only for Confirmed Chargeable)</li>
+                            <li><code>{{bank_details}}</code> - Bank account info (Only for Confirmed Chargeable)</li>
+                            <li><code>{{location_id}}</code> - e.g. Zone A - 01 (Only for Confirmed Free / Location
+                                Updates)</li>
+                            <li><code>{{reason}}</code> - Rejection reason (Only for Rejected)</li>
+                            <li><code>{{trader_list}}</code> - Formatted list of traders (Only for HCC Batch Check)</li>
+                            <li><code>{{email}}</code> - Trader email address (HCC emails)</li>
+                            <li><code>{{phone}}</code> - Trader phone number (HCC emails)</li>
+                            <li><code>{{registered_business_name}}</code> - Official registered business name (HCC
+                                emails)</li>
+                        </ul>
+                        <p class="mt-3 font-bold text-blue-900">Note:</p>
+                        <p class="mt-1">The <strong>HCC Batch Check</strong> template is used when sending multiple
+                            trader details to Hull City Council from the HCC Checks page. The
+                            <code>{{trader_list}}</code> placeholder will be replaced with a formatted table of all
+                            selected traders.
+                        </p>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <div id="emptyState"
+            class="w-full md:w-2/3 lg:w-3/4 flex items-center justify-center p-6 text-gray-400 flex-col">
+            <svg class="w-16 h-16 mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z">
+                </path>
+            </svg>
+            <p class="text-lg">Select a template from the sidebar to edit.</p>
+        </div>
+
+    </div>
+
+    <!-- Preview Modal -->
+    <div id="previewModal"
+        class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] flex flex-col">
+            <!-- Modal Header -->
+            <div class="p-5 border-b border-gray-200 flex justify-between items-center bg-gray-50 rounded-t-xl">
+                <div>
+                    <h3 class="text-lg font-bold text-gray-800">Email Preview</h3>
+                    <p class="text-xs text-gray-500 mt-1">Preview with sample data</p>
+                </div>
+                <button data-action="close-preview"
+                    class="text-gray-500 hover:text-gray-700 p-2 rounded-lg hover:bg-gray-200 transition">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12">
+                        </path>
+                    </svg>
+                </button>
+            </div>
+
+            <!-- Email Preview Content -->
+            <div class="flex-1 overflow-y-auto p-6 bg-gray-50">
+                <div class="bg-white rounded-lg shadow-sm border border-gray-200 max-w-2xl mx-auto">
+                    <!-- Email Header -->
+                    <div class="bg-gray-100 px-6 py-4 border-b border-gray-300">
+                        <div class="text-xs text-gray-500 mb-2">Subject:</div>
+                        <div class="font-bold text-gray-900" id="previewSubject"></div>
+                    </div>
+
+                    <!-- Email Body -->
+                    <div class="p-6" id="previewBody">
+                        <!-- HTML content will be inserted here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal Footer -->
+            <div class="p-4 border-t border-gray-200 bg-gray-50 rounded-b-xl flex justify-end gap-2">
+                <button data-action="close-preview"
+                    class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded shadow font-bold text-sm transition-colors">
+                    Close
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="./js/page-email-admin.js"></script>
+</body>
+
+</html>

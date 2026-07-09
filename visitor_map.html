@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://challenges.cloudflare.com https://cdn.tailwindcss.com https://unpkg.com https://vercel.live; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com https://cdn.tailwindcss.com https://unpkg.com; connect-src 'self' https://rsnxhuhibglieofikkpo.supabase.co https://challenges.cloudflare.com https://vercel.live https://cdn.jsdelivr.net https://unpkg.com; frame-src https://challenges.cloudflare.com https://vercel.live; img-src 'self' data: https:; font-src 'self' https://fonts.gstatic.com;">
+  <title>Festival Visitor Map</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+  <link href="./css/output.css" rel="stylesheet">
+  <style>
+    body {
+      padding: 0;
+      margin: 0;
+    }
+
+    html,
+    body,
+    #map {
+      height: 100%;
+      width: 100vw;
+    }
+
+    /* Custom Pins */
+    .custom-pin {
+      background: none;
+      border: none;
+    }
+
+    .pin-outer {
+      width: 32px;
+      height: 32px;
+      background: white;
+      border-radius: 50%;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 6px;
+      transition: transform 0.2s;
+    }
+
+    .pin-outer:hover {
+      transform: scale(1.1);
+      z-index: 1000 !important;
+    }
+
+    .pin-outer svg {
+      width: 100%;
+      height: 100%;
+    }
+
+
+    /* Popup Styling */
+    .leaflet-popup-content-wrapper {
+      border-radius: 12px;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+      padding: 0;
+      overflow: hidden;
+    }
+
+    .leaflet-popup-content {
+      margin: 0;
+    }
+
+    .leaflet-popup-tip {
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    }
+
+    /* Toast Notification */
+    .toast-container {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 2000;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      width: 90%;
+      max-width: 400px;
+      pointer-events: none;
+    }
+
+    .toast {
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(10px);
+      border-left: 4px solid #3b82f6;
+      padding: 12px 16px;
+      border-radius: 8px;
+      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      animation: slideIn 0.3s ease-out;
+      pointer-events: auto;
+      transition: all 0.3s ease;
+    }
+
+    .toast.success {
+      border-left-color: #10b981;
+    }
+
+    .toast.error {
+      border-left-color: #ef4444;
+    }
+
+    .toast.hiding {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+
+    @keyframes slideIn {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .toast-content {
+      flex: 1;
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: #1f2937;
+    }
+
+    .toast-icon {
+      width: 20px;
+      height: 20px;
+      flex-shrink: 0;
+    }
+
+    .toast-close {
+      width: 16px;
+      height: 16px;
+      color: #9ca3af;
+      cursor: pointer;
+    }
+
+    .toast-close:hover {
+      color: #4b5563;
+    }
+
+
+    /* Search Bar Styling */
+    .search-container {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+      padding: 8px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .search-input {
+      width: 100%;
+      padding: 8px 12px;
+      padding-left: 36px;
+      border-radius: 8px;
+      border: 1px solid #e5e7eb;
+      font-size: 0.875rem;
+      outline: none;
+      transition: all 0.2s;
+    }
+
+    .search-input:focus {
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+    }
+
+    .search-icon {
+      position: absolute;
+      left: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: #9ca3af;
+      pointer-events: none;
+    }
+
+    .clear-search {
+      position: absolute;
+      right: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: #9ca3af;
+      cursor: pointer;
+    }
+
+    .clear-search:hover {
+      color: #4b5563;
+    }
+
+    .clear-search.hidden {
+      display: none;
+    }
+
+    @media (max-width: 640px) {
+      .search-container {
+        flex-direction: column;
+      }
+
+      .search-input {
+        width: 100%;
+      }
+    }
+  </style>
+
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎪</text></svg>">
+</head>
+
+<body class="bg-gray-100 h-screen w-screen overflow-hidden relative">
+
+  <!-- Toast Container -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <!-- Search & Filter - Mobile Responsive -->
+  <div class="absolute top-4 left-4 right-4" style="z-index: 10000;">
+    <div class="search-container">
+      <!-- Search Input -->
+      <div style="position: relative; flex: 1;">
+        <svg class="search-icon w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+        </svg>
+        <input type="text" id="search-input" class="search-input" placeholder="Search by name, category, or location..."
+          id="search-input-field" autocomplete="off" />
+        <svg id="clear-search" class="clear-search hidden w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"
+          id="btn-clear-search">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </div>
+
+      <!-- Filter Dropdown -->
+      <select id="filter-select" id="filter-select-field"
+        class="bg-white text-gray-800 px-4 py-3 rounded-lg shadow-lg text-sm font-semibold border-2 border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent cursor-pointer appearance-none bg-no-repeat bg-right"
+        style="background-image: url('data:image/svg+xml;charset=UTF-8,%3csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27currentColor%27 stroke-width=%272%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27%3e%3cpolyline points=%276 9 12 15 18 9%27%3e%3c/polyline%3e%3c/svg%3e'); background-position: right 0.5rem center; background-size: 1.5em 1.5em; padding-right: 2.5rem; min-width: 140px;">
+        <option value="all">🗺️ All</option>
+        <option value="food">🍔 Food</option>
+        <option value="music">🎵 Music</option>
+        <option value="spokenword">🎤 Spoken Word</option>
+        <option value="attraction">🎪 Attractions</option>
+        <option value="stall">🛍️ Stalls</option>
+        <option value="toilet">🚻 Toilets</option>
+        <option value="safety">🚔 Safety</option>
+        <option value="green">🌱 Green</option>
+        <option value="beach">🏖️ Beach</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Locate User Button - Mobile Optimized -->
+  <button id="btn-locate-user"
+    class="absolute bottom-8 right-4 bg-white p-3 rounded-full shadow-lg hover:bg-gray-50 active:bg-gray-100 text-blue-600 focus:outline-none transition-colors"
+    style="min-width: 48px; min-height: 48px; z-index: 10000;">
+    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+        d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+    </svg>
+  </button>
+
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script type="module" src="./js/page-visitor-map.js"></script>
+</body>
+
+</html>

@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>ESF26 Admin Hub</title>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://challenges.cloudflare.com https://cdn.tailwindcss.com https://vercel.live; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com https://cdn.tailwindcss.com; connect-src 'self' https://rsnxhuhibglieofikkpo.supabase.co https://challenges.cloudflare.com https://vercel.live https://cdn.jsdelivr.net https://unpkg.com; frame-src https://challenges.cloudflare.com https://vercel.live; img-src 'self' data: https:; font-src 'self' https://fonts.gstatic.com;">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="./css/output.css" rel="stylesheet">
+    <style>
+        .hover-card {
+            transition: all 0.2s ease-in-out;
+        }
+
+        .hover-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+
+        .icon-box {
+            transition: background-color 0.2s;
+        }
+
+        .hover-card:hover .icon-box {
+            background-color: #eff6ff;
+            color: #2563eb;
+        }
+
+        /* Modal Transitions */
+        .modal {
+            transition: opacity 0.2s ease-in-out;
+        }
+
+        /* Mobile optimizations */
+        @media (max-width: 768px) {
+            .hover-card:active {
+                transform: scale(0.98);
+            }
+        }
+
+        /* Ensure cards are touch-friendly */
+        .hover-card {
+            min-height: 44px;
+            -webkit-tap-highlight-color: rgba(0, 0, 0, 0.1);
+        }
+    </style>
+
+    <!-- Supabase SDK (Global Fallback) -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <!-- MODULES -->
+    <script type="module" src="./js/page-index.js"></script>
+
+    <link rel="icon"
+        href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎪</text></svg>">
+</head>
+
+<body class="bg-gray-50 min-h-screen font-sans text-gray-800">
+
+    <!-- NEW: Container for injected navigation -->
+    <div id="nav-container"></div>
+
+    <div class="max-w-7xl mx-auto px-4 md:px-6 py-6 md:py-10">
+        <p class="text-gray-500 mb-4 md:mb-6 font-medium text-sm md:text-base">Select a module to manage:</p>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
+
+            <div data-action="navigate" data-page="kanban_m"
+                class="bg-white p-4 md:p-6 rounded-xl border border-gray-200 shadow-sm cursor-pointer hover-card group">
+                <div class="flex items-start justify-between mb-4">
+                    <div
+                        class="icon-box bg-gray-100 text-gray-600 p-3 rounded-lg group-hover:bg-blue-50 group-hover:text-blue-600">
+                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2">
+                            </path>
+                        </svg>
+                    </div>
+                </div>
+                <h3 class="text-lg font-bold text-gray-800 mb-1">Kanban Board</h3>
+                <p class="text-sm text-gray-500">Drag-and-drop workflow management for applications.</p>
+            </div>
+
+            <div data-action="navigate" data-page="summary"
+                class="bg-white p-4 md:p-6 rounded-xl border border-gray-200 shadow-sm cursor-pointer hover-card group">
+                <div class="flex items-start justify-between mb-4">
+                    <div
+                        class="icon-box bg-gray-100 text-gray-600 p-3 rounded-lg group-hover:bg-blue-50 group-hover:text-blue-600">
+                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M4 6h16M4 10h16M4 14h16M4 18h16"></path>
+                        </svg>
+                    </div>
+                </div>
+                <h3 class="text-lg font-bold text-gray-800 mb-1">List View (Summary)</h3>
+                <p class="text-sm text-gray-500">Searchable table of all bookings.</p>
+            </div>
+
+            <!-- HCC Checks (conditionally visible) -->
+            <div id="hcc-card" data-action="navigate" data-page="hcc_dashboard"
+                class="bg-white p-4 md:p-6 rounded-xl border border-gray-200 shadow-sm cursor-pointer hover-card group hidden">
+                <div class="flex items-start justify-between mb-4">
+                    <div
+                        class="icon-box bg-gray-100 text-gray-600 p-3 rounded-lg group-hover:bg-blue-50 group-hover:text-blue-600">
+                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                    </div>
+                </div>
+                <h3 class="text-lg font-bold text-gray-800 mb-1">HCC Checks</h3>
+                <p class="text-sm text-gray-500">Track Council food safety approvals.</p>
+            </div>
+
+            <div data-action="navigate" data-page="location_admin"
+                class="bg-white p-4 md:p-6 rounded-xl border border-gray-200 shadow-sm cursor-pointer hover-card group">
+                <div class="flex items-start justify-between mb-4">
+                    <div
+                        class="icon-box bg-gray-100 text-gray-600 p-3 rounded-lg group-hover:bg-blue-50 group-hover:text-blue-600">
+                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z">
+                            </path>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                        </svg>
+                    </div>
+                </div>
+                <h3 class="text-lg font-bold text-gray-800 mb-1">Location Manager</h3>
+                <p class="text-sm text-gray-500">Assign stalls to pitches.</p>
+            </div>
+
+            <div data-action="navigate" data-page="payments"
+                class="bg-white p-4 md:p-6 rounded-xl border border-gray-200 shadow-sm cursor-pointer hover-card group">
+                <div class="flex items-start justify-between mb-4">
+                    <div
+                        class="icon-box bg-gray-100 text-gray-600 p-3 rounded-lg group-hover:bg-blue-50 group-hover:text-blue-600">
+                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z">
+                            </path>
+                        </svg>
+                    </div>
+                </div>
+                <h3 class="text-lg font-bold text-gray-800 mb-1">Payment Tracker</h3>
+                <p class="text-sm text-gray-500">Track chargeable bookings payment status.</p>
+            </div>
+
+            <div data-action="navigate" data-page="stats"
+                class="bg-white p-4 md:p-6 rounded-xl border border-gray-200 shadow-sm cursor-pointer hover-card group">
+                <div class="flex items-start justify-between mb-4">
+                    <div
+                        class="icon-box bg-gray-100 text-gray-600 p-3 rounded-lg group-hover:bg-blue-50 group-hover:text-blue-600">
+                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z">
+                            </path>
+                        </svg>
+                    </div>
+                </div>
+                <h3 class="text-lg font-bold text-gray-800 mb-1">Statistics</h3>
+                <p class="text-sm text-gray-500">Visual breakdown of data.</p>
+            </div>
+
+            <div data-action="navigate" data-page="visitor_map"
+                class="bg-white p-4 md:p-6 rounded-xl border border-gray-200 shadow-sm cursor-pointer hover-card group">
+                <div class="flex items-start justify-between mb-4">
+                    <div
+                        class="icon-box bg-gray-100 text-gray-600 p-3 rounded-lg group-hover:bg-blue-50 group-hover:text-blue-600">
+                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 7m0 13V7m0 0L9 4">
+                            </path>
+                        </svg>
+                    </div>
+                </div>
+                <h3 class="text-lg font-bold text-gray-800 mb-1">Visitor Map</h3>
+                <p class="text-sm text-gray-500">Preview the public Leaflet map.</p>
+            </div>
+
+            <div data-action="navigate" data-page="more"
+                class="bg-white p-4 md:p-6 rounded-xl border border-gray-200 shadow-sm cursor-pointer hover-card group">
+                <div class="flex items-start justify-between mb-4">
+                    <div
+                        class="icon-box bg-gray-100 text-gray-600 p-3 rounded-lg group-hover:bg-blue-50 group-hover:text-blue-600">
+                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M5 12h.01M12 12h.01M19 12h.01M6 12a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0z">
+                            </path>
+                        </svg>
+                    </div>
+                </div>
+                <h3 class="text-lg font-bold text-gray-800 mb-1">More</h3>
+                <p class="text-sm text-gray-500">Email Templates &amp; Booking Editor.</p>
+            </div>
+
+        </div>
+
+        <div class="mt-12 text-center text-xs text-gray-400">
+            <p>Ella Street Festival Management System v3.0 (Cloud Native)</p>
+        </div>
+    </div>
+
+    <div id="passwordResetModal"
+        class="modal opacity-0 pointer-events-none fixed inset-0 z-50 flex items-center justify-center">
+        <div class="absolute inset-0 bg-gray-900 opacity-90"></div>
+        <div class="bg-white w-full max-w-md rounded-lg shadow-2xl z-50 p-8 relative text-center">
+            <div class="mb-4 text-blue-600">
+                <svg class="w-12 h-12 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z">
+                    </path>
+                </svg>
+            </div>
+            <h2 class="text-2xl font-bold mb-2">Set New Password</h2>
+            <p class="text-gray-500 text-sm mb-6">You have securely signed in via email. Please set a new password for
+                your account.</p>
+
+            <input type="password" id="newPassword" placeholder="New Password"
+                class="w-full p-3 border border-gray-300 rounded mb-4 focus:ring-2 focus:ring-blue-500 outline-none">
+
+            <button id="updatePassBtn"
+                class="w-full bg-blue-700 hover:bg-blue-800 text-white font-bold py-3 rounded transition shadow-lg">
+                Update Password
+            </button>
+            <p id="passMsg" class="mt-3 text-sm hidden"></p>
+        </div>
+    </div>
+</body>
+
+</html>

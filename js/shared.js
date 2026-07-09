@@ -1,0 +1,375 @@
+import { getSupabaseClient } from './supabase.js';
+import { updateBookingStatus, finalizeConfirmation, sendEmail, auditLog } from './api.js';
+import { showToast } from './ui.js';
+import { escapeHtml } from './utils.js';
+import { getStallCost, CONFIG } from './config.js';
+
+/**
+ * Manually resends a confirmation email to a trader.
+ */
+export async function manualResendConfirmation(id) {
+    try {
+        const sb = getSupabaseClient();
+        // 1. Fetch current booking data
+        const { data: booking, error: fetchErr } = await sb
+            .from('bookings')
+            .select('*')
+            .eq('id', id)
+            .single();
+
+        if (fetchErr || !booking) throw new Error("Could not find booking data.");
+
+        // 2. Determine template
+        // Check if there is a payment record to see if it's chargeable
+        const { data: payData } = await sb.from('payments').select('booking_id').eq('booking_id', id).maybeSingle();
+        const chargeable = !!payData;
+
+        const templateId = chargeable ? 'confirmed_chargeable' : 'confirmed_free';
+
+        // 3. Generate content
+        const { subject, body } = await getEmailFromTemplate(templateId, booking, id);
+
+        // 4. Queue Email
+        await sendEmail(id, subject, body);
+
+        // 5. Audit Log
+        await auditLog('resend_confirmation', id, { template: templateId });
+
+        showToast("Confirmation email resent!");
+    } catch (err) {
+        showToast("Failed to resend: " + err.message, 'error');
+    }
+}
+
+/**
+ * Manually sends a payment reminder.
+ */
+export async function manualSendPaymentReminder(id) {
+    try {
+        const sb = getSupabaseClient();
+        const { data: booking, error: fetchErr } = await sb
+            .from('bookings')
+            .select('*')
+            .eq('id', id)
+            .single();
+
+        if (fetchErr || !booking) throw new Error("Could not find booking data.");
+
+        // 2. Determine template
+        const { subject, body } = await getEmailFromTemplate('payment_reminder', booking, id);
+
+        // 3. Queue Email
+        await sendEmail(id, subject, body);
+
+        // 4. Audit Log
+        await auditLog('send_payment_reminder', id);
+
+        showToast("Payment reminder sent!");
+    } catch (err) {
+        showToast("Failed to send reminder: " + err.message, 'error');
+    }
+}
+
+/**
+ * Fetches an email template from the database and replaces placeholders.
+ */
+export async function getEmailFromTemplate(templateId, booking, id, extraVars = {}) {
+    const sb = getSupabaseClient();
+
+    const { data, error } = await sb.from('email_templates')
+        .select('subject, body_html')
+        .eq('id', templateId)
+        .single();
+
+    if (error || !data) {
+        console.error("Template error:", error);
+        throw new Error(`Could not find template '${templateId}' in database.`);
+    }
+
+    let subject = data.subject;
+    let body = data.body_html;
+
+    const ownerName = escapeHtml(booking.owner_name || booking.owner || 'Trader');
+    const bizName = escapeHtml(booking.business_name || booking.business || 'your business');
+
+    // Cost calculation logic safely duplicated or imported
+    let costStr = "the agreed fee";
+    if (booking.stall_cost !== undefined && booking.stall_cost !== null) {
+        costStr = `£${parseFloat(booking.stall_cost).toFixed(2)}`;
+    } else {
+        const prefix = booking.instance_prefix || 'ESF26-DEV-';
+        costStr = `£${getStallCost(prefix).toFixed(2)}`;
+    }
+
+    let cancelToken = booking.cancel_token || '';
+
+    // If token is missing from the in-memory snapshot, fetch it fresh from the DB
+    if (!cancelToken && id) {
+        try {
+            const { data: tokenData } = await sb.from('bookings')
+                .select('cancel_token')
+                .eq('id', id)
+                .single();
+            if (tokenData && tokenData.cancel_token) {
+                cancelToken = tokenData.cancel_token;
+            }
+        } catch (e) {
+            console.warn('Could not fetch cancel_token:', e);
+        }
+    }
+
+    const cancelLink = cancelToken
+        ? `https://stallbookingstailwinds.vercel.app/cancel_booking.html?token=${encodeURIComponent(cancelToken)}`
+        : `https://stallbookingstailwinds.vercel.app/cancel_booking.html`; // fallback if token missing
+    const bankDetails = CONFIG.BANK_DETAILS;
+    const locationId = escapeHtml(booking.location_id || 'TBA');
+    const reason = escapeHtml(extraVars.reason || 'Oversubscribed / Category Full');
+
+    const replaceVars = (str) => {
+        return str
+            .replace(/\{\{owner_name\}\}/g, ownerName)
+            .replace(/\{\{business_name\}\}/g, bizName)
+            .replace(/\{\{booking_id\}\}/g, id)
+            .replace(/\{\{cancel_link\}\}/g, cancelLink)
+            .replace(/\{\{cost\}\}/g, costStr)
+            .replace(/\{\{bank_details\}\}/g, bankDetails)
+            .replace(/\{\{location_id\}\}/g, locationId)
+            .replace(/\{\{reason\}\}/g, reason);
+    };
+
+    return {
+        subject: replaceVars(subject),
+        body: replaceVars(body)
+    };
+}
+
+/**
+ * Queues a location allocation email using a database template.
+ * @param {string} id 
+ */
+export async function queueLocationEmail(id) {
+    const sb = getSupabaseClient();
+
+    // 1. Fetch booking data
+    const { data: booking, error: fErr } = await sb
+        .from('bookings')
+        .select('email, owner_name, business_name, location_id, instance_prefix, cancel_token')
+        .eq('id', id)
+        .single();
+
+    if (fErr || !booking) throw new Error("Could not find booking data: " + (fErr?.message || "Not found"));
+    if (!booking.location_id) throw new Error("No location assigned yet.");
+
+    // 2. Generate content from template
+    const { subject, body } = await getEmailFromTemplate('location_update', booking, id);
+
+    // 3. Queue via API
+    await sendEmail(id, subject, body);
+
+    // 4. Audit Log
+    await auditLog('location_email_queued', id, { location_id: booking.location_id });
+}
+
+/**
+ * Shared logic to update a booking status.
+ */
+export async function sharedUpdateStatus(id, status, allBookings, options = {}) {
+    const { reason = null, isChargeable = null, overrideCost = null, onSuccess, onError } = options;
+
+    try {
+        // 1. Update DB Status
+        await updateBookingStatus(id, status, reason);
+
+        // 2. Handle Confirmation specific logic
+        if (status === 'Confirmed') {
+            const chargeable = (isChargeable === null) ? true : isChargeable;
+
+            // A. Finalize Payments
+            const booking = allBookings.find(b => b.id === id);
+            await finalizeConfirmation(id, chargeable, booking, overrideCost);
+
+            // B. Auto-send Confirmation Email
+            if (booking) {
+                const templateId = chargeable ? 'confirmed_chargeable' : 'confirmed_free';
+                const { subject, body } = await getEmailFromTemplate(templateId, booking, id);
+                await sendEmail(id, subject, body);
+            } else {
+                showToast('Booking confirmed');
+            }
+        } else if (status === 'Rejected') {
+            const booking = allBookings.find(b => b.id === id);
+            if (booking) {
+                const { subject, body } = await getEmailFromTemplate('rejected', booking, id, { reason: reason });
+                await sendEmail(id, subject, body);
+            } else {
+                showToast('Booking rejected', 'info');
+            }
+        } else {
+            showToast(`Booking moved to ${status}`);
+        }
+
+        // 3. Update Local Cache
+        const b = allBookings.find(i => i.id === id);
+        if (b) b.status = status;
+
+        // 4. Update Detail Pane status badge if open uses DOM calls, we can implement updateDetailStatusBadge here or specific UI file
+        // For now, assuming dom element update is handled by the caller or we can export a helper
+        // We will leave the DOM updates to the page logic or a separate UI helper mostly
+
+        if (onSuccess) onSuccess(status);
+
+    } catch (err) {
+        showToast("Failed to update: " + err.message, 'error');
+        if (onError) onError();
+    }
+}
+
+/**
+ * Populates the detail pane with booking data.
+ */
+export function populateDetailPane(item) {
+    const setTxt = (eid, val) => {
+        const el = document.getElementById(eid);
+        if (el) el.innerText = val || "--";
+    };
+
+    setTxt('d-id', item.id);
+    setTxt('d-business', item.business || item.business_name);
+
+    const regBusinessEl = document.getElementById('d-registered-business');
+    const regBusinessContainer = document.getElementById('registered-business-container');
+    if (regBusinessEl && regBusinessContainer) {
+        const regName = item.registered_business_name || '';
+        if (regName && regName !== '--' && regName.trim() !== '') {
+            regBusinessEl.innerText = regName;
+            regBusinessContainer.classList.remove('hidden');
+        } else {
+            regBusinessEl.innerText = '--';
+            regBusinessContainer.classList.add('hidden');
+        }
+    }
+
+    setTxt('d-owner', item.owner || item.owner_name);
+    setTxt('d-email', item.email);
+    setTxt('d-phone', item.phone || "Not provided");
+    setTxt('d-address', item.house || item.address || "N/A");
+    setTxt('d-category', item.category);
+    setTxt('d-stalltype', item.stall_type);
+
+    const powerEl = document.getElementById('d-power');
+    if (powerEl) {
+        const power = item.power_required || item.power || 'No power';
+        powerEl.innerText = power;
+    }
+
+    setTxt('d-desc', item.description || "No description provided.");
+
+    const resEl = document.getElementById('d-resident');
+    if (resEl) {
+        const isRes = item.is_resident === true;
+        resEl.innerText = isRes ? 'Yes' : 'No';
+        resEl.className = isRes
+            ? "inline-block text-xs font-bold px-2 py-1 rounded bg-blue-100 text-blue-700"
+            : "inline-block text-xs font-bold px-2 py-1 rounded bg-gray-100 text-gray-500";
+    }
+
+    const charEl = document.getElementById('d-charity');
+    if (charEl) {
+        const charityStatus = item.is_charity || 'Commercial';
+        charEl.innerText = charityStatus;
+
+        if (charityStatus === 'Charity') {
+            charEl.className = "inline-block text-xs font-bold px-2 py-1 rounded bg-green-100 text-green-700";
+        } else if (charityStatus === 'Not for profit') {
+            charEl.className = "inline-block text-xs font-bold px-2 py-1 rounded bg-blue-100 text-blue-700";
+        } else {
+            charEl.className = "inline-block text-xs font-bold px-2 py-1 rounded bg-gray-100 text-gray-500";
+        }
+    }
+
+    const locEl = document.getElementById('d-location');
+    if (locEl) {
+        locEl.innerText = item.location_id || "Unassigned";
+        locEl.className = item.location_id
+            ? "text-sm font-mono bg-blue-100 px-1 rounded text-blue-800"
+            : "text-sm font-mono bg-yellow-100 px-1 rounded text-yellow-800";
+    }
+
+    const statusBadge = document.getElementById('d-status-badge');
+    if (statusBadge) {
+        statusBadge.innerText = item.status;
+        let sClass = "bg-gray-100 text-gray-800";
+        // Map status colors if necessary, or rely on Tailwind classes update
+        if (item.status === 'Confirmed') sClass = "bg-green-100 text-green-800";
+        else if (item.status === 'Rejected') sClass = "bg-red-100 text-red-800";
+        else if (item.status === 'Pending') sClass = "bg-yellow-100 text-yellow-800";
+
+        statusBadge.className = `inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${sClass}`;
+    }
+
+    // Show rejection reason banner only for rejected bookings
+    const rejContainer = document.getElementById('d-rejection-container');
+    const rejReason = document.getElementById('d-rejection-reason');
+    if (rejContainer && rejReason) {
+        if (item.status === 'Rejected' && item.rejection_reason) {
+            rejReason.innerText = item.rejection_reason;
+            rejContainer.classList.remove('hidden');
+        } else {
+            rejContainer.classList.add('hidden');
+            rejReason.innerText = '';
+        }
+    }
+
+    const docsEl = document.getElementById('d-docs');
+    if (docsEl) {
+        docsEl.innerHTML = '';
+        const rawDocs = item.documents;
+
+        if (!rawDocs || rawDocs === "None") {
+            docsEl.innerText = "None";
+        } else {
+            let docArray = [];
+            if (Array.isArray(rawDocs)) {
+                docArray = rawDocs;
+            } else if (typeof rawDocs === 'string') {
+                docArray = rawDocs.split(/[\n,]+/).map(p => p.trim()).filter(p => p);
+            }
+
+            if (docArray.length === 0) {
+                docsEl.innerText = "None";
+            } else {
+                let html = '';
+                docArray.forEach((part, index) => {
+                    // Simple URL check
+                    let safeUrl = null;
+                    try { safeUrl = new URL(part).href; } catch (e) { }
+
+                    if (safeUrl) {
+                        html += `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer" class="flex items-center text-blue-600 hover:text-blue-800 hover:underline mb-1 font-medium bg-blue-50 p-2 rounded border border-blue-100">
+                            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+                            Open Document ${docArray.length > 1 ? index + 1 : ''}
+                        </a>`;
+                    } else {
+                        html += `<div class="mb-1 text-gray-600 text-xs bg-gray-50 p-1 rounded break-words">${escapeHtml(part)}</div>`;
+                    }
+                });
+                docsEl.innerHTML = html;
+            }
+        }
+    }
+
+    const checkEl = document.getElementById('d-checklist');
+    if (checkEl) {
+        checkEl.innerText = item.docs_checklist || "No checklist data";
+    }
+
+    const otherEl = document.getElementById('d-other');
+    if (otherEl) {
+        otherEl.innerText = item.other_requirements || item.other || "None";
+    }
+
+    const notesEl = document.getElementById('d-notes');
+    if (notesEl) {
+        notesEl.value = item.admin_notes || item.notes || "";
+    }
+}

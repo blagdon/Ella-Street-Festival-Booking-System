@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Festival Statistics - Master View</title>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://challenges.cloudflare.com https://cdn.tailwindcss.com https://vercel.live; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com https://cdn.tailwindcss.com; connect-src 'self' https://rsnxhuhibglieofikkpo.supabase.co https://challenges.cloudflare.com https://vercel.live https://cdn.jsdelivr.net https://unpkg.com; frame-src https://challenges.cloudflare.com https://vercel.live; img-src 'self' data: https:; font-src 'self' https://fonts.gstatic.com;">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <link href="./css/output.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script
+        src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+
+    <style>
+        /* Card Hover Effects */
+        .stat-card {
+            transition: all 0.2s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+        }
+
+        /* Mobile optimizations */
+        @media (max-width: 768px) {
+
+            /* Make charts scrollable horizontally on mobile if needed */
+            .chart-container {
+                position: relative;
+                width: 100%;
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+            }
+
+            /* Ensure charts are touch-friendly */
+            canvas {
+                max-width: 100%;
+                height: auto !important;
+            }
+
+            /* Reduce padding on mobile */
+            .mobile-compact {
+                padding: 1rem !important;
+            }
+
+            /* Stack cards on mobile */
+            .stat-card {
+                min-height: 80px;
+            }
+
+            /* Touch-friendly buttons */
+            button {
+                min-height: 44px;
+            }
+        }
+
+        /* Smooth chart animations */
+        canvas {
+            transition: opacity 0.3s ease;
+        }
+    </style>
+
+    <link rel="icon"
+        href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎪</text></svg>">
+</head>
+
+<body class="bg-gray-50 min-h-screen font-sans text-gray-800 flex flex-col">
+    <div id="nav-container"></div>
+
+    <div class="flex-grow p-4 md:p-6 overflow-y-auto custom-scrollbar space-y-6 md:space-y-8">
+
+        <div id="loading" class="text-center py-12">
+            <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-gray-600"></div>
+            <p class="mt-2 text-gray-500 font-medium">Fetching global data...</p>
+        </div>
+
+        <!-- Charts Section -->
+        <div id="charts-section" class="hidden space-y-4 md:space-y-6">
+
+            <!-- Overview Charts Row -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+
+                <!-- Status Overview Chart -->
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 md:p-6 mobile-compact">
+                    <h3 class="text-xs md:text-sm font-bold text-gray-700 uppercase tracking-wide mb-3 md:mb-4">Status
+                        Overview</h3>
+                    <div class="chart-container">
+                        <canvas id="statusChart" style="max-height: 280px;"></canvas>
+                    </div>
+                </div>
+
+                <!-- Instance Breakdown Chart -->
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 md:p-6 mobile-compact">
+                    <h3 class="text-xs md:text-sm font-bold text-gray-700 uppercase tracking-wide mb-3 md:mb-4">Food vs
+                        General</h3>
+                    <div class="chart-container">
+                        <canvas id="instanceChart" style="max-height: 280px;"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Revenue & Category Charts Row -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+
+                <!-- Revenue Progress -->
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 md:p-6 mobile-compact">
+                    <h3 class="text-xs md:text-sm font-bold text-gray-700 uppercase tracking-wide mb-3 md:mb-4">Revenue
+                        Tracking</h3>
+                    <div class="space-y-4">
+                        <div>
+                            <div class="flex justify-between text-xs md:text-sm mb-2">
+                                <span class="text-gray-600">Total Confirmed</span>
+                                <span class="font-bold text-green-700" id="revenue-total">£0</span>
+                            </div>
+                            <div class="w-full bg-gray-200 rounded-full h-3 md:h-4">
+                                <div id="revenue-bar"
+                                    class="bg-green-600 h-3 md:h-4 rounded-full transition-all duration-500"
+                                    style="width: 0%"></div>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1"><span id="revenue-confirmed">0</span> confirmed
+                                bookings</p>
+                        </div>
+
+                        <div>
+                            <div class="flex justify-between text-xs md:text-sm mb-2">
+                                <span class="text-gray-600">Potential (Pending)</span>
+                                <span class="font-bold text-yellow-700" id="revenue-potential">£0</span>
+                            </div>
+                            <div class="w-full bg-gray-200 rounded-full h-3 md:h-4">
+                                <div id="potential-bar"
+                                    class="bg-yellow-500 h-3 md:h-4 rounded-full transition-all duration-500"
+                                    style="width: 0%"></div>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1"><span id="revenue-pending">0</span> pending bookings
+                            </p>
+                        </div>
+
+                        <div class="pt-3 border-t border-gray-200">
+                            <div class="flex justify-between items-center">
+                                <span class="text-xs md:text-sm text-gray-600">Total Capacity</span>
+                                <span class="text-xl md:text-2xl font-bold text-gray-900" id="revenue-max">£0</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Top Categories -->
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 md:p-6 mobile-compact">
+                    <h3 class="text-xs md:text-sm font-bold text-gray-700 uppercase tracking-wide mb-3 md:mb-4">Top
+                        Categories</h3>
+                    <div class="chart-container">
+                        <canvas id="categoryChart" style="max-height: 280px;"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Stats Cards -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+                <div class="bg-gradient-to-br from-green-500 to-green-600 rounded-lg p-3 md:p-4 text-white shadow-md">
+                    <div class="text-2xl md:text-3xl font-bold" id="stat-confirmed">0</div>
+                    <div class="text-xs md:text-sm opacity-90 mt-1">Confirmed</div>
+                </div>
+                <div class="bg-gradient-to-br from-yellow-500 to-yellow-600 rounded-lg p-3 md:p-4 text-white shadow-md">
+                    <div class="text-2xl md:text-3xl font-bold" id="stat-pending">0</div>
+                    <div class="text-xs md:text-sm opacity-90 mt-1">Pending</div>
+                </div>
+                <div class="bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg p-3 md:p-4 text-white shadow-md">
+                    <div class="text-2xl md:text-3xl font-bold" id="stat-power">0</div>
+                    <div class="text-xs md:text-sm opacity-90 mt-1">Need Power</div>
+                </div>
+                <div class="bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg p-3 md:p-4 text-white shadow-md">
+                    <div class="text-2xl md:text-3xl font-bold" id="stat-resident">0</div>
+                    <div class="text-xs md:text-sm opacity-90 mt-1">Residents</div>
+                </div>
+            </div>
+        </div>
+
+        <div id="panel-combined" class="hidden"></div>
+
+        <div id="panel-food" class="hidden"></div>
+
+        <div id="panel-nonfood" class="hidden"></div>
+
+        <div id="panel-others" class="hidden"></div>
+
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script type="module" src="./js/page-stats.js"></script>
+</body>
+
+</html>
+
+</script>
+</body>
+
+</html>

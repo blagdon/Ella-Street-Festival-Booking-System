@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://challenges.cloudflare.com https://cdn.tailwindcss.com https://vercel.live; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com https://cdn.tailwindcss.com; connect-src 'self' https://rsnxhuhibglieofikkpo.supabase.co https://challenges.cloudflare.com https://vercel.live https://cdn.jsdelivr.net https://unpkg.com; frame-src https://challenges.cloudflare.com https://vercel.live; img-src 'self' data: https:; font-src 'self' https://fonts.gstatic.com;">
+  <title>Food Stall Application</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link href="./css/output.css" rel="stylesheet">
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+  <script type="module" src="supabase-public.js"></script>
+  <script type="module" src="email_templates.js"></script>
+
+  <style>
+    /* Visual feedback for valid/invalid fields */
+    input:invalid:not(:placeholder-shown),
+    select:invalid:not(:placeholder-shown) {
+      border-color: #dc2626;
+      background-color: #fef2f2;
+    }
+
+    input:valid:not(:placeholder-shown) {
+      border-color: #16a34a;
+    }
+
+    input[type=number]::-webkit-inner-spin-button,
+    input[type=number]::-webkit-outer-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+  </style>
+
+  <link rel="icon"
+    href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎪</text></svg>">
+</head>
+
+<body class="bg-gray-100 min-h-screen py-10 px-4">
+
+  <div class="bg-white p-8 rounded-xl shadow-lg border border-gray-200 max-w-3xl mx-auto font-sans">
+
+    <div id="form-section">
+      <div class="mb-8 border-b pb-4">
+        <h2 class="text-3xl font-bold text-gray-900">Food & Drink Trader Application</h2>
+        <p class="text-sm text-gray-500 mt-1">Ella Street Festival 2026</p>
+      </div>
+
+      <form id="foodForm" class="space-y-6">
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div>
+            <label class="block text-sm font-bold text-gray-700 mb-1">Trading Name *</label>
+            <input type="text" name="business_name" required maxlength="128"
+              class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500"
+              placeholder="Trading Name">
+          </div>
+          <div>
+            <label class="block text-sm font-bold text-gray-700 mb-1">Owner Name *</label>
+            <input type="text" name="owner_name" required maxlength="64"
+              class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500"
+              placeholder="Full Name">
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-sm font-bold text-gray-700 mb-1">Registered business name <span
+              class="font-normal text-gray-500">(if different to Trading Name)</span></label>
+          <input type="text" name="registered_business_name" maxlength="128"
+            class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500"
+            placeholder="Registered Name">
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div>
+            <label class="block text-sm font-bold text-gray-700 mb-1">Email Address *</label>
+            <input type="email" name="email" required
+              class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500">
+          </div>
+          <div>
+            <label class="block text-sm font-bold text-gray-700 mb-1">Phone Number (UK) *</label>
+            <input type="tel" name="phone" required
+              pattern="^(\+44\s?7\d{3}|\(?07\d{3}\)?)\s?\d{3}\s?\d{3}$|^(\+44\s?[12]\d{3}|\(?0[12]\d{3}\)?)\s?\d{3,6}$"
+              class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500"
+              placeholder="e.g. 07700 900000">
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-sm font-bold text-gray-700 mb-1">Address *</label>
+          <input type="text" name="address" required maxlength="256"
+            class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500"
+            placeholder="Business or Home Address">
+        </div>
+
+        <div>
+          <label class="block text-sm font-bold text-gray-700 mb-1">Description of Stall *</label>
+          <textarea name="description" rows="3" required maxlength="200"
+            class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500"
+            placeholder="Briefly describe your food/drink offering..."></textarea>
+          <div class="text-right text-xs text-gray-400" id="descCount">0/200</div>
+        </div>
+
+        <div class="bg-gray-50 p-5 rounded-lg border border-gray-200">
+          <label class="block text-sm font-bold text-gray-800 mb-3">Category (Select all that apply) *</label>
+          <div class="space-y-2">
+            <label class="flex items-center p-2 rounded hover:bg-gray-100"><input type="checkbox" name="category_check"
+                value="Deserts and Sweet Treats" class="mr-3 text-red-600 rounded"> Deserts and Sweet Treats</label>
+            <label class="flex items-center p-2 rounded hover:bg-gray-100"><input type="checkbox" name="category_check"
+                value="World & Street Food" class="mr-3 text-red-600 rounded"> World & Street Food</label>
+            <label class="flex items-center p-2 rounded hover:bg-gray-100"><input type="checkbox" name="category_check"
+                value="Vegetarian, Vegan & Special Diets" class="mr-3 text-red-600 rounded"> Vegetarian, Vegan & Special
+              Diets</label>
+            <label class="flex items-center p-2 rounded hover:bg-gray-100"><input type="checkbox" name="category_check"
+                value="Hot Food" class="mr-3 text-red-600 rounded"> Hot Food</label>
+            <label class="flex items-center p-2 rounded hover:bg-gray-100"><input type="checkbox" name="category_check"
+                value="Cold Food" class="mr-3 text-red-600 rounded"> Cold Food</label>
+            <label class="flex items-center p-2 rounded hover:bg-gray-100"><input type="checkbox" name="category_check"
+                value="Cold Drinks" class="mr-3 text-red-600 rounded"> Cold Drinks</label>
+            <label class="flex items-center p-2 rounded hover:bg-gray-100"><input type="checkbox" name="category_check"
+                value="Hot Drinks" class="mr-3 text-red-600 rounded"> Hot Drinks</label>
+
+            <div class="flex items-center mt-2 p-2">
+              <input type="checkbox" name="category_check" value="Other" id="catOtherCheck"
+                class="mr-3 text-red-600 rounded">
+              <span class="mr-2">Other:</span>
+              <input type="text" id="catOtherInput" maxlength="64" disabled
+                class="flex-1 p-2 text-sm border border-gray-300 rounded bg-white" placeholder="Specify...">
+            </div>
+          </div>
+          <div id="categoryError" class="text-xs text-red-600 mt-2 hidden">Please select at least one category.</div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="bg-gray-50 p-4 rounded-lg border border-gray-200">
+            <label class="block text-sm font-bold text-gray-700 mb-2">Charity Status *</label>
+            <select name="charity_status" required
+              class="w-full p-2 border border-gray-300 rounded bg-white focus:ring-2 focus:ring-red-500">
+              <option value="" disabled selected>Please select...</option>
+              <option value="Charity">Charity</option>
+              <option value="Not for profit">Not for profit</option>
+              <option value="Commercial">Commercial</option>
+            </select>
+          </div>
+
+          <div class="bg-gray-50 p-4 rounded-lg border border-gray-200">
+            <label class="block text-sm font-bold text-gray-700 mb-2">Resident? *</label>
+            <div class="flex items-center space-x-4 h-10">
+              <label><input type="radio" name="is_resident" value="true" class="text-red-600"> Yes</label>
+              <label><input type="radio" name="is_resident" value="false" checked class="text-red-600"> No</label>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-gray-50 p-4 rounded-lg border border-gray-200">
+          <label class="block text-sm font-bold text-gray-700 mb-2">Power Requirements *</label>
+          <select name="power_required" required
+            class="w-full p-2 border border-gray-300 rounded bg-white focus:ring-2 focus:ring-red-500">
+            <option value="" disabled selected>Please select...</option>
+            <option value="No power">No power</option>
+            <option value="Electricity supplied by fest organisors">Electricity supplied by fest organisors</option>
+            <option value="Generator suppied by stall owner">Generator suppied by stall owner</option>
+            <option value="Gas suppied by stall owner">Gas suppied by stall owner</option>
+          </select>
+        </div>
+
+        <div class="bg-blue-50 p-5 rounded-lg border border-blue-200">
+          <label class="block text-sm font-bold text-blue-900 mb-2">Upload Documents *</label>
+          <p class="text-xs text-blue-700 mb-2">Upload your insurance document and any promotion material/menus we can
+            use. (PDF, JPG, PNG). Max 5 files.</p>
+          <input type="file" id="fileUpload" name="file" required accept=".pdf,.jpg,.jpeg,.png" multiple
+            class="block w-full text-sm text-gray-500 file:mr-4 file:py-2.5 file:px-4 file:rounded-full file:border-0 file:bg-blue-600 file:text-white hover:file:bg-blue-700 file:cursor-pointer cursor-pointer">
+          <p class="text-xs text-blue-600 mt-2">Accepted formats: PDF, JPG, PNG (Max 5MB per file, up to 5 files)</p>
+        </div>
+
+        <div>
+          <label class="block text-sm font-bold text-gray-700 mb-1">Anything else?</label>
+          <textarea name="other_requirements" id="otherReqs" rows="2"
+            class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500"
+            placeholder="Any other details..."></textarea>
+        </div>
+
+        <div class="bg-white p-5 rounded-lg border-2 border-dashed border-gray-300">
+          <label class="block text-sm font-bold text-gray-800 mb-2">Declarations *</label>
+          <div class="space-y-4">
+            <label class="flex items-start">
+              <input type="checkbox" name="pli_check" required class="mt-1 mr-3 text-red-600 rounded h-5 w-5">
+              <span class="text-sm">I confirm I hold <strong>Public Liability Insurance</strong> with a minimum
+                indemnity of <strong>£5,000,000</strong>.</span>
+            </label>
+
+            <label class="flex items-start">
+              <input type="checkbox" name="hygiene_check" required class="mt-1 mr-3 text-red-600 rounded h-5 w-5">
+              <span class="text-sm">I agree to abide by all <strong>Hull City Council Food and Hygene
+                  Regulations</strong> and will provide my own hand-washing facilities.</span>
+            </label>
+
+            <div class="mt-6 pt-4 border-t border-gray-200">
+              <h4 class="text-sm font-bold text-gray-800 mb-2">Data Protection Notice</h4>
+              <p class="text-xs text-gray-600 mb-3">
+                The information you provide will be used solely to process your stall application and manage event
+                arrangements. Your data will be stored securely and will not be shared with third parties except where
+                necessary for event organisation.
+              </p>
+              <p class="text-xs text-gray-600 mb-4">
+                For full details on how we use and protect your data, please see our Privacy Policy.
+              </p>
+              <label class="flex items-start">
+                <input type="checkbox" name="data_protection_check" required
+                  class="mt-1 mr-3 text-red-600 rounded h-5 w-5">
+                <span class="text-sm font-medium text-gray-800">I confirm that the information provided is accurate and
+                  I understand how my data will be used</span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div class="cf-turnstile" data-sitekey="0x4AAAAAACZTfDIHzMhGqnER" data-theme="light"></div>
+
+        <div class="pt-4">
+          <button type="submit" id="submitBtn"
+            class="w-full bg-red-800 text-white font-bold py-4 px-6 rounded-lg hover:bg-red-900 shadow-md transition duration-200">Submit
+            Application</button>
+        </div>
+
+        <div id="statusMessage" class="hidden mt-6 p-4 rounded-lg text-center"></div>
+      </form>
+    </div>
+
+    <div id="success-section" class="hidden">
+      <div class="text-center mb-8">
+        <div class="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-green-100 mb-4">
+          <svg class="h-10 w-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+          </svg>
+        </div>
+        <h2 class="text-3xl font-bold text-gray-900">Application Received!</h2>
+        <p class="text-gray-500 mt-2">Reference: <span id="success-ref"
+            class="font-mono font-bold text-gray-800"></span></p>
+        <p class="text-sm text-gray-400">A confirmation email has been sent to you.</p>
+      </div>
+
+      <div class="bg-gray-50 rounded-lg border border-gray-200 overflow-hidden">
+        <div class="px-4 py-5 sm:px-6 border-b border-gray-200">
+          <h3 class="text-lg leading-6 font-medium text-gray-900">Booking Details</h3>
+        </div>
+        <div class="px-4 py-5 sm:p-6">
+          <dl class="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2" id="success-details">
+          </dl>
+        </div>
+      </div>
+
+      <div class="mt-8 text-center">
+        <button id="btn-start-new" class="text-sm text-red-800 hover:text-red-900 font-semibold underline">Start a new
+          application</button>
+      </div>
+    </div>
+
+    <div id="closed-section" class="hidden text-center py-12 px-4 sm:px-6 lg:px-8">
+      <div class="mx-auto flex items-center justify-center h-24 w-24 rounded-full bg-red-50 mb-6">
+        <svg class="h-12 w-12 text-red-600 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+        </svg>
+      </div>
+      <h2 class="text-3xl font-extrabold text-gray-900 tracking-tight sm:text-4xl">
+        Bookings Closed
+      </h2>
+      <p class="mt-6 text-lg text-gray-600 leading-relaxed max-w-xl mx-auto font-medium">
+        Due to the huge amount of responses we have had for stalls, we have now run out of space. So bookings are now closed for this year's festival.
+      </p>
+      <div class="mt-10 border-t border-gray-200 pt-8">
+        <p class="text-sm text-gray-500">
+          If you have already submitted an application, we will contact you soon. Thank you for your interest in the Ella Street Festival 2026.
+        </p>
+      </div>
+    </div>
+
+  </div>
+
+  <script type="module" src="./js/page-food-booking.js"></script>
+</body>
+
+</html>

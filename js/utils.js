@@ -1,0 +1,105 @@
+/**
+ * utils.js
+ * Shared utility functions for formatting, validation, and error handling.
+ */
+
+// ===================================================================
+// === SECURITY: HTML Escaping Utilities ===
+// ===================================================================
+export function escapeHtml(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#x27;');
+}
+
+export function sanitizeUrl(url) {
+    if (!url || typeof url !== 'string') return '';
+    const trimmed = url.trim();
+    if (trimmed.startsWith('https://') || trimmed.startsWith('http://') || trimmed.startsWith('mailto:')) {
+        return escapeHtml(trimmed);
+    }
+    return '';
+}
+
+// ===================================================================
+// === SECURITY: Input Validation ===
+// ===================================================================
+// Keep max lengths consistent for basic protection
+export const MAX_FIELD_LENGTHS = {
+    business: 128, owner: 64, email: 254, phone: 30, category: 64,
+    description: 500, house: 256, other: 500, note: 2000, bank_ref: 64,
+    editor: 32, subject: 200, body: 10000, locationId: 20
+};
+
+const VALID_STATUSES = ['Pending', 'Confirmed', 'Rejected', 'Cancelled', 'On Hold', 'HCC Checks'];
+
+export function validateString(val, maxLen) {
+    if (val === null || val === undefined) return '';
+    const s = String(val);
+    if (s.length > maxLen) throw new Error(`Input exceeds maximum length of ${maxLen} characters.`);
+    return s;
+}
+
+export function validateEmail(val) {
+    const s = validateString(val, MAX_FIELD_LENGTHS.email);
+    if (s && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s)) throw new Error('Invalid email format.');
+    return s;
+}
+
+export function validateBookingId(id) {
+    if (!id || typeof id !== 'string') throw new Error('Missing booking ID.');
+    if (!/^ESF26-(FOOD|NONFOOD|DEV|MISC)-\d{4}$/.test(id)) throw new Error('Invalid booking ID format.');
+    return id;
+}
+
+export function validateStatus(s) {
+    if (!VALID_STATUSES.includes(s)) throw new Error(`Invalid status: ${s}`);
+    return s;
+}
+
+// ===================================================================
+// === SECURITY: Safe Error Messages ===
+// ===================================================================
+export function safeError(err) {
+    if (err && err.message) {
+        const msg = err.message.toLowerCase();
+        if (msg.includes('violates') || msg.includes('duplicate') || msg.includes('constraint')) {
+            return 'A database conflict occurred. Please refresh and try again.';
+        }
+        if (msg.includes('jwt') || msg.includes('token') || msg.includes('auth')) {
+            return 'Authentication error. Please refresh the page.';
+        }
+        if (msg.includes('row-level security') || msg.includes('policy') || msg.includes('recursion')) {
+            return 'Access denied: Security policy violation. Please contact an administrator.';
+        }
+        if (msg.includes('relation') || msg.includes('column') || msg.includes('syntax') || msg.includes('supabase') || msg.includes('postgres') || msg.includes('pgrst')) {
+            return 'A system error occurred. Please contact an administrator.';
+        }
+        // Fallback: only show the message if it looks user-safe
+        return err.message;
+    }
+    return String(err) || 'An unexpected error occurred.';
+}
+
+// ===================================================================
+// === SECURITY: Bulk Email Rate Limiter ===
+// ===================================================================
+const _emailRateLog = [];
+const EMAIL_RATE_LIMIT = 10;       // max emails per window
+const EMAIL_RATE_WINDOW_MS = 60000; // 1 minute
+
+export function checkEmailRateLimit() {
+    const now = Date.now();
+    // Remove entries older than the window
+    while (_emailRateLog.length > 0 && _emailRateLog[0] < now - EMAIL_RATE_WINDOW_MS) {
+        _emailRateLog.shift();
+    }
+    if (_emailRateLog.length >= EMAIL_RATE_LIMIT) {
+        throw new Error(`Rate limit: max ${EMAIL_RATE_LIMIT} emails per minute. Please wait and try again.`);
+    }
+    _emailRateLog.push(now);
+}
