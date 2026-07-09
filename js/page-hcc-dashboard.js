@@ -423,13 +423,22 @@ async function sendBulkEmail() {
         const emailBody = template.body_html.replace('{{trader_list}}', traderTable);
         const emailSubject = template.subject;
 
+        const currentInstance = localStorage.getItem('ESF_INSTANCE') || 'DEV';
+        const prefix = CONFIG.INSTANCE_MAP[currentInstance] || 'ESF26-DEV-';
+
+        const { data: { session } } = await sb.auth.getSession();
+        const userEmail = session?.user?.email;
+        const recipientEmail = (currentInstance === 'DEV' && userEmail)
+            ? userEmail
+            : CONFIG.HCC_COUNCIL_EMAIL;
+
         // Queue Email
         const { error: emailErr } = await sb.from('email_queue').insert({
-            recipient: CONFIG.HCC_COUNCIL_EMAIL,
+            recipient: recipientEmail,
             subject: emailSubject,
             body: emailBody,
             status: 'Pending',
-            instance_prefix: 'ESF26-FOOD-'
+            instance_prefix: prefix
         });
         if (emailErr) throw emailErr;
 

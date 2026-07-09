@@ -1,4 +1,5 @@
 import { getPublicSupabaseClient } from '../supabase-public.js';
+import { safeError } from './utils.js';
 
 const sb = getPublicSupabaseClient(); // From supabase-public.js
 

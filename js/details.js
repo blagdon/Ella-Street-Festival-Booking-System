@@ -1,6 +1,6 @@
 import { fetchKanbanData, updateBookingDetails } from './api.js';
 import { showToast } from './ui.js';
-import { escapeHtml } from './utils.js';
+import { escapeHtml, safeError } from './utils.js';
 import { CONFIG } from './config.js';
 
 let allBookings = [];
@@ -129,8 +129,8 @@ function renderList(data) {
 export function filterList() {
     const term = document.getElementById('searchInput').value.toLowerCase();
     const filtered = allBookings.filter(b =>
-        (b.business || "").toLowerCase().includes(term) ||
-        (b.owner || "").toLowerCase().includes(term) ||
+        (b.business_name || b.business || "").toLowerCase().includes(term) ||
+        (b.owner_name || b.owner || "").toLowerCase().includes(term) ||
         (b.id || "").toLowerCase().includes(term) ||
         (b.email || "").toLowerCase().includes(term)
     );
