@@ -42,8 +42,26 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // Attach delegated event listeners for dynamic content
         document.body.addEventListener('change', (e) => {
-            if (e.target.matches('select[data-action="assign-location"]')) {
-                assignLocation(e.target.dataset.id, e.target.value);
+            if (e.target.matches('select[data-action="add-allocated-location"]')) {
+                const select = e.target;
+                const bookingId = select.dataset.bookingId;
+                const newLoc = select.value;
+                
+                if (newLoc && newLoc !== '__cancel__') {
+                    const cell = select.closest('td');
+                    const buttons = cell.querySelectorAll('button[data-location-id]');
+                    const currentLocs = Array.from(buttons).map(btn => btn.dataset.locationId);
+                    if (!currentLocs.includes(newLoc)) {
+                        currentLocs.push(newLoc);
+                    }
+                    assignLocation(bookingId, currentLocs.join(', '));
+                } else {
+                    // Reset UI
+                    const container = select.closest('div');
+                    const addBtn = container.querySelector('button[data-action="show-add-select"]');
+                    if (addBtn) addBtn.classList.remove('hidden');
+                    select.classList.add('hidden');
+                }
             }
         });
 
@@ -58,6 +76,34 @@ document.addEventListener('DOMContentLoaded', async () => {
             const openSheetBtn = e.target.closest('button[data-action="open-location-sheet"]');
             if (openSheetBtn) {
                 openLocationSheet(openSheetBtn.dataset.id);
+                e.stopPropagation();
+                return;
+            }
+
+            const showAddBtn = e.target.closest('button[data-action="show-add-select"]');
+            if (showAddBtn) {
+                const container = showAddBtn.closest('div');
+                const select = container.querySelector('select[data-action="add-allocated-location"]');
+                if (select) {
+                    showAddBtn.classList.add('hidden');
+                    select.classList.remove('hidden');
+                    select.focus();
+                }
+                e.stopPropagation();
+                return;
+            }
+
+            const removeBtn = e.target.closest('button[data-action="remove-allocated-location"]');
+            if (removeBtn) {
+                const bookingId = removeBtn.dataset.bookingId;
+                const locToRemove = removeBtn.dataset.locationId;
+                const cell = removeBtn.closest('td');
+                const buttons = cell.querySelectorAll('button[data-location-id]');
+                const currentLocs = Array.from(buttons)
+                    .map(btn => btn.dataset.locationId)
+                    .filter(loc => loc !== locToRemove);
+                
+                assignLocation(bookingId, currentLocs.join(', '));
                 e.stopPropagation();
                 return;
             }
