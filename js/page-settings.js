@@ -277,11 +277,12 @@ async function initZohoSettings() {
     const txtRefreshToken = document.getElementById('zoho-refresh-token');
     const txtAccountId = document.getElementById('zoho-account-id');
     const txtFromAddress = document.getElementById('zoho-from-address');
+    const txtDisplayName = document.getElementById('zoho-display-name');
     const selApiDomain = document.getElementById('zoho-api-domain');
     const selAccountsDomain = document.getElementById('zoho-accounts-domain');
     const btnSaveZoho = document.getElementById('btn-save-zoho');
 
-    if (!txtClientId || !txtClientSecret || !txtRefreshToken || !txtAccountId || !txtFromAddress || !selApiDomain || !selAccountsDomain || !btnSaveZoho) return;
+    if (!txtClientId || !txtClientSecret || !txtRefreshToken || !txtAccountId || !txtFromAddress || !txtDisplayName || !selApiDomain || !selAccountsDomain || !btnSaveZoho) return;
 
     // Load active settings from Supabase
     try {
@@ -294,6 +295,7 @@ async function initZohoSettings() {
                 'zoho_refresh_token',
                 'zoho_account_id',
                 'zoho_from_address',
+                'zoho_display_name',
                 'zoho_api_domain',
                 'zoho_accounts_domain'
             ]);
@@ -307,6 +309,7 @@ async function initZohoSettings() {
                 else if (item.key === 'zoho_refresh_token') txtRefreshToken.value = item.value || '';
                 else if (item.key === 'zoho_account_id') txtAccountId.value = item.value || '';
                 else if (item.key === 'zoho_from_address') txtFromAddress.value = item.value || '';
+                else if (item.key === 'zoho_display_name') txtDisplayName.value = item.value || '';
                 else if (item.key === 'zoho_api_domain') selApiDomain.value = item.value || 'https://mail.zoho.eu';
                 else if (item.key === 'zoho_accounts_domain') selAccountsDomain.value = item.value || 'https://accounts.zoho.eu';
             });
@@ -322,10 +325,11 @@ async function initZohoSettings() {
         const valRefreshToken = txtRefreshToken.value.trim();
         const valAccountId = txtAccountId.value.trim();
         const valFromAddress = txtFromAddress.value.trim();
+        const valDisplayName = txtDisplayName.value.trim();
         const valApiDomain = selApiDomain.value;
         const valAccountsDomain = selAccountsDomain.value;
 
-        if (!valClientId || !valClientSecret || !valRefreshToken || !valAccountId || !valFromAddress) {
+        if (!valClientId || !valClientSecret || !valRefreshToken || !valAccountId || !valFromAddress || !valDisplayName) {
             showToast("All Zoho fields are required.", "error");
             return;
         }
@@ -344,6 +348,7 @@ async function initZohoSettings() {
                 { key: 'zoho_refresh_token', value: valRefreshToken, updated_at: now, updated_by: userEmail },
                 { key: 'zoho_account_id', value: valAccountId, updated_at: now, updated_by: userEmail },
                 { key: 'zoho_from_address', value: valFromAddress, updated_at: now, updated_by: userEmail },
+                { key: 'zoho_display_name', value: valDisplayName, updated_at: now, updated_by: userEmail },
                 { key: 'zoho_api_domain', value: valApiDomain, updated_at: now, updated_by: userEmail },
                 { key: 'zoho_accounts_domain', value: valAccountsDomain, updated_at: now, updated_by: userEmail }
             ];

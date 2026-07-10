@@ -118,6 +118,7 @@ Deno.serve(async (req) => {
         'zoho_refresh_token',
         'zoho_account_id',
         'zoho_from_address',
+        'zoho_display_name',
         'zoho_api_domain',
         'zoho_accounts_domain'
       ])
@@ -136,6 +137,7 @@ Deno.serve(async (req) => {
     const refreshToken = settings['zoho_refresh_token']
     const accountId = settings['zoho_account_id']
     const fromAddress = settings['zoho_from_address'] || 'festival.stalls@ellastreet.co.uk'
+    const displayName = settings['zoho_display_name'] || 'Ella Street Festival Stalls'
     const apiDomain = settings['zoho_api_domain'] || 'https://mail.zoho.eu'
     const accountsDomain = settings['zoho_accounts_domain'] || 'https://accounts.zoho.eu'
 
@@ -173,7 +175,7 @@ Deno.serve(async (req) => {
     // Send the Email
     const sendUrl = `${apiDomain}/api/accounts/${accountId}/messages`
     const emailPayload: Record<string, any> = {
-      fromAddress: `"Ella Street Festival Stalls" <${fromAddress}>`,
+      fromAddress: `"${displayName}" <${fromAddress}>`,
       toAddress: recipient,
       subject: subject,
       content: body,
