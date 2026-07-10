@@ -406,114 +406,120 @@ export function populateDetailPane(item) {
                 fsaSearchBtn.innerText = "Search FHRS Database";
                 fsaSearchBtn.disabled = false;
 
-                // Bind click handler once
-                if (!fsaSearchBtn.dataset.listenerBound) {
-                    fsaSearchBtn.dataset.listenerBound = 'true';
-                    fsaSearchBtn.addEventListener('click', async () => {
-                        const bizName = fsaSearchBtn.dataset.business;
-                        const regName = fsaSearchBtn.dataset.registered;
-                        const bizAddr = fsaSearchBtn.dataset.address;
+                // Define search logic
+                const runAutoFsaSearch = async () => {
+                    const bizName = fsaSearchBtn.dataset.business;
+                    const regName = fsaSearchBtn.dataset.registered;
+                    const bizAddr = fsaSearchBtn.dataset.address;
 
-                        fsaSearchBtn.disabled = true;
-                        fsaSearchBtn.innerText = "Searching...";
-                        if (fsaStatus) {
-                            fsaStatus.innerText = `Searching FSA database...`;
-                            fsaStatus.classList.remove('hidden');
+                    fsaSearchBtn.disabled = true;
+                    fsaSearchBtn.innerText = "Searching...";
+                    if (fsaStatus) {
+                        fsaStatus.innerText = `Searching FSA database...`;
+                        fsaStatus.classList.remove('hidden');
+                    }
+                    if (fsaResults) fsaResults.classList.add('hidden');
+
+                    try {
+                        const postcode = extractPostcode(bizAddr);
+                        let establishments = [];
+
+                        // Tier 1: Search trading name + postcode
+                        if (postcode) {
+                            if (fsaStatus) fsaStatus.innerText = `Searching for "${bizName}" in postcode ${postcode}...`;
+                            establishments = await fetchFsaEstablishments(bizName, postcode);
                         }
-                        if (fsaResults) fsaResults.classList.add('hidden');
 
-                        try {
-                            const postcode = extractPostcode(bizAddr);
-                            let establishments = [];
+                        // Tier 2: Search registered name + postcode
+                        if ((!establishments || establishments.length === 0) && postcode && regName && regName !== '--' && regName.trim() !== '') {
+                            if (fsaStatus) fsaStatus.innerText = `Searching for "${regName}" in postcode ${postcode}...`;
+                            establishments = await fetchFsaEstablishments(regName, postcode);
+                        }
 
-                            // Tier 1: Search trading name + postcode
-                            if (postcode) {
-                                if (fsaStatus) fsaStatus.innerText = `Searching for "${bizName}" in postcode ${postcode}...`;
-                                establishments = await fetchFsaEstablishments(bizName, postcode);
-                            }
+                        // Tier 3: Search trading name + address
+                        if (!establishments || establishments.length === 0) {
+                            if (fsaStatus) fsaStatus.innerText = `Searching for "${bizName}" with address...`;
+                            establishments = await fetchFsaEstablishments(bizName, bizAddr);
+                        }
 
-                            // Tier 2: Search registered name + postcode
-                            if ((!establishments || establishments.length === 0) && postcode && regName && regName !== '--' && regName.trim() !== '') {
-                                if (fsaStatus) fsaStatus.innerText = `Searching for "${regName}" in postcode ${postcode}...`;
-                                establishments = await fetchFsaEstablishments(regName, postcode);
-                            }
+                        // Tier 4: Search registered name + address
+                        if ((!establishments || establishments.length === 0) && regName && regName !== '--' && regName.trim() !== '') {
+                            if (fsaStatus) fsaStatus.innerText = `Searching for "${regName}" with address...`;
+                            establishments = await fetchFsaEstablishments(regName, bizAddr);
+                        }
 
-                            // Tier 3: Search trading name + address
-                            if (!establishments || establishments.length === 0) {
-                                if (fsaStatus) fsaStatus.innerText = `Searching for "${bizName}" with address...`;
-                                establishments = await fetchFsaEstablishments(bizName, bizAddr);
-                            }
+                        // Tier 5: Search trading name alone
+                        if (!establishments || establishments.length === 0) {
+                            if (fsaStatus) fsaStatus.innerText = `No address matches. Searching for "${bizName}"...`;
+                            establishments = await fetchFsaEstablishments(bizName);
+                        }
 
-                            // Tier 4: Search registered name + address
-                            if ((!establishments || establishments.length === 0) && regName && regName !== '--' && regName.trim() !== '') {
-                                if (fsaStatus) fsaStatus.innerText = `Searching for "${regName}" with address...`;
-                                establishments = await fetchFsaEstablishments(regName, bizAddr);
-                            }
+                        // Tier 6: Search registered name alone
+                        if ((!establishments || establishments.length === 0) && regName && regName !== '--' && regName.trim() !== '') {
+                            if (fsaStatus) fsaStatus.innerText = `No address matches. Searching for "${regName}"...`;
+                            establishments = await fetchFsaEstablishments(regName);
+                        }
 
-                            // Tier 5: Search trading name alone
-                            if (!establishments || establishments.length === 0) {
-                                if (fsaStatus) fsaStatus.innerText = `No address matches. Searching for "${bizName}"...`;
-                                establishments = await fetchFsaEstablishments(bizName);
-                            }
+                        if (fsaStatus) fsaStatus.classList.add('hidden');
 
-                            // Tier 6: Search registered name alone
-                            if ((!establishments || establishments.length === 0) && regName && regName !== '--' && regName.trim() !== '') {
-                                if (fsaStatus) fsaStatus.innerText = `No address matches. Searching for "${regName}"...`;
-                                establishments = await fetchFsaEstablishments(regName);
-                            }
+                        if (fsaResults) {
+                            fsaResults.innerHTML = '';
+                            if (establishments && establishments.length > 0) {
+                                const resultsHtml = establishments.map(est => {
+                                    const address = [est.AddressLine1, est.AddressLine2, est.AddressLine3, est.PostCode].filter(Boolean).join(', ');
+                                    const ratingDate = est.RatingDate ? new Date(est.RatingDate).toLocaleDateString('en-GB') : 'Unknown';
+                                    
+                                    // Color code rating badge
+                                    const ratingVal = est.RatingValue;
+                                    let ratingColor = "bg-gray-100 text-gray-800";
+                                    if (ratingVal === "5") ratingColor = "bg-green-100 text-green-800 border border-green-300 font-bold";
+                                    else if (ratingVal === "4" || ratingVal === "3") ratingColor = "bg-yellow-100 text-yellow-800 border border-yellow-300 font-bold";
+                                    else if (ratingVal === "2" || ratingVal === "1" || ratingVal === "0") ratingColor = "bg-red-100 text-red-800 border border-red-300 font-bold animate-pulse";
+                                    else if (ratingVal && ratingVal.toLowerCase().includes('exempt')) ratingColor = "bg-blue-100 text-blue-800 border border-blue-300";
 
-                            if (fsaStatus) fsaStatus.classList.add('hidden');
-
-                            if (fsaResults) {
-                                fsaResults.innerHTML = '';
-                                if (establishments && establishments.length > 0) {
-                                    const resultsHtml = establishments.map(est => {
-                                        const address = [est.AddressLine1, est.AddressLine2, est.AddressLine3, est.PostCode].filter(Boolean).join(', ');
-                                        const ratingDate = est.RatingDate ? new Date(est.RatingDate).toLocaleDateString('en-GB') : 'Unknown';
-                                        
-                                        // Color code rating badge
-                                        const ratingVal = est.RatingValue;
-                                        let ratingColor = "bg-gray-100 text-gray-800";
-                                        if (ratingVal === "5") ratingColor = "bg-green-100 text-green-800 border border-green-300 font-bold";
-                                        else if (ratingVal === "4" || ratingVal === "3") ratingColor = "bg-yellow-100 text-yellow-800 border border-yellow-300 font-bold";
-                                        else if (ratingVal === "2" || ratingVal === "1" || ratingVal === "0") ratingColor = "bg-red-100 text-red-800 border border-red-300 font-bold animate-pulse";
-                                        else if (ratingVal && ratingVal.toLowerCase().includes('exempt')) ratingColor = "bg-blue-100 text-blue-800 border border-blue-300";
-
-                                        return `
-                                            <div class="p-3 bg-white border border-gray-200 rounded-lg shadow-sm space-y-1.5 text-xs text-gray-700">
-                                                <div class="flex justify-between items-start gap-2">
-                                                    <span class="font-bold text-gray-900">${escapeHtml(est.BusinessName)}</span>
-                                                    <span class="px-2 py-0.5 rounded text-[10px] ${ratingColor}">${ratingVal || 'N/A'}</span>
-                                                </div>
-                                                <div class="text-gray-500">${escapeHtml(address)}</div>
-                                                <div class="flex justify-between items-center text-[10px] text-gray-400 pt-1 border-t border-gray-100">
-                                                    <span>Authority: ${escapeHtml(est.LocalAuthorityName)}</span>
-                                                    <span>Date: ${escapeHtml(ratingDate)}</span>
-                                                </div>
+                                    return `
+                                        <div class="p-3 bg-white border border-gray-200 rounded-lg shadow-sm space-y-1.5 text-xs text-gray-700">
+                                            <div class="flex justify-between items-start gap-2">
+                                                <span class="font-bold text-gray-900">${escapeHtml(est.BusinessName)}</span>
+                                                <span class="px-2 py-0.5 rounded text-[10px] ${ratingColor}">${ratingVal || 'N/A'}</span>
                                             </div>
-                                        `;
-                                    }).join('');
-                                    fsaResults.innerHTML = resultsHtml;
-                                    fsaResults.classList.remove('hidden');
-                                } else {
-                                    if (fsaStatus) {
-                                        fsaStatus.innerText = "No matching food hygiene ratings found.";
-                                        fsaStatus.classList.remove('hidden');
-                                    }
+                                            <div class="text-gray-500">${escapeHtml(address)}</div>
+                                            <div class="flex justify-between items-center text-[10px] text-gray-400 pt-1 border-t border-gray-100">
+                                                <span>Authority: ${escapeHtml(est.LocalAuthorityName)}</span>
+                                                <span>Date: ${escapeHtml(ratingDate)}</span>
+                                            </div>
+                                        </div>
+                                    `;
+                                }).join('');
+                                fsaResults.innerHTML = resultsHtml;
+                                fsaResults.classList.remove('hidden');
+                            } else {
+                                if (fsaStatus) {
+                                    fsaStatus.innerText = "No matching food hygiene ratings found.";
+                                    fsaStatus.classList.remove('hidden');
                                 }
                             }
-                        } catch (err) {
-                            console.error("FSA lookup error:", err);
-                            if (fsaStatus) {
-                                fsaStatus.innerText = "Failed to fetch ratings from FSA.";
-                                fsaStatus.classList.remove('hidden');
-                            }
-                        } finally {
-                            fsaSearchBtn.disabled = false;
-                            fsaSearchBtn.innerText = "Search FHRS Database";
                         }
-                    });
+                    } catch (err) {
+                        console.error("FSA lookup error:", err);
+                        if (fsaStatus) {
+                            fsaStatus.innerText = "Failed to fetch ratings from FSA.";
+                            fsaStatus.classList.remove('hidden');
+                        }
+                    } finally {
+                        fsaSearchBtn.disabled = false;
+                        fsaSearchBtn.innerText = "Refresh Ratings";
+                    }
+                };
+
+                // Bind click handler once for manual refresh
+                if (!fsaSearchBtn.dataset.listenerBound) {
+                    fsaSearchBtn.dataset.listenerBound = 'true';
+                    fsaSearchBtn.addEventListener('click', runAutoFsaSearch);
                 }
+
+                // Automatically trigger search when pane is populated
+                runAutoFsaSearch();
             }
         } else {
             fsaContainer.classList.add('hidden');
