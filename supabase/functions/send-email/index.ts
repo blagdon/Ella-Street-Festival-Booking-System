@@ -119,6 +119,8 @@ Deno.serve(async (req) => {
         'zoho_account_id',
         'zoho_from_address',
         'zoho_display_name',
+        'zoho_access_token',
+        'zoho_access_token_expires_at',
         'zoho_api_domain',
         'zoho_accounts_domain'
       ])
@@ -145,31 +147,60 @@ Deno.serve(async (req) => {
       throw new Error('Missing required Zoho API configuration settings in database.')
     }
 
-    // Refresh Zoho Token
-    const tokenUrl = `${accountsDomain}/oauth/v2/token`
-    const params = new URLSearchParams()
-    params.append('grant_type', 'refresh_token')
-    params.append('refresh_token', refreshToken)
-    params.append('client_id', clientId)
-    params.append('client_secret', clientSecret)
+    let accessToken = settings['zoho_access_token']
+    const expiresAtStr = settings['zoho_access_token_expires_at']
+    let tokenNeedsRefresh = true
 
-    const tokenResponse = await fetch(tokenUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded'
-      },
-      body: params
-    })
-
-    if (!tokenResponse.ok) {
-      const errorText = await tokenResponse.text()
-      throw new Error(`Failed to refresh Zoho access token: ${tokenResponse.statusText}. Details: ${errorText}`)
+    if (accessToken && expiresAtStr) {
+      const expiresAt = new Date(expiresAtStr).getTime()
+      // If it expires more than 5 minutes in the future, we can reuse it
+      if (expiresAt > Date.now() + 300000) {
+        tokenNeedsRefresh = false
+      }
     }
 
-    const tokenData = await tokenResponse.json()
-    const accessToken = tokenData.access_token
-    if (!accessToken) {
-      throw new Error('Zoho token response did not contain an access token.')
+    if (tokenNeedsRefresh) {
+      // Refresh Zoho Token
+      const tokenUrl = `${accountsDomain}/oauth/v2/token`
+      const params = new URLSearchParams()
+      params.append('grant_type', 'refresh_token')
+      params.append('refresh_token', refreshToken)
+      params.append('client_id', clientId)
+      params.append('client_secret', clientSecret)
+
+      const tokenResponse = await fetch(tokenUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        body: params
+      })
+
+      if (!tokenResponse.ok) {
+        const errorText = await tokenResponse.text()
+        throw new Error(`Failed to refresh Zoho access token: ${tokenResponse.statusText}. Details: ${errorText}`)
+      }
+
+      const tokenData = await tokenResponse.json()
+      accessToken = tokenData.access_token
+      if (!accessToken) {
+        throw new Error('Zoho token response did not contain an access token.')
+      }
+
+      // Calculate expiration and cache back to Supabase settings
+      const expiresInSec = tokenData.expires_in || 3600
+      const expiresAt = new Date(Date.now() + expiresInSec * 1000).toISOString()
+      const nowStr = new Date().toISOString()
+
+      const { error: saveError } = await supabaseClient
+        .from('settings')
+        .upsert([
+          { key: 'zoho_access_token', value: accessToken, updated_at: nowStr, updated_by: 'system_edge_function' },
+          { key: 'zoho_access_token_expires_at', value: expiresAt, updated_at: nowStr, updated_by: 'system_edge_function' }
+        ])
+      if (saveError) {
+        console.warn('Failed to cache Zoho access token in database:', saveError.message)
+      }
     }
 
     // Send the Email

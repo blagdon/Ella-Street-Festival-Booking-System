@@ -12,6 +12,8 @@ INSERT INTO settings (key, value, updated_at, updated_by) VALUES
 ('zoho_api_domain', 'https://mail.zoho.eu', now(), 'system'),
 ('zoho_accounts_domain', 'https://accounts.zoho.eu', now(), 'system'),
 ('zoho_display_name', 'Ella Street Festival Stalls', now(), 'system'),
+('zoho_access_token', '', now(), 'system'),
+('zoho_access_token_expires_at', '', now(), 'system'),
 ('booking_prefix', 'ESF26', now(), 'system')
 ON CONFLICT (key) DO UPDATE 
 SET value = CASE 
