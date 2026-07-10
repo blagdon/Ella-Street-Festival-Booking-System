@@ -210,6 +210,8 @@ export async function sendBulkEmails() {
     if (!confirm(`Send emails to ALL ${targets.length} assigned stalls?`)) return;
 
     let count = 0;
+    let failedCount = 0;
+    const failedIds = [];
     const statusEl = document.getElementById('statusMsg');
     if (statusEl) statusEl.classList.remove('hidden');
 
@@ -227,13 +229,19 @@ export async function sendBulkEmails() {
                 if (statusEl) statusEl.innerText = `Queuing ${count}/${targets.length}...`;
                 await queueLocationEmail(b.id);
             } catch (e) {
-                // Silently continue
+                failedCount++;
+                failedIds.push(b.id);
+                console.warn(`Failed to queue location email for ${b.id}:`, e);
             }
             await new Promise(r => setTimeout(r, 50));
         }
 
         if (statusEl) statusEl.classList.add('hidden');
-        showToast(`Queued ${count} Emails`);
+        if (failedCount > 0) {
+            showToast(`Queued ${count - failedCount} emails. Failed: ${failedCount} (IDs: ${failedIds.join(', ')})`, 'warning');
+        } else {
+            showToast(`Queued all ${count} Emails successfully.`);
+        }
     } finally {
         if (btn) {
             btn.innerHTML = originalContent;
