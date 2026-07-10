@@ -402,6 +402,7 @@ export function populateDetailPane(item) {
             if (fsaSearchBtn) {
                 fsaSearchBtn.dataset.business = item.business || item.business_name || '';
                 fsaSearchBtn.dataset.registered = item.registered_business_name || '';
+                fsaSearchBtn.dataset.address = item.address || '';
                 fsaSearchBtn.innerText = "Search FHRS Database";
                 fsaSearchBtn.disabled = false;
 
@@ -411,22 +412,36 @@ export function populateDetailPane(item) {
                     fsaSearchBtn.addEventListener('click', async () => {
                         const bizName = fsaSearchBtn.dataset.business;
                         const regName = fsaSearchBtn.dataset.registered;
+                        const bizAddr = fsaSearchBtn.dataset.address;
 
                         fsaSearchBtn.disabled = true;
                         fsaSearchBtn.innerText = "Searching...";
                         if (fsaStatus) {
-                            fsaStatus.innerText = `Searching FSA database for "${bizName}"...`;
+                            fsaStatus.innerText = `Searching FSA database...`;
                             fsaStatus.classList.remove('hidden');
                         }
                         if (fsaResults) fsaResults.classList.add('hidden');
 
                         try {
-                            // Search trading name first
-                            let establishments = await fetchFsaEstablishments(bizName);
+                            // Tier 1: Search trading name + address
+                            if (fsaStatus) fsaStatus.innerText = `Searching for "${bizName}" with address...`;
+                            let establishments = await fetchFsaEstablishments(bizName, bizAddr);
 
-                            // If not found, try registered name
+                            // Tier 2: Search registered name + address
                             if ((!establishments || establishments.length === 0) && regName && regName !== '--' && regName.trim() !== '') {
-                                if (fsaStatus) fsaStatus.innerText = `Trading name not found. Searching for "${regName}"...`;
+                                if (fsaStatus) fsaStatus.innerText = `Searching for "${regName}" with address...`;
+                                establishments = await fetchFsaEstablishments(regName, bizAddr);
+                            }
+
+                            // Tier 3: Search trading name alone
+                            if (!establishments || establishments.length === 0) {
+                                if (fsaStatus) fsaStatus.innerText = `No address matches. Searching for "${bizName}"...`;
+                                establishments = await fetchFsaEstablishments(bizName);
+                            }
+
+                            // Tier 4: Search registered name alone
+                            if ((!establishments || establishments.length === 0) && regName && regName !== '--' && regName.trim() !== '') {
+                                if (fsaStatus) fsaStatus.innerText = `No address matches. Searching for "${regName}"...`;
                                 establishments = await fetchFsaEstablishments(regName);
                             }
 
@@ -489,10 +504,13 @@ export function populateDetailPane(item) {
     }
 }
 
-async function fetchFsaEstablishments(name) {
+async function fetchFsaEstablishments(name, address = null) {
     if (!name || name.trim() === '') return [];
     try {
-        const url = `https://api.ratings.food.gov.uk/Establishments?name=${encodeURIComponent(name.trim())}&pageSize=5`;
+        let url = `https://api.ratings.food.gov.uk/Establishments?name=${encodeURIComponent(name.trim())}&pageSize=5`;
+        if (address && address.trim() !== '' && address !== 'N/A') {
+            url += `&address=${encodeURIComponent(address.trim())}`;
+        }
         const res = await fetch(url, {
             headers: {
                 'x-api-version': '2',
