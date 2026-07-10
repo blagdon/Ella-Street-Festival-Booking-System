@@ -423,23 +423,40 @@ export function populateDetailPane(item) {
                         if (fsaResults) fsaResults.classList.add('hidden');
 
                         try {
-                            // Tier 1: Search trading name + address
-                            if (fsaStatus) fsaStatus.innerText = `Searching for "${bizName}" with address...`;
-                            let establishments = await fetchFsaEstablishments(bizName, bizAddr);
+                            const postcode = extractPostcode(bizAddr);
+                            let establishments = [];
 
-                            // Tier 2: Search registered name + address
+                            // Tier 1: Search trading name + postcode
+                            if (postcode) {
+                                if (fsaStatus) fsaStatus.innerText = `Searching for "${bizName}" in postcode ${postcode}...`;
+                                establishments = await fetchFsaEstablishments(bizName, postcode);
+                            }
+
+                            // Tier 2: Search registered name + postcode
+                            if ((!establishments || establishments.length === 0) && postcode && regName && regName !== '--' && regName.trim() !== '') {
+                                if (fsaStatus) fsaStatus.innerText = `Searching for "${regName}" in postcode ${postcode}...`;
+                                establishments = await fetchFsaEstablishments(regName, postcode);
+                            }
+
+                            // Tier 3: Search trading name + address
+                            if (!establishments || establishments.length === 0) {
+                                if (fsaStatus) fsaStatus.innerText = `Searching for "${bizName}" with address...`;
+                                establishments = await fetchFsaEstablishments(bizName, bizAddr);
+                            }
+
+                            // Tier 4: Search registered name + address
                             if ((!establishments || establishments.length === 0) && regName && regName !== '--' && regName.trim() !== '') {
                                 if (fsaStatus) fsaStatus.innerText = `Searching for "${regName}" with address...`;
                                 establishments = await fetchFsaEstablishments(regName, bizAddr);
                             }
 
-                            // Tier 3: Search trading name alone
+                            // Tier 5: Search trading name alone
                             if (!establishments || establishments.length === 0) {
                                 if (fsaStatus) fsaStatus.innerText = `No address matches. Searching for "${bizName}"...`;
                                 establishments = await fetchFsaEstablishments(bizName);
                             }
 
-                            // Tier 4: Search registered name alone
+                            // Tier 6: Search registered name alone
                             if ((!establishments || establishments.length === 0) && regName && regName !== '--' && regName.trim() !== '') {
                                 if (fsaStatus) fsaStatus.innerText = `No address matches. Searching for "${regName}"...`;
                                 establishments = await fetchFsaEstablishments(regName);
@@ -502,6 +519,16 @@ export function populateDetailPane(item) {
             fsaContainer.classList.add('hidden');
         }
     }
+}
+
+export function extractPostcode(address) {
+    if (!address) return null;
+    const postcodeRegex = /\b([A-Z]{1,2}[0-9][A-Z0-9]?)\s*([0-9][A-Z]{2})?\b/i;
+    const match = address.match(postcodeRegex);
+    if (match) {
+        return match[1].toUpperCase();
+    }
+    return null;
 }
 
 async function fetchFsaEstablishments(name, address = null) {
