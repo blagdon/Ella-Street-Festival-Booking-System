@@ -135,6 +135,8 @@ export async function loadStallCosts(sb) {
                 } else if (item.key === 'email_rate_window_ms') {
                     const num = parseInt(val, 10);
                     if (!isNaN(num)) CONFIG.EMAIL_RATE_WINDOW_MS = num;
+                } else if (item.key === 'booking_prefix') {
+                    ESF_PUBLIC_CONFIG.BOOKING_PREFIX = val;
                 }
             });
         }
