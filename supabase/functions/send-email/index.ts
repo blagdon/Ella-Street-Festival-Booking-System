@@ -170,6 +170,30 @@ Deno.serve(async (req) => {
       throw new Error('Zoho token response did not contain an access token.')
     }
 
+    // Update display name in Zoho account settings to "Ella Street Festival Stalls"
+    try {
+      const updateDetailsUrl = `${apiDomain}/api/accounts/${accountId}`
+      const updateResponse = await fetch(updateDetailsUrl, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Zoho-oauthtoken ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          mode: 'addsendmaildetails',
+          sendMailDetails: {
+            fromAddress: fromAddress,
+            displayName: 'Ella Street Festival Stalls'
+          }
+        })
+      })
+      if (!updateResponse.ok) {
+        console.warn('Failed to update Zoho display name:', await updateResponse.text())
+      }
+    } catch (e) {
+      console.warn('Error updating Zoho display name:', e)
+    }
+
     // Send the Email
     const sendUrl = `${apiDomain}/api/accounts/${accountId}/messages`
     const emailPayload: Record<string, any> = {
