@@ -430,36 +430,54 @@ export function populateDetailPane(item) {
                         if (postcode) {
                             if (fsaStatus) fsaStatus.innerText = `Searching for "${bizName}" (Mobile Caterer) in ${postcode}...`;
                             establishments = await fetchFsaEstablishments(bizName, postcode, 7846);
+                            if (establishments.length > 0 && !hasNameMatch(establishments, bizName, regName)) {
+                                establishments = [];
+                            }
                         }
 
                         // Tier 2: Registered name + postcode (Mobile)
                         if ((!establishments || establishments.length === 0) && postcode && regName && regName !== '--' && regName.trim() !== '') {
                             if (fsaStatus) fsaStatus.innerText = `Searching for "${regName}" (Mobile Caterer) in ${postcode}...`;
                             establishments = await fetchFsaEstablishments(regName, postcode, 7846);
+                            if (establishments.length > 0 && !hasNameMatch(establishments, bizName, regName)) {
+                                establishments = [];
+                            }
                         }
 
                         // Tier 3: Trading name + full address (Mobile)
                         if (!establishments || establishments.length === 0) {
                             if (fsaStatus) fsaStatus.innerText = `Searching for "${bizName}" (Mobile Caterer) with address...`;
                             establishments = await fetchFsaEstablishments(bizName, bizAddr, 7846);
+                            if (establishments.length > 0 && !hasNameMatch(establishments, bizName, regName)) {
+                                establishments = [];
+                            }
                         }
 
                         // Tier 4: Registered name + full address (Mobile)
                         if ((!establishments || establishments.length === 0) && regName && regName !== '--' && regName.trim() !== '') {
                             if (fsaStatus) fsaStatus.innerText = `Searching for "${regName}" (Mobile Caterer) with address...`;
                             establishments = await fetchFsaEstablishments(regName, bizAddr, 7846);
+                            if (establishments.length > 0 && !hasNameMatch(establishments, bizName, regName)) {
+                                establishments = [];
+                            }
                         }
 
                         // Tier 5: Trading name alone (Mobile)
                         if (!establishments || establishments.length === 0) {
                             if (fsaStatus) fsaStatus.innerText = `Searching for "${bizName}" (Mobile Caterer) alone...`;
                             establishments = await fetchFsaEstablishments(bizName, null, 7846);
+                            if (establishments.length > 0 && !hasNameMatch(establishments, bizName, regName)) {
+                                establishments = [];
+                            }
                         }
 
                         // Tier 6: Registered name alone (Mobile)
                         if ((!establishments || establishments.length === 0) && regName && regName !== '--' && regName.trim() !== '') {
                             if (fsaStatus) fsaStatus.innerText = `Searching for "${regName}" (Mobile Caterer) alone...`;
                             establishments = await fetchFsaEstablishments(regName, null, 7846);
+                            if (establishments.length > 0 && !hasNameMatch(establishments, bizName, regName)) {
+                                establishments = [];
+                            }
                         }
 
                         // --- STAGE 2: Fallback to all business types if no mobile records found ---
@@ -470,36 +488,54 @@ export function populateDetailPane(item) {
                             if (postcode) {
                                 if (fsaStatus) fsaStatus.innerText = `No mobile record. Searching all types for "${bizName}" in ${postcode}...`;
                                 establishments = await fetchFsaEstablishments(bizName, postcode);
+                                if (establishments.length > 0 && !hasNameMatch(establishments, bizName, regName)) {
+                                    establishments = [];
+                                }
                             }
 
                             // Tier 2: Registered name + postcode (All)
                             if ((!establishments || establishments.length === 0) && postcode && regName && regName !== '--' && regName.trim() !== '') {
                                 if (fsaStatus) fsaStatus.innerText = `No mobile record. Searching all types for "${regName}" in ${postcode}...`;
                                 establishments = await fetchFsaEstablishments(regName, postcode);
+                                if (establishments.length > 0 && !hasNameMatch(establishments, bizName, regName)) {
+                                    establishments = [];
+                                }
                             }
 
                             // Tier 3: Trading name + full address (All)
                             if (!establishments || establishments.length === 0) {
                                 if (fsaStatus) fsaStatus.innerText = `No mobile record. Searching all types for "${bizName}" with address...`;
                                 establishments = await fetchFsaEstablishments(bizName, bizAddr);
+                                if (establishments.length > 0 && !hasNameMatch(establishments, bizName, regName)) {
+                                    establishments = [];
+                                }
                             }
 
                             // Tier 4: Registered name + full address (All)
                             if ((!establishments || establishments.length === 0) && regName && regName !== '--' && regName.trim() !== '') {
                                 if (fsaStatus) fsaStatus.innerText = `No mobile record. Searching all types for "${regName}" with address...`;
                                 establishments = await fetchFsaEstablishments(regName, bizAddr);
+                                if (establishments.length > 0 && !hasNameMatch(establishments, bizName, regName)) {
+                                    establishments = [];
+                                }
                             }
 
                             // Tier 5: Trading name alone (All)
                             if (!establishments || establishments.length === 0) {
                                 if (fsaStatus) fsaStatus.innerText = `No mobile record. Searching all types for "${bizName}" alone...`;
                                 establishments = await fetchFsaEstablishments(bizName);
+                                if (establishments.length > 0 && !hasNameMatch(establishments, bizName, regName)) {
+                                    establishments = [];
+                                }
                             }
 
                             // Tier 6: Registered name alone (All)
                             if ((!establishments || establishments.length === 0) && regName && regName !== '--' && regName.trim() !== '') {
                                 if (fsaStatus) fsaStatus.innerText = `No mobile record. Searching all types for "${regName}" alone...`;
                                 establishments = await fetchFsaEstablishments(regName);
+                                if (establishments.length > 0 && !hasNameMatch(establishments, bizName, regName)) {
+                                    establishments = [];
+                                }
                             }
                         }
 
@@ -592,6 +628,17 @@ export function extractPostcode(address) {
         return match[1].toUpperCase();
     }
     return null;
+}
+
+export function hasNameMatch(establishments, bizName, regName) {
+    const cleanBiz = (bizName || '').trim().toLowerCase();
+    const cleanReg = (regName && regName !== '--') ? regName.trim().toLowerCase() : '';
+    
+    return establishments.some(est => {
+        const estName = est.BusinessName.trim().toLowerCase();
+        return (cleanBiz && (estName.includes(cleanBiz) || cleanBiz.includes(estName))) ||
+               (cleanReg && (estName.includes(cleanReg) || cleanReg.includes(estName)));
+    });
 }
 
 async function fetchFsaEstablishments(name, address = null, businessTypeId = null) {
