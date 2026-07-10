@@ -22,7 +22,7 @@ export function initNavigation() {
         }
     };
 
-    const isHub = window.location.pathname.endsWith('index.html') || window.location.pathname.endsWith('/');
+    const isHub = window.location.pathname.endsWith('index.html') || window.location.pathname.endsWith('index') || window.location.pathname.endsWith('/');
 
     const backBtnDesktop = isHub ? '' : `
     <a href="index.html" class="hidden md:inline-flex items-center text-gray-500 hover:text-blue-600 text-sm font-medium transition mr-4 group">

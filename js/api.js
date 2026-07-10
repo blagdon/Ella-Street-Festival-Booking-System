@@ -1,6 +1,6 @@
 import { getSupabaseClient } from './supabase.js';
 import { CONFIG, getStallCost } from './config.js';
-import { validateString, validateEmail, validateBookingId, validateStatus, escapeHtml, MAX_FIELD_LENGTHS } from './utils.js';
+import { validateString, validateEmail, validateBookingId, validateStatus, escapeHtml, parseEdgeFunctionError, MAX_FIELD_LENGTHS } from './utils.js';
 
 const TBL_BOOKINGS = 'bookings';
 const TBL_PAYMENTS = 'payments';
@@ -105,15 +105,8 @@ export async function sendEmailViaZoho(recipient, subject, body, bcc = null) {
     });
 
     if (error) {
-        let errMsg = error.message;
-        if (error.context && typeof error.context.text === 'function') {
-            try {
-                const text = await error.context.text();
-                const json = JSON.parse(text);
-                if (json.error) errMsg = json.error;
-            } catch (e) {}
-        }
-        throw new Error(errMsg || "Failed to invoke send-email function");
+        const errMsg = await parseEdgeFunctionError(error, "Failed to invoke send-email function");
+        throw new Error(errMsg);
     }
 
     if (data && data.error) {

@@ -59,8 +59,12 @@ export const CONFIG = {
     //     Public pages cannot use ES modules, so the credentials are duplicated there.
     //     If you rotate the anon key or change the URL, update BOTH files.
     SUPABASE: {
-        URL: ESF_PUBLIC_CONFIG.SUPABASE_URL,
-        KEY: ESF_PUBLIC_CONFIG.SUPABASE_KEY
+        get URL() {
+            return (typeof window !== 'undefined' && window.ESF_PUBLIC_CONFIG?.SUPABASE_URL) || ESF_PUBLIC_CONFIG.SUPABASE_URL;
+        },
+        get KEY() {
+            return (typeof window !== 'undefined' && window.ESF_PUBLIC_CONFIG?.SUPABASE_KEY) || ESF_PUBLIC_CONFIG.SUPABASE_KEY;
+        }
     }
 };
 
@@ -90,55 +94,69 @@ export function getStallCost(prefixOrKey) {
     return costs[current] || costs.FOOD;
 }
 
-/**
- * Asynchronously loads stall costs from Supabase settings table and overrides local CONFIG values.
- * Uses default configurations as fallback in case of errors.
- * @param {object} sb - The active Supabase client instance
- */
+export function applySettingsToConfig(data) {
+    if (!data) return;
+    data.forEach(item => {
+        const val = item.value;
+        if (item.key === 'stall_cost_food') {
+            const num = parseFloat(val);
+            if (!isNaN(num)) CONFIG.UI.STALL_COST.FOOD = num;
+        } else if (item.key === 'stall_cost_general') {
+            const num = parseFloat(val);
+            if (!isNaN(num)) CONFIG.UI.STALL_COST.GENERAL = num;
+        } else if (item.key === 'stall_cost_dev') {
+            const num = parseFloat(val);
+            if (!isNaN(num)) CONFIG.UI.STALL_COST.DEV = num;
+        } else if (item.key === 'turnstile_site_key') {
+            ESF_PUBLIC_CONFIG.TURNSTILE_SITE_KEY = val;
+        } else if (item.key === 'bank_details') {
+            ESF_PUBLIC_CONFIG.BANK_DETAILS = val;
+            CONFIG.BANK_DETAILS = val;
+        } else if (item.key === 'base_url') {
+            ESF_PUBLIC_CONFIG.BASE_URL = val;
+            CONFIG.URLS.BASE = val;
+        } else if (item.key === 'cancel_url') {
+            ESF_PUBLIC_CONFIG.CANCEL_URL = val;
+            CONFIG.URLS.CANCEL_URL = val;
+        } else if (item.key === 'portal_url') {
+            ESF_PUBLIC_CONFIG.PORTAL_URL = val;
+            CONFIG.URLS.PORTAL_URL = val;
+        } else if (item.key === 'bucket_name') {
+            ESF_PUBLIC_CONFIG.BUCKET_NAME = val;
+        } else if (item.key === 'hcc_council_email') {
+            CONFIG.HCC_COUNCIL_EMAIL = val;
+        } else if (item.key === 'email_rate_limit') {
+            const num = parseInt(val, 10);
+            if (!isNaN(num)) CONFIG.EMAIL_RATE_LIMIT = num;
+        } else if (item.key === 'email_rate_window_ms') {
+            const num = parseInt(val, 10);
+            if (!isNaN(num)) CONFIG.EMAIL_RATE_WINDOW_MS = num;
+        } else if (item.key === 'booking_prefix') {
+            ESF_PUBLIC_CONFIG.BOOKING_PREFIX = val;
+        }
+    });
+}
+
 export async function loadStallCosts(sb) {
+    if (typeof sessionStorage !== 'undefined') {
+        const cached = sessionStorage.getItem('ESF_SETTINGS_CACHE');
+        if (cached) {
+            try {
+                const data = JSON.parse(cached);
+                applySettingsToConfig(data);
+                return;
+            } catch (e) {}
+        }
+    }
+
     try {
         const { data, error } = await sb.from('settings').select('key, value');
         if (error) throw error;
         if (data) {
-            data.forEach(item => {
-                const val = item.value;
-                if (item.key === 'stall_cost_food') {
-                    const num = parseFloat(val);
-                    if (!isNaN(num)) CONFIG.UI.STALL_COST.FOOD = num;
-                } else if (item.key === 'stall_cost_general') {
-                    const num = parseFloat(val);
-                    if (!isNaN(num)) CONFIG.UI.STALL_COST.GENERAL = num;
-                } else if (item.key === 'stall_cost_dev') {
-                    const num = parseFloat(val);
-                    if (!isNaN(num)) CONFIG.UI.STALL_COST.DEV = num;
-                } else if (item.key === 'turnstile_site_key') {
-                    ESF_PUBLIC_CONFIG.TURNSTILE_SITE_KEY = val;
-                } else if (item.key === 'bank_details') {
-                    ESF_PUBLIC_CONFIG.BANK_DETAILS = val;
-                    CONFIG.BANK_DETAILS = val;
-                } else if (item.key === 'base_url') {
-                    ESF_PUBLIC_CONFIG.BASE_URL = val;
-                    CONFIG.URLS.BASE = val;
-                } else if (item.key === 'cancel_url') {
-                    ESF_PUBLIC_CONFIG.CANCEL_URL = val;
-                    CONFIG.URLS.CANCEL_URL = val;
-                } else if (item.key === 'portal_url') {
-                    ESF_PUBLIC_CONFIG.PORTAL_URL = val;
-                    CONFIG.URLS.PORTAL_URL = val;
-                } else if (item.key === 'bucket_name') {
-                    ESF_PUBLIC_CONFIG.BUCKET_NAME = val;
-                } else if (item.key === 'hcc_council_email') {
-                    CONFIG.HCC_COUNCIL_EMAIL = val;
-                } else if (item.key === 'email_rate_limit') {
-                    const num = parseInt(val, 10);
-                    if (!isNaN(num)) CONFIG.EMAIL_RATE_LIMIT = num;
-                } else if (item.key === 'email_rate_window_ms') {
-                    const num = parseInt(val, 10);
-                    if (!isNaN(num)) CONFIG.EMAIL_RATE_WINDOW_MS = num;
-                } else if (item.key === 'booking_prefix') {
-                    ESF_PUBLIC_CONFIG.BOOKING_PREFIX = val;
-                }
-            });
+            applySettingsToConfig(data);
+            if (typeof sessionStorage !== 'undefined') {
+                sessionStorage.setItem('ESF_SETTINGS_CACHE', JSON.stringify(data));
+            }
         }
     } catch (e) {
         console.warn("Failed to load settings from database, using defaults:", e);

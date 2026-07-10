@@ -1,4 +1,5 @@
 import { ESF_PUBLIC_CONFIG } from '../supabase-public.js';
+import { CONFIG } from './config.js';
 
 // ===================================================================
 // === SECURITY: HTML Escaping Utilities ===
@@ -84,21 +85,40 @@ export function safeError(err) {
     return String(err) || 'An unexpected error occurred.';
 }
 
+export async function parseEdgeFunctionError(error, defaultMsg = "Request failed") {
+    let errMsg = error?.message || defaultMsg;
+    if (error && error.context && typeof error.context.text === 'function') {
+        try {
+            const text = await error.context.text();
+            const json = JSON.parse(text);
+            if (json.error) {
+                errMsg = json.error;
+            } else if (json.message) {
+                errMsg = json.message;
+            }
+        } catch (e) {}
+    }
+    return errMsg;
+}
+
 // ===================================================================
 // === SECURITY: Bulk Email Rate Limiter ===
 // ===================================================================
 const _emailRateLog = [];
-const EMAIL_RATE_LIMIT = 10;       // max emails per window
-const EMAIL_RATE_WINDOW_MS = 60000; // 1 minute
 
 export function checkEmailRateLimit() {
     const now = Date.now();
+    const limit = (CONFIG && CONFIG.EMAIL_RATE_LIMIT) || 10;
+    const windowMs = (CONFIG && CONFIG.EMAIL_RATE_WINDOW_MS) || 60000;
+
     // Remove entries older than the window
-    while (_emailRateLog.length > 0 && _emailRateLog[0] < now - EMAIL_RATE_WINDOW_MS) {
+    while (_emailRateLog.length > 0 && _emailRateLog[0] < now - windowMs) {
         _emailRateLog.shift();
     }
-    if (_emailRateLog.length >= EMAIL_RATE_LIMIT) {
-        throw new Error(`Rate limit: max ${EMAIL_RATE_LIMIT} emails per minute. Please wait and try again.`);
+    if (_emailRateLog.length >= limit) {
+        const minutes = windowMs / 60000;
+        const timeStr = minutes === 1 ? 'minute' : `${minutes} minutes`;
+        throw new Error(`Rate limit: max ${limit} emails per ${timeStr}. Please wait and try again.`);
     }
     _emailRateLog.push(now);
 }

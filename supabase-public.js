@@ -50,30 +50,49 @@ if (typeof window !== 'undefined') {
     window.getPublicSupabaseClient = getPublicSupabaseClient;
 }
 
+export function applyPublicSettings(data) {
+    if (!data) return;
+    data.forEach(item => {
+        const val = item.value;
+        if (item.key === 'turnstile_site_key') {
+            ESF_PUBLIC_CONFIG.TURNSTILE_SITE_KEY = val;
+        } else if (item.key === 'bank_details') {
+            ESF_PUBLIC_CONFIG.BANK_DETAILS = val;
+        } else if (item.key === 'base_url') {
+            ESF_PUBLIC_CONFIG.BASE_URL = val;
+        } else if (item.key === 'cancel_url') {
+            ESF_PUBLIC_CONFIG.CANCEL_URL = val;
+        } else if (item.key === 'portal_url') {
+            ESF_PUBLIC_CONFIG.PORTAL_URL = val;
+        } else if (item.key === 'bucket_name') {
+            ESF_PUBLIC_CONFIG.BUCKET_NAME = val;
+        } else if (item.key === 'booking_prefix') {
+            ESF_PUBLIC_CONFIG.BOOKING_PREFIX = val;
+        }
+    });
+}
+
 export async function loadPublicSettings() {
+    if (typeof sessionStorage !== 'undefined') {
+        const cached = sessionStorage.getItem('ESF_SETTINGS_CACHE');
+        if (cached) {
+            try {
+                const data = JSON.parse(cached);
+                applyPublicSettings(data);
+                return;
+            } catch (e) {}
+        }
+    }
+
     try {
         const sb = getPublicSupabaseClient();
         const { data, error } = await sb.from('settings').select('key, value');
         if (error) throw error;
         if (data) {
-            data.forEach(item => {
-                const val = item.value;
-                if (item.key === 'turnstile_site_key') {
-                    ESF_PUBLIC_CONFIG.TURNSTILE_SITE_KEY = val;
-                } else if (item.key === 'bank_details') {
-                    ESF_PUBLIC_CONFIG.BANK_DETAILS = val;
-                } else if (item.key === 'base_url') {
-                    ESF_PUBLIC_CONFIG.BASE_URL = val;
-                } else if (item.key === 'cancel_url') {
-                    ESF_PUBLIC_CONFIG.CANCEL_URL = val;
-                } else if (item.key === 'portal_url') {
-                    ESF_PUBLIC_CONFIG.PORTAL_URL = val;
-                } else if (item.key === 'bucket_name') {
-                    ESF_PUBLIC_CONFIG.BUCKET_NAME = val;
-                } else if (item.key === 'booking_prefix') {
-                    ESF_PUBLIC_CONFIG.BOOKING_PREFIX = val;
-                }
-            });
+            applyPublicSettings(data);
+            if (typeof sessionStorage !== 'undefined') {
+                sessionStorage.setItem('ESF_SETTINGS_CACHE', JSON.stringify(data));
+            }
         }
     } catch (e) {
         console.warn("Failed to load public settings from database, using defaults:", e);

@@ -4,6 +4,7 @@ import { showToast } from './ui.js';
 import { auditLog } from './api.js';
 import { CONFIG } from './config.js';
 import { ESF_PUBLIC_CONFIG } from '../supabase-public.js';
+import { parseEdgeFunctionError } from './utils.js';
 
 const sb = getSupabaseClient();
 
@@ -158,6 +159,9 @@ async function initStallCosts() {
             CONFIG.UI.STALL_COST.DEV = valDev;
 
             showToast("Stall costs saved successfully");
+            if (typeof sessionStorage !== 'undefined') {
+                sessionStorage.removeItem('ESF_SETTINGS_CACHE');
+            }
             await auditLog('update_stall_costs', 'system', { food: valFood, general: valGeneral, dev: valDev });
         } catch (err) {
             showToast(`Failed to save stall costs: ${err.message}`, 'error');
@@ -256,6 +260,9 @@ async function initSystemConstants() {
             CONFIG.EMAIL_RATE_WINDOW_MS = valWindow;
 
             showToast("System constants saved successfully");
+            if (typeof sessionStorage !== 'undefined') {
+                sessionStorage.removeItem('ESF_SETTINGS_CACHE');
+            }
             await auditLog('update_system_constants', 'system', {
                 turnstile_key: valTurnstile,
                 base_url: valBaseUrl,
@@ -357,6 +364,9 @@ async function initZohoSettings() {
             if (error) throw error;
 
             showToast("Zoho Mail API settings saved successfully!");
+            if (typeof sessionStorage !== 'undefined') {
+                sessionStorage.removeItem('ESF_SETTINGS_CACHE');
+            }
             await auditLog('update_zoho_settings', 'system', {
                 from_address: valFromAddress,
                 api_domain: valApiDomain
@@ -401,15 +411,8 @@ async function initZohoSettings() {
                 });
 
                 if (error) {
-                    let errMsg = error.message;
-                    if (error.context && typeof error.context.text === 'function') {
-                        try {
-                            const text = await error.context.text();
-                            const json = JSON.parse(text);
-                            if (json.error) errMsg = json.error;
-                        } catch (e) {}
-                    }
-                    throw new Error(errMsg || "Failed to fetch accounts");
+                    const errMsg = await parseEdgeFunctionError(error, "Failed to fetch accounts");
+                    throw new Error(errMsg);
                 }
 
                 if (data && data.error) {
