@@ -373,4 +373,137 @@ export function populateDetailPane(item) {
     if (notesEl) {
         notesEl.value = item.admin_notes || item.notes || "";
     }
+
+    // --- FSA FOOD HYGIENE RATINGS FOR FOOD STALLS ---
+    const fsaContainer = document.getElementById('fsa-ratings-container');
+    const fsaSearchBtn = document.getElementById('btn-fsa-search');
+    const fsaStatus = document.getElementById('fsa-status');
+    const fsaResults = document.getElementById('fsa-results');
+
+    if (fsaContainer) {
+        const isFoodStall = (item.id && item.id.includes('-FOOD-')) || 
+                            (item.category && (
+                                item.category.toLowerCase().includes('food') || 
+                                item.category.toLowerCase().includes('catering') || 
+                                item.category.toLowerCase().includes('alcohol')
+                            )) ||
+                            (localStorage.getItem('ESF_INSTANCE') === 'FOOD');
+
+        if (isFoodStall) {
+            fsaContainer.classList.remove('hidden');
+            if (fsaStatus) {
+                fsaStatus.innerText = "Ready to search.";
+                fsaStatus.classList.remove('hidden');
+            }
+            if (fsaResults) {
+                fsaResults.innerHTML = '';
+                fsaResults.classList.add('hidden');
+            }
+            if (fsaSearchBtn) {
+                fsaSearchBtn.dataset.business = item.business || item.business_name || '';
+                fsaSearchBtn.dataset.registered = item.registered_business_name || '';
+                fsaSearchBtn.innerText = "Search FHRS Database";
+                fsaSearchBtn.disabled = false;
+
+                // Bind click handler once
+                if (!fsaSearchBtn.dataset.listenerBound) {
+                    fsaSearchBtn.dataset.listenerBound = 'true';
+                    fsaSearchBtn.addEventListener('click', async () => {
+                        const bizName = fsaSearchBtn.dataset.business;
+                        const regName = fsaSearchBtn.dataset.registered;
+
+                        fsaSearchBtn.disabled = true;
+                        fsaSearchBtn.innerText = "Searching...";
+                        if (fsaStatus) {
+                            fsaStatus.innerText = `Searching FSA database for "${bizName}"...`;
+                            fsaStatus.classList.remove('hidden');
+                        }
+                        if (fsaResults) fsaResults.classList.add('hidden');
+
+                        try {
+                            // Search trading name first
+                            let establishments = await fetchFsaEstablishments(bizName);
+
+                            // If not found, try registered name
+                            if ((!establishments || establishments.length === 0) && regName && regName !== '--' && regName.trim() !== '') {
+                                if (fsaStatus) fsaStatus.innerText = `Trading name not found. Searching for "${regName}"...`;
+                                establishments = await fetchFsaEstablishments(regName);
+                            }
+
+                            if (fsaStatus) fsaStatus.classList.add('hidden');
+
+                            if (fsaResults) {
+                                fsaResults.innerHTML = '';
+                                if (establishments && establishments.length > 0) {
+                                    const resultsHtml = establishments.map(est => {
+                                        const address = [est.AddressLine1, est.AddressLine2, est.AddressLine3, est.PostCode].filter(Boolean).join(', ');
+                                        const ratingDate = est.RatingDate ? new Date(est.RatingDate).toLocaleDateString('en-GB') : 'Unknown';
+                                        
+                                        // Color code rating badge
+                                        const ratingVal = est.RatingValue;
+                                        let ratingColor = "bg-gray-100 text-gray-800";
+                                        if (ratingVal === "5") ratingColor = "bg-green-100 text-green-800 border border-green-300 font-bold";
+                                        else if (ratingVal === "4" || ratingVal === "3") ratingColor = "bg-yellow-100 text-yellow-800 border border-yellow-300 font-bold";
+                                        else if (ratingVal === "2" || ratingVal === "1" || ratingVal === "0") ratingColor = "bg-red-100 text-red-800 border border-red-300 font-bold animate-pulse";
+                                        else if (ratingVal && ratingVal.toLowerCase().includes('exempt')) ratingColor = "bg-blue-100 text-blue-800 border border-blue-300";
+
+                                        return `
+                                            <div class="p-3 bg-white border border-gray-200 rounded-lg shadow-sm space-y-1.5 text-xs text-gray-700">
+                                                <div class="flex justify-between items-start gap-2">
+                                                    <span class="font-bold text-gray-900">${escapeHtml(est.BusinessName)}</span>
+                                                    <span class="px-2 py-0.5 rounded text-[10px] ${ratingColor}">${ratingVal || 'N/A'}</span>
+                                                </div>
+                                                <div class="text-gray-500">${escapeHtml(address)}</div>
+                                                <div class="flex justify-between items-center text-[10px] text-gray-400 pt-1 border-t border-gray-100">
+                                                    <span>Authority: ${escapeHtml(est.LocalAuthorityName)}</span>
+                                                    <span>Date: ${escapeHtml(ratingDate)}</span>
+                                                </div>
+                                            </div>
+                                        `;
+                                    }).join('');
+                                    fsaResults.innerHTML = resultsHtml;
+                                    fsaResults.classList.remove('hidden');
+                                } else {
+                                    if (fsaStatus) {
+                                        fsaStatus.innerText = "No matching food hygiene ratings found.";
+                                        fsaStatus.classList.remove('hidden');
+                                    }
+                                }
+                            }
+                        } catch (err) {
+                            console.error("FSA lookup error:", err);
+                            if (fsaStatus) {
+                                fsaStatus.innerText = "Failed to fetch ratings from FSA.";
+                                fsaStatus.classList.remove('hidden');
+                            }
+                        } finally {
+                            fsaSearchBtn.disabled = false;
+                            fsaSearchBtn.innerText = "Search FHRS Database";
+                        }
+                    });
+                }
+            }
+        } else {
+            fsaContainer.classList.add('hidden');
+        }
+    }
+}
+
+async function fetchFsaEstablishments(name) {
+    if (!name || name.trim() === '') return [];
+    try {
+        const url = `https://api.ratings.food.gov.uk/Establishments?name=${encodeURIComponent(name.trim())}&pageSize=5`;
+        const res = await fetch(url, {
+            headers: {
+                'x-api-version': '2',
+                'Accept': 'application/json'
+            }
+        });
+        if (!res.ok) return [];
+        const json = await res.json();
+        return json.establishments || [];
+    } catch (e) {
+        console.error("FSA API fetch failed:", e);
+        return [];
+    }
 }
