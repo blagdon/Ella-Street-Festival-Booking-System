@@ -176,11 +176,12 @@ async function initSystemConstants() {
     const txtPortalUrl = document.getElementById('portal-url');
     const txtCouncilEmail = document.getElementById('council-email');
     const txtBucket = document.getElementById('bucket-name');
+    const txtPrefix = document.getElementById('booking-prefix');
     const txtLimit = document.getElementById('rate-limit');
     const txtWindow = document.getElementById('rate-window');
     const btnSave = document.getElementById('btn-save-constants');
 
-    if (!txtTurnstile || !txtBank || !txtBaseUrl || !txtCancelUrl || !txtPortalUrl || !txtCouncilEmail || !txtBucket || !txtLimit || !txtWindow || !btnSave) return;
+    if (!txtTurnstile || !txtBank || !txtBaseUrl || !txtCancelUrl || !txtPortalUrl || !txtCouncilEmail || !txtBucket || !txtPrefix || !txtLimit || !txtWindow || !btnSave) return;
 
     // Load active settings from public config and CONFIG
     txtTurnstile.value = ESF_PUBLIC_CONFIG?.TURNSTILE_SITE_KEY || '';
@@ -189,6 +190,7 @@ async function initSystemConstants() {
     txtCancelUrl.value = ESF_PUBLIC_CONFIG?.CANCEL_URL || '';
     txtPortalUrl.value = ESF_PUBLIC_CONFIG?.PORTAL_URL || '';
     txtBucket.value = ESF_PUBLIC_CONFIG?.BUCKET_NAME || '';
+    txtPrefix.value = ESF_PUBLIC_CONFIG?.BOOKING_PREFIX || '';
     txtCouncilEmail.value = CONFIG.HCC_COUNCIL_EMAIL || '';
     txtLimit.value = CONFIG.EMAIL_RATE_LIMIT || '';
     txtWindow.value = CONFIG.EMAIL_RATE_WINDOW_MS || '';
@@ -201,11 +203,17 @@ async function initSystemConstants() {
         const valPortalUrl = txtPortalUrl.value.trim();
         const valCouncilEmail = txtCouncilEmail.value.trim();
         const valBucket = txtBucket.value.trim();
+        const valPrefix = txtPrefix.value.trim().toUpperCase();
         const valLimit = parseInt(txtLimit.value, 10);
         const valWindow = parseInt(txtWindow.value, 10);
 
-        if (!valTurnstile || !valBank || !valBaseUrl || !valCancelUrl || !valPortalUrl || !valCouncilEmail || !valBucket || isNaN(valLimit) || valLimit < 1 || isNaN(valWindow) || valWindow < 1000) {
+        if (!valTurnstile || !valBank || !valBaseUrl || !valCancelUrl || !valPortalUrl || !valCouncilEmail || !valBucket || !valPrefix || isNaN(valLimit) || valLimit < 1 || isNaN(valWindow) || valWindow < 1000) {
             showToast("All fields are required and rate limits must be valid positive numbers", "error");
+            return;
+        }
+
+        if (!/^[A-Z0-9]+$/.test(valPrefix)) {
+            showToast("Booking ID prefix must be alphanumeric (e.g. ESF26)", "error");
             return;
         }
 
@@ -225,6 +233,7 @@ async function initSystemConstants() {
                 { key: 'portal_url', value: valPortalUrl, updated_at: now, updated_by: userEmail },
                 { key: 'hcc_council_email', value: valCouncilEmail, updated_at: now, updated_by: userEmail },
                 { key: 'bucket_name', value: valBucket, updated_at: now, updated_by: userEmail },
+                { key: 'booking_prefix', value: valPrefix, updated_at: now, updated_by: userEmail },
                 { key: 'email_rate_limit', value: valLimit.toString(), updated_at: now, updated_by: userEmail },
                 { key: 'email_rate_window_ms', value: valWindow.toString(), updated_at: now, updated_by: userEmail }
             ];
@@ -240,6 +249,7 @@ async function initSystemConstants() {
                 ESF_PUBLIC_CONFIG.CANCEL_URL = valCancelUrl;
                 ESF_PUBLIC_CONFIG.PORTAL_URL = valPortalUrl;
                 ESF_PUBLIC_CONFIG.BUCKET_NAME = valBucket;
+                ESF_PUBLIC_CONFIG.BOOKING_PREFIX = valPrefix;
             }
             CONFIG.HCC_COUNCIL_EMAIL = valCouncilEmail;
             CONFIG.EMAIL_RATE_LIMIT = valLimit;
@@ -249,7 +259,8 @@ async function initSystemConstants() {
             await auditLog('update_system_constants', 'system', {
                 turnstile_key: valTurnstile,
                 base_url: valBaseUrl,
-                council_email: valCouncilEmail
+                council_email: valCouncilEmail,
+                booking_prefix: valPrefix
             });
         } catch (err) {
             showToast(`Failed to save system constants: ${err.message}`, 'error');

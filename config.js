@@ -18,10 +18,10 @@ const CURRENT_INSTANCE = (typeof localStorage !== 'undefined' && localStorage.ge
 
 // Database Prefixes (Strictly enforces data separation)
 const INSTANCE_MAP = {
-    'DEV': 'ESF26-DEV-',
-    'FOOD': 'ESF26-FOOD-',
-    'GENERAL': 'ESF26-NONFOOD-', // 'General' maps to Non-Food data
-    'MISC': 'ESF26-MISC-'        // 'MISC' for non-bookable facilities (toilets, first aid, etc.)
+    get DEV() { return `${(typeof ESF_PUBLIC_CONFIG !== 'undefined' && ESF_PUBLIC_CONFIG.BOOKING_PREFIX) || "ESF26"}-DEV-`; },
+    get FOOD() { return `${(typeof ESF_PUBLIC_CONFIG !== 'undefined' && ESF_PUBLIC_CONFIG.BOOKING_PREFIX) || "ESF26"}-FOOD-`; },
+    get GENERAL() { return `${(typeof ESF_PUBLIC_CONFIG !== 'undefined' && ESF_PUBLIC_CONFIG.BOOKING_PREFIX) || "ESF26"}-NONFOOD-`; },
+    get MISC() { return `${(typeof ESF_PUBLIC_CONFIG !== 'undefined' && ESF_PUBLIC_CONFIG.BOOKING_PREFIX) || "ESF26"}-MISC-`; }
 };
 
 let HCC_COUNCIL_EMAIL = 'foodand.health&safety@hullcc.gov.uk'; // <--- NEW CONSTANT
@@ -73,7 +73,9 @@ function validateEmail(val) {
 
 function validateBookingId(id) {
     if (!id || typeof id !== 'string') throw new Error('Missing booking ID.');
-    if (!/^ESF26-(FOOD|NONFOOD|DEV|MISC)-\d{4}$/.test(id)) throw new Error('Invalid booking ID format.');
+    const prefix = (typeof ESF_PUBLIC_CONFIG !== 'undefined' && ESF_PUBLIC_CONFIG.BOOKING_PREFIX) || "ESF26";
+    const regex = new RegExp(`^${prefix}-(FOOD|NONFOOD|DEV|MISC)-\\d{4}$`);
+    if (!regex.test(id)) throw new Error('Invalid booking ID format.');
     return id;
 }
 

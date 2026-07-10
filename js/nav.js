@@ -35,6 +35,10 @@ export function initNavigation() {
         ← Back to Hub
     </a>`;
 
+    const prefix = window.ESF_PUBLIC_CONFIG?.BOOKING_PREFIX || "ESF26";
+    const yearMatch = prefix.match(/\d+$/);
+    const year = yearMatch ? `20${yearMatch[0]}` : "2026";
+
     const headerHTML = `
     <div class="bg-white text-gray-900 px-4 md:px-6 py-4 shadow-sm border-b border-gray-200">
         <div class="flex justify-between items-center">
@@ -44,7 +48,7 @@ export function initNavigation() {
                 <a href="index.html" class="flex items-center hover:opacity-80 transition">
                     <h1 class="text-base md:text-xl font-bold tracking-wide truncate">
                         Ella Street Festival 
-                        <span class="hidden sm:inline opacity-50 font-normal text-sm md:text-lg">| 2026 Admin</span>
+                        <span class="hidden sm:inline opacity-50 font-normal text-sm md:text-lg">| ${year} Admin</span>
                     </h1>
                 </a>
                 <span id="instanceBadge" class="text-xs font-bold px-2 py-1 rounded ml-2 border shrink-0 ${getBadgeStyle(current)}">${current}</span>
@@ -95,6 +99,11 @@ export function initNavigation() {
     `;
 
     container.innerHTML = headerHTML;
+
+    // Dynamically update document title to use current prefix
+    if (document.title.includes('ESF26')) {
+        document.title = document.title.replace('ESF26', prefix);
+    }
 
     // Attach Event Listeners
 

@@ -20,7 +20,8 @@ export const ESF_PUBLIC_CONFIG = {
     BANK_DETAILS: "Bank: Ella Street Residents Association | Sort: 30-99-50 | Acc: 51276368",
     BASE_URL: "https://stallbookingstailwinds.vercel.app",
     CANCEL_URL: "https://stallbookingstailwinds.vercel.app/cancel_booking.html",
-    PORTAL_URL: "https://www.ellastreet.co.uk/fest26/portal"
+    PORTAL_URL: "https://www.ellastreet.co.uk/fest26/portal",
+    BOOKING_PREFIX: "ESF26"
 };
 
 if (typeof window !== 'undefined') {
@@ -69,6 +70,8 @@ export async function loadPublicSettings() {
                     ESF_PUBLIC_CONFIG.PORTAL_URL = val;
                 } else if (item.key === 'bucket_name') {
                     ESF_PUBLIC_CONFIG.BUCKET_NAME = val;
+                } else if (item.key === 'booking_prefix') {
+                    ESF_PUBLIC_CONFIG.BOOKING_PREFIX = val;
                 }
             });
         }

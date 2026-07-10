@@ -17,7 +17,7 @@ const TBL_AUDIT_LOGS = 'audit_logs';
  */
 export async function fetchKanbanData(currentInstance) {
     const sb = getSupabaseClient();
-    const prefix = CONFIG.INSTANCE_MAP[currentInstance] || 'ESF26-DEV-';
+    const prefix = CONFIG.INSTANCE_MAP[currentInstance] || CONFIG.INSTANCE_MAP['DEV'];
 
     const { data, error } = await sb
         .from(TBL_BOOKINGS)
@@ -260,10 +260,10 @@ export async function fetchPayments(currentInstance) {
     // Only isolate to DEV if the user is explicitly in DEV mode
     let instanceFilter;
     if (currentInstance === 'DEV') {
-        instanceFilter = ['ESF26-DEV-'];
+        instanceFilter = [CONFIG.INSTANCE_MAP['DEV']];
     } else {
         // Show all production instances regardless of which one is selected
-        instanceFilter = ['ESF26-FOOD-', 'ESF26-NONFOOD-', 'ESF26-MISC-'];
+        instanceFilter = [CONFIG.INSTANCE_MAP['FOOD'], CONFIG.INSTANCE_MAP['GENERAL'], CONFIG.INSTANCE_MAP['MISC']];
     }
 
     const { data: bookings, error: bErr } = await sb
@@ -317,9 +317,7 @@ export async function updatePayment(payload) {
  */
 export async function fetchLocationData(currentInstance) {
     const sb = getSupabaseClient();
-    const currentPrefix = (currentInstance === 'FOOD') ? 'ESF26-FOOD-' :
-        (currentInstance === 'GENERAL') ? 'ESF26-NONFOOD-' :
-            (currentInstance === 'MISC') ? 'ESF26-MISC-' : 'ESF26-DEV-';
+    const currentPrefix = CONFIG.INSTANCE_MAP[currentInstance] || CONFIG.INSTANCE_MAP['DEV'];
 
     // 1. Fetch bookings to DISPLAY (Current Instance Only)
     const { data: bLocs, error: blErr } = await sb
@@ -331,10 +329,10 @@ export async function fetchLocationData(currentInstance) {
 
     // 2. Fetch GLOBAL Occupancy
     let occupancyFilter = [];
-    if (currentPrefix === 'ESF26-DEV-') {
-        occupancyFilter = ['ESF26-DEV-'];
+    if (currentPrefix === CONFIG.INSTANCE_MAP['DEV']) {
+        occupancyFilter = [CONFIG.INSTANCE_MAP['DEV']];
     } else {
-        occupancyFilter = ['ESF26-FOOD-', 'ESF26-NONFOOD-', 'ESF26-MISC-'];
+        occupancyFilter = [CONFIG.INSTANCE_MAP['FOOD'], CONFIG.INSTANCE_MAP['GENERAL'], CONFIG.INSTANCE_MAP['MISC']];
     }
 
     const { data: allOccupants, error: occErr } = await sb
@@ -442,9 +440,9 @@ export async function fetchMapData(currentInstance) {
         .eq('status', 'Confirmed');
 
     if (currentInstance === 'DEV') {
-        bQuery = bQuery.eq('instance_prefix', 'ESF26-DEV-');
+        bQuery = bQuery.eq('instance_prefix', CONFIG.INSTANCE_MAP['DEV']);
     } else {
-        bQuery = bQuery.in('instance_prefix', ['ESF26-FOOD-', 'ESF26-NONFOOD-', 'ESF26-MISC-']);
+        bQuery = bQuery.in('instance_prefix', [CONFIG.INSTANCE_MAP['FOOD'], CONFIG.INSTANCE_MAP['GENERAL'], CONFIG.INSTANCE_MAP['MISC']]);
     }
 
     const { data: bData, error: mapBErr } = await bQuery;
@@ -564,7 +562,7 @@ export async function emailAllConfirmedBookings(bookings, getEmailContent) {
  * @returns {Promise<string>}
  */
 export async function generateMiscEntryId(sb) {
-    const prefix = 'ESF26-MISC-';
+    const prefix = CONFIG.INSTANCE_MAP['MISC'];
 
     // Fetch the single highest ID matching the prefix
     const { data, error } = await sb
@@ -617,7 +615,7 @@ export async function insertMiscBooking(payload) {
 
     const { error } = await sb.from(TBL_BOOKINGS).insert({
         id: newId,
-        instance_prefix: 'ESF26-MISC-',
+        instance_prefix: CONFIG.INSTANCE_MAP['MISC'],
         status: 'Confirmed',
         date_confirmed: new Date().toISOString(),
         business_name: validateString(payload.business, MAX_FIELD_LENGTHS.business),

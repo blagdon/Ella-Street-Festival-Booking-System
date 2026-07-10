@@ -6,11 +6,14 @@ import { ESF_PUBLIC_CONFIG } from '../supabase-public.js';
 
 export const CONFIG = {
     // Database Prefixes (Strictly enforces data separation)
-    INSTANCE_MAP: {
-        'DEV': 'ESF26-DEV-',
-        'FOOD': 'ESF26-FOOD-',
-        'GENERAL': 'ESF26-NONFOOD-', // 'General' maps to Non-Food data
-        'MISC': 'ESF26-MISC-'        // 'MISC' for non-bookable facilities
+    get INSTANCE_MAP() {
+        const prefix = ESF_PUBLIC_CONFIG?.BOOKING_PREFIX || "ESF26";
+        return {
+            'DEV': `${prefix}-DEV-`,
+            'FOOD': `${prefix}-FOOD-`,
+            'GENERAL': `${prefix}-NONFOOD-`, // 'General' maps to Non-Food data
+            'MISC': `${prefix}-MISC-`        // 'MISC' for non-bookable facilities
+        };
     },
 
     HCC_COUNCIL_EMAIL: 'Foodand.Health&Safety@hullcc.gov.uk',

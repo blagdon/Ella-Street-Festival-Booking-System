@@ -182,10 +182,14 @@ export const ESF_EMAIL_TEMPLATES = {
 </tr>`;
         }).join('');
 
+        const prefix = ESF_PUBLIC_CONFIG.BOOKING_PREFIX || "ESF26";
+        const yearMatch = prefix.match(/\d+$/);
+        const year = yearMatch ? `20${yearMatch[0]}` : "2026";
+
         return {
-            subject: `ESF26 Food Safety Checks - Batch (${records.length}) [Ref: ${batchRef}]`,
+            subject: `${prefix} Food Safety Checks - Batch (${records.length}) [Ref: ${batchRef}]`,
             body: `<p>Dear Food Safety Team,</p>
-<p>Please verify the following trader applications for Ella Street Festival 2026:</p>
+<p>Please verify the following trader applications for Ella Street Festival ${year}:</p>
 <p><b>Batch Reference: ${batchRef}</b></p>
 <table style="width:100%; border-collapse: collapse; font-family: sans-serif; font-size: 14px; margin-top: 10px;">
 <thead>

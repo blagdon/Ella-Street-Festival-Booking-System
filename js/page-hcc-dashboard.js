@@ -424,7 +424,7 @@ async function sendBulkEmail() {
         const emailSubject = template.subject;
 
         const currentInstance = localStorage.getItem('ESF_INSTANCE') || 'DEV';
-        const prefix = CONFIG.INSTANCE_MAP[currentInstance] || 'ESF26-DEV-';
+        const prefix = CONFIG.INSTANCE_MAP[currentInstance] || CONFIG.INSTANCE_MAP['DEV'];
 
         const { data: { session } } = await sb.auth.getSession();
         const userEmail = session?.user?.email;

@@ -388,7 +388,7 @@ function showConfirmModalLocal(id) {
     document.getElementById('confirmBookingId').value = id;
     const costInput = document.getElementById('confirmCostInput');
     // Simplified cost logic
-    const prefix = booking.instance_prefix || 'ESF26-DEV-';
+    const prefix = booking.instance_prefix || CONFIG.INSTANCE_MAP['DEV'];
     let cost = 0;
 
     if (booking.stall_cost !== undefined && booking.stall_cost !== null) {

@@ -97,7 +97,7 @@ export async function getEmailFromTemplate(templateId, booking, id, extraVars = 
     if (booking.stall_cost !== undefined && booking.stall_cost !== null) {
         costStr = `£${parseFloat(booking.stall_cost).toFixed(2)}`;
     } else {
-        const prefix = booking.instance_prefix || 'ESF26-DEV-';
+        const prefix = booking.instance_prefix || CONFIG.INSTANCE_MAP['DEV'];
         costStr = `£${getStallCost(prefix).toFixed(2)}`;
     }
 

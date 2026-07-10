@@ -21,7 +21,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     document.head.appendChild(script);
 
     // --- CONFIGURATION ---
-    const PREFIX = "ESF26-FOOD-";
+    const PREFIX = (ESF_PUBLIC_CONFIG?.BOOKING_PREFIX || "ESF26") + "-FOOD-";
 
     // Check if bookings are open dynamically from Supabase
     async function checkBookingsOpen() {
