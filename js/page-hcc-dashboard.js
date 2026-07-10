@@ -7,12 +7,15 @@ import { auditLog, sendEmailDirect } from './api.js';
 
 const sb = getSupabaseClient();
 let currentData = [];
+let offset = 0;
+const limit = 25;
+let allRecordsLoaded = false;
 
 document.addEventListener('DOMContentLoaded', async () => {
     try {
         await requireAuth('admin');
         initNavigation();
-        loadData();
+        loadData(true);
     } catch (e) { return; }
 
     const statusFilter = document.getElementById('statusFilter');
@@ -29,56 +32,110 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (btnSaveAll) {
         btnSaveAll.addEventListener('click', saveAllChanges);
     }
+
+    const btnLoadMore = document.getElementById('btnLoadMore');
+    if (btnLoadMore) {
+        btnLoadMore.addEventListener('click', () => loadData(false));
+    }
 });
 
 // Load Data
-async function loadData() {
+async function loadData(reset = true) {
+    const loadingEl = document.getElementById('loading');
+    const btnLoadMore = document.getElementById('btnLoadMore');
+    const pagContainer = document.getElementById('pagination-container');
+
+    if (reset) {
+        offset = 0;
+        currentData = [];
+        allRecordsLoaded = false;
+        const tbody = document.getElementById('hccTableBody');
+        const mobileContainer = document.getElementById('mobile-cards');
+        if (tbody) tbody.innerHTML = '';
+        if (mobileContainer) mobileContainer.innerHTML = '';
+        if (loadingEl) {
+            loadingEl.innerHTML = 'Loading records...';
+            loadingEl.classList.remove('hidden');
+        }
+        if (pagContainer) pagContainer.classList.add('hidden');
+    } else {
+        if (btnLoadMore) {
+            btnLoadMore.disabled = true;
+            btnLoadMore.innerText = "Loading...";
+        }
+    }
+
     try {
-        console.log('Loading HCC data...');
+        console.log(`Loading HCC data: range [${offset}, ${offset + limit - 1}]`);
 
         // We use a JOIN to fetch email, phone, status, business_name, owner_name, and registered_business_name from the referenced 'bookings' table
         const { data, error } = await sb
             .from('hcc_checks')
             .select('*, bookings(business_name, owner_name, registered_business_name, email, phone, status)')
-            .order('submitted_at', { ascending: false });
+            .order('submitted_at', { ascending: false })
+            .range(offset, offset + limit - 1);
 
         if (error) {
             console.error('Supabase error:', error);
             const safeMsg = (typeof safeError === 'function') ? safeError(error) : error.message;
             showToast("Error loading data: " + safeMsg, 'error');
-            const loadingEl = document.getElementById('loading');
             if (loadingEl) loadingEl.innerHTML = '<div class="text-center py-10 text-red-500">Error: ' + escapeHtml(safeMsg) + '</div>';
             return;
         }
 
-        currentData = (data || []).map(r => ({
+        if (!data || data.length < limit) {
+            allRecordsLoaded = true;
+        }
+
+        const newRecords = (data || []).map(r => ({
             ...r,
             business_name: r.bookings?.business_name || 'Unknown',
             owner_name: r.bookings?.owner_name || 'Unknown',
             registered_business_name: r.bookings?.registered_business_name || ''
         }));
-        const dl = document.getElementById('loading');
-        if (dl) dl.classList.add('hidden');
 
-        renderTable(currentData);
+        currentData = [...currentData, ...newRecords];
+        offset += newRecords.length;
+
+        if (loadingEl) loadingEl.classList.add('hidden');
+
+        renderTable(newRecords, !reset);
+
+        if (pagContainer) {
+            if (allRecordsLoaded || newRecords.length === 0) {
+                pagContainer.classList.add('hidden');
+            } else {
+                pagContainer.classList.remove('hidden');
+            }
+        }
+
+        // Apply selected status filter if any
+        filterByStatus();
+
     } catch (err) {
         console.error('Exception in loadData:', err);
         const safeMsg = (typeof safeError === 'function') ? safeError(err) : err.message;
         showToast("Exception loading data: " + safeMsg, 'error');
-        const loadingEl = document.getElementById('loading');
         if (loadingEl) loadingEl.innerHTML = '<div class="text-center py-10 text-red-500">Error: ' + escapeHtml(safeMsg) + '</div>';
+    } finally {
+        if (btnLoadMore) {
+            btnLoadMore.disabled = false;
+            btnLoadMore.innerText = "Load More Records";
+        }
     }
 }
 
-function renderTable(records) {
+function renderTable(records, append = false) {
     const tbody = document.getElementById('hccTableBody');
     const mobileContainer = document.getElementById('mobile-cards');
     if (!tbody || !mobileContainer) return;
 
-    tbody.innerHTML = '';
-    mobileContainer.innerHTML = '';
+    if (!append) {
+        tbody.innerHTML = '';
+        mobileContainer.innerHTML = '';
+    }
 
-    if (records.length === 0) {
+    if (records.length === 0 && !append) {
         tbody.innerHTML = '<tr><td colspan="8" class="px-6 py-4 text-center text-gray-500">No records in HCC Checks yet.</td></tr>';
         mobileContainer.innerHTML = '<div class="text-center py-10 text-gray-500">No records in HCC Checks yet.</div>';
         return;

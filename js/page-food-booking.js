@@ -1,9 +1,11 @@
-import { getPublicSupabaseClient, loadPublicSettings, ESF_PUBLIC_CONFIG } from '../supabase-public.js';
+import { getPublicSupabaseClient, loadPublicSettings, initPublicSettingsSync, ESF_PUBLIC_CONFIG } from '../supabase-public.js';
 
 // Wait for DOM to load
 document.addEventListener('DOMContentLoaded', async function () {
     const sb = getPublicSupabaseClient();
-    await loadPublicSettings();
+
+    // Load public settings synchronously from cache if available
+    initPublicSettingsSync();
 
     // Bind Turnstile Key from database dynamically
     const siteKey = window.ESF_PUBLIC_CONFIG?.TURNSTILE_SITE_KEY;
@@ -19,6 +21,9 @@ document.addEventListener('DOMContentLoaded', async function () {
     script.async = true;
     script.defer = true;
     document.head.appendChild(script);
+
+    // Refresh settings asynchronously in background
+    await loadPublicSettings();
 
     // --- CONFIGURATION ---
     const PREFIX = (ESF_PUBLIC_CONFIG?.BOOKING_PREFIX || "ESF26") + "-FOOD-";

@@ -99,6 +99,19 @@ export async function loadPublicSettings() {
     }
 }
 
+export function initPublicSettingsSync() {
+    if (typeof sessionStorage !== 'undefined') {
+        const cached = sessionStorage.getItem('ESF_SETTINGS_CACHE');
+        if (cached) {
+            try {
+                const data = JSON.parse(cached);
+                applyPublicSettings(data);
+            } catch (e) {}
+        }
+    }
+}
+
 if (typeof window !== 'undefined') {
     window.loadPublicSettings = loadPublicSettings;
+    window.initPublicSettingsSync = initPublicSettingsSync;
 }
