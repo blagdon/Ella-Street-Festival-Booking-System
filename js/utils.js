@@ -1,7 +1,4 @@
-/**
- * utils.js
- * Shared utility functions for formatting, validation, and error handling.
- */
+import { ESF_PUBLIC_CONFIG } from '../supabase-public.js';
 
 // ===================================================================
 // === SECURITY: HTML Escaping Utilities ===
@@ -52,7 +49,9 @@ export function validateEmail(val) {
 
 export function validateBookingId(id) {
     if (!id || typeof id !== 'string') throw new Error('Missing booking ID.');
-    if (!/^ESF26-(FOOD|NONFOOD|DEV|MISC)-\d{4}$/.test(id)) throw new Error('Invalid booking ID format.');
+    const prefix = (typeof ESF_PUBLIC_CONFIG !== 'undefined' && ESF_PUBLIC_CONFIG.BOOKING_PREFIX) || "ESF26";
+    const regex = new RegExp(`^${prefix}-(FOOD|NONFOOD|DEV|MISC)-\\d{4}$`);
+    if (!regex.test(id)) throw new Error('Invalid booking ID format.');
     return id;
 }
 
