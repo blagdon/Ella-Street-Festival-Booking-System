@@ -423,41 +423,84 @@ export function populateDetailPane(item) {
                     try {
                         const postcode = extractPostcode(bizAddr);
                         let establishments = [];
+                        let isMobileCaterer = true;
 
-                        // Tier 1: Search trading name + postcode
+                        // --- STAGE 1: Search as Mobile Caterer (businessTypeId = 7846) ---
+                        // Tier 1: Trading name + postcode (Mobile)
                         if (postcode) {
-                            if (fsaStatus) fsaStatus.innerText = `Searching for "${bizName}" in postcode ${postcode}...`;
-                            establishments = await fetchFsaEstablishments(bizName, postcode);
+                            if (fsaStatus) fsaStatus.innerText = `Searching for "${bizName}" (Mobile Caterer) in ${postcode}...`;
+                            establishments = await fetchFsaEstablishments(bizName, postcode, 7846);
                         }
 
-                        // Tier 2: Search registered name + postcode
+                        // Tier 2: Registered name + postcode (Mobile)
                         if ((!establishments || establishments.length === 0) && postcode && regName && regName !== '--' && regName.trim() !== '') {
-                            if (fsaStatus) fsaStatus.innerText = `Searching for "${regName}" in postcode ${postcode}...`;
-                            establishments = await fetchFsaEstablishments(regName, postcode);
+                            if (fsaStatus) fsaStatus.innerText = `Searching for "${regName}" (Mobile Caterer) in ${postcode}...`;
+                            establishments = await fetchFsaEstablishments(regName, postcode, 7846);
                         }
 
-                        // Tier 3: Search trading name + address
+                        // Tier 3: Trading name + full address (Mobile)
                         if (!establishments || establishments.length === 0) {
-                            if (fsaStatus) fsaStatus.innerText = `Searching for "${bizName}" with address...`;
-                            establishments = await fetchFsaEstablishments(bizName, bizAddr);
+                            if (fsaStatus) fsaStatus.innerText = `Searching for "${bizName}" (Mobile Caterer) with address...`;
+                            establishments = await fetchFsaEstablishments(bizName, bizAddr, 7846);
                         }
 
-                        // Tier 4: Search registered name + address
+                        // Tier 4: Registered name + full address (Mobile)
                         if ((!establishments || establishments.length === 0) && regName && regName !== '--' && regName.trim() !== '') {
-                            if (fsaStatus) fsaStatus.innerText = `Searching for "${regName}" with address...`;
-                            establishments = await fetchFsaEstablishments(regName, bizAddr);
+                            if (fsaStatus) fsaStatus.innerText = `Searching for "${regName}" (Mobile Caterer) with address...`;
+                            establishments = await fetchFsaEstablishments(regName, bizAddr, 7846);
                         }
 
-                        // Tier 5: Search trading name alone
+                        // Tier 5: Trading name alone (Mobile)
                         if (!establishments || establishments.length === 0) {
-                            if (fsaStatus) fsaStatus.innerText = `No address matches. Searching for "${bizName}"...`;
-                            establishments = await fetchFsaEstablishments(bizName);
+                            if (fsaStatus) fsaStatus.innerText = `Searching for "${bizName}" (Mobile Caterer) alone...`;
+                            establishments = await fetchFsaEstablishments(bizName, null, 7846);
                         }
 
-                        // Tier 6: Search registered name alone
+                        // Tier 6: Registered name alone (Mobile)
                         if ((!establishments || establishments.length === 0) && regName && regName !== '--' && regName.trim() !== '') {
-                            if (fsaStatus) fsaStatus.innerText = `No address matches. Searching for "${regName}"...`;
-                            establishments = await fetchFsaEstablishments(regName);
+                            if (fsaStatus) fsaStatus.innerText = `Searching for "${regName}" (Mobile Caterer) alone...`;
+                            establishments = await fetchFsaEstablishments(regName, null, 7846);
+                        }
+
+                        // --- STAGE 2: Fallback to all business types if no mobile records found ---
+                        if (!establishments || establishments.length === 0) {
+                            isMobileCaterer = false;
+
+                            // Tier 1: Trading name + postcode (All)
+                            if (postcode) {
+                                if (fsaStatus) fsaStatus.innerText = `No mobile record. Searching all types for "${bizName}" in ${postcode}...`;
+                                establishments = await fetchFsaEstablishments(bizName, postcode);
+                            }
+
+                            // Tier 2: Registered name + postcode (All)
+                            if ((!establishments || establishments.length === 0) && postcode && regName && regName !== '--' && regName.trim() !== '') {
+                                if (fsaStatus) fsaStatus.innerText = `No mobile record. Searching all types for "${regName}" in ${postcode}...`;
+                                establishments = await fetchFsaEstablishments(regName, postcode);
+                            }
+
+                            // Tier 3: Trading name + full address (All)
+                            if (!establishments || establishments.length === 0) {
+                                if (fsaStatus) fsaStatus.innerText = `No mobile record. Searching all types for "${bizName}" with address...`;
+                                establishments = await fetchFsaEstablishments(bizName, bizAddr);
+                            }
+
+                            // Tier 4: Registered name + full address (All)
+                            if ((!establishments || establishments.length === 0) && regName && regName !== '--' && regName.trim() !== '') {
+                                if (fsaStatus) fsaStatus.innerText = `No mobile record. Searching all types for "${regName}" with address...`;
+                                establishments = await fetchFsaEstablishments(regName, bizAddr);
+                            }
+
+                            // Tier 5: Trading name alone (All)
+                            if (!establishments || establishments.length === 0) {
+                                if (fsaStatus) fsaStatus.innerText = `No mobile record. Searching all types for "${bizName}" alone...`;
+                                establishments = await fetchFsaEstablishments(bizName);
+                            }
+
+                            // Tier 6: Registered name alone (All)
+                            if ((!establishments || establishments.length === 0) && regName && regName !== '--' && regName.trim() !== '') {
+                                if (fsaStatus) fsaStatus.innerText = `No mobile record. Searching all types for "${regName}" alone...`;
+                                establishments = await fetchFsaEstablishments(regName);
+                            }
                         }
 
                         if (fsaStatus) fsaStatus.classList.add('hidden');
@@ -465,7 +508,20 @@ export function populateDetailPane(item) {
                         if (fsaResults) {
                             fsaResults.innerHTML = '';
                             if (establishments && establishments.length > 0) {
-                                const resultsHtml = establishments.map(est => {
+                                let resultsHtml = '';
+                                if (!isMobileCaterer) {
+                                    resultsHtml += `
+                                        <div class="p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-[11px] text-amber-800 flex items-start gap-1.5 mb-2">
+                                            <svg class="h-4 w-4 text-amber-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                                            </svg>
+                                            <div>
+                                                <span class="font-bold">No mobile caterer record found.</span> Showing matching records from other business types.
+                                            </div>
+                                        </div>
+                                    `;
+                                }
+                                resultsHtml += establishments.map(est => {
                                     const address = [est.AddressLine1, est.AddressLine2, est.AddressLine3, est.PostCode].filter(Boolean).join(', ');
                                     const ratingDate = est.RatingDate ? new Date(est.RatingDate).toLocaleDateString('en-GB') : 'Unknown';
                                     
@@ -484,6 +540,7 @@ export function populateDetailPane(item) {
                                                 <span class="px-2 py-0.5 rounded text-[10px] ${ratingColor}">${ratingVal || 'N/A'}</span>
                                             </div>
                                             <div class="text-gray-500">${escapeHtml(address)}</div>
+                                            <div class="text-gray-400 text-[10px] italic">Type: ${escapeHtml(est.BusinessType || 'Unknown')}</div>
                                             <div class="flex justify-between items-center text-[10px] text-gray-400 pt-1 border-t border-gray-100">
                                                 <span>Authority: ${escapeHtml(est.LocalAuthorityName)}</span>
                                                 <span>Date: ${escapeHtml(ratingDate)}</span>
@@ -537,12 +594,15 @@ export function extractPostcode(address) {
     return null;
 }
 
-async function fetchFsaEstablishments(name, address = null) {
+async function fetchFsaEstablishments(name, address = null, businessTypeId = null) {
     if (!name || name.trim() === '') return [];
     try {
         let url = `https://api.ratings.food.gov.uk/Establishments?name=${encodeURIComponent(name.trim())}&pageSize=5`;
         if (address && address.trim() !== '' && address !== 'N/A') {
             url += `&address=${encodeURIComponent(address.trim())}`;
+        }
+        if (businessTypeId) {
+            url += `&businessTypeId=${businessTypeId}`;
         }
         const res = await fetch(url, {
             headers: {
