@@ -120,13 +120,13 @@ document.addEventListener('DOMContentLoaded', async function () {
 
                 const formData = new FormData(form);
 
-                // 1. Get ID
-                const newBookingId = await generateNextId();
+                // 1. Generate Temp UUID
+                const tempUuid = (self.crypto && self.crypto.randomUUID) ? self.crypto.randomUUID() : Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
 
                 // 2. Upload Files (Optional, up to 5 files)
                 const BUCKET_NAME = window.ESF_PUBLIC_CONFIG ? window.ESF_PUBLIC_CONFIG.BUCKET_NAME : 'esf-documents';
                 const fileInput = document.getElementById('fileUpload');
-                let uploadedUrls = [];
+                let fileNames = [];
 
                 if (fileInput.files.length > 0) {
                     // Validate file count
@@ -156,15 +156,15 @@ document.addEventListener('DOMContentLoaded', async function () {
                         // Create unique filename with timestamp to avoid conflicts
                         const timestamp = Date.now();
                         const safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
-                        const filePath = `${newBookingId}/${timestamp}_${safeName}`;
+                        const fileName = `${timestamp}_${safeName}`;
+                        const filePath = `temp/${tempUuid}/${fileName}`;
 
                         btn.innerText = `Uploading File ${i + 1} of ${fileInput.files.length}...`;
 
                         const { error: upErr } = await sb.storage.from(BUCKET_NAME).upload(filePath, file, { upsert: false });
                         if (upErr) throw new Error(`Upload failed for "${file.name}": ${upErr.message}`);
 
-                        const { data } = sb.storage.from(BUCKET_NAME).getPublicUrl(filePath);
-                        uploadedUrls.push(data.publicUrl);
+                        fileNames.push(fileName);
                     }
                 }
 
@@ -189,7 +189,6 @@ document.addEventListener('DOMContentLoaded', async function () {
                 if (formData.get('data_protection_check')) checklistArr.push("Agreed to Data Protection Notice");
 
                 const sbData = {
-                    id: newBookingId,
                     instance_prefix: PREFIX,
                     status: 'Pending',
                     stall_type: 'Non-Food',
@@ -214,7 +213,6 @@ document.addEventListener('DOMContentLoaded', async function () {
 
                     // Documents - store as JSON array for PostgreSQL
                     docs_checklist: checklistArr.join(', '),
-                    documents: uploadedUrls.length > 0 ? uploadedUrls : null,
                 };
 
                 // 4. Call Secure Edge Function
@@ -223,7 +221,9 @@ document.addEventListener('DOMContentLoaded', async function () {
                 const { data, error } = await sb.functions.invoke('submit-booking', {
                     body: {
                         token: captchaToken.value, // Pass the Turnstile token to the backend
-                        bookingData: sbData        // Pass the booking object
+                        bookingData: sbData,       // Pass the booking object
+                        tempUuid: tempUuid,
+                        fileNames: fileNames
                     }
                 });
 
@@ -233,6 +233,9 @@ document.addEventListener('DOMContentLoaded', async function () {
                 if (data && data.error) {
                     throw new Error(data.error); // Catch Cloudflare rejection messages
                 }
+
+                const returnedBooking = data?.data?.[0] || data?.[0];
+                const finalBookingId = returnedBooking ? returnedBooking.id : "TBA";
 
                 // 5. Success - SWITCH VIEW
                 const boolYesNo = (val) => val ? '<span class="text-green-600 font-bold">Yes</span>' : 'No';
@@ -255,7 +258,7 @@ document.addEventListener('DOMContentLoaded', async function () {
               ${sbData.other_requirements ? `<div class="sm:col-span-2"><dt class="text-sm font-medium text-gray-500">Other Notes</dt><dd class="mt-1 text-sm text-gray-900">${escapeHtml(sbData.other_requirements)}</dd></div>` : ''}
           `;
 
-                document.getElementById('success-ref').innerText = newBookingId;
+                document.getElementById('success-ref').innerText = finalBookingId;
                 document.getElementById('success-details').innerHTML = detailsHtml;
 
                 document.getElementById('form-section').classList.add('hidden');

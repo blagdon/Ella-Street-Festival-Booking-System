@@ -84,13 +84,13 @@ document.addEventListener('DOMContentLoaded', function () {
 
                 const formData = new FormData(form);
 
-                // 1. Get ID
-                const newBookingId = await generateNextId();
+                // 1. Generate Temp UUID
+                const tempUuid = (self.crypto && self.crypto.randomUUID) ? self.crypto.randomUUID() : Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
 
                 // 2. Upload Files (up to 5 files, at least 1 required)
                 const BUCKET_NAME = window.ESF_PUBLIC_CONFIG ? window.ESF_PUBLIC_CONFIG.BUCKET_NAME : 'esf-documents';
                 const fileInput = document.getElementById('fileUpload');
-                let uploadedUrls = [];
+                let fileNames = [];
 
                 if (fileInput.files.length > 0) {
                     // Validate file count
@@ -117,15 +117,15 @@ document.addEventListener('DOMContentLoaded', function () {
                         // Create unique filename with timestamp to avoid conflicts
                         const timestamp = Date.now();
                         const safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
-                        const filePath = `${newBookingId}/${timestamp}_${safeName}`;
+                        const fileName = `${timestamp}_${safeName}`;
+                        const filePath = `temp/${tempUuid}/${fileName}`;
 
                         btn.innerText = `Uploading File ${i + 1} of ${fileInput.files.length}...`;
 
                         const { error: upErr } = await sb.storage.from(BUCKET_NAME).upload(filePath, file, { upsert: false });
                         if (upErr) throw new Error(`Upload failed for "${file.name}": ${upErr.message}`);
 
-                        const { data } = sb.storage.from(BUCKET_NAME).getPublicUrl(filePath);
-                        uploadedUrls.push(data.publicUrl);
+                        fileNames.push(fileName);
                     }
                 } else {
                     // Fallback if HTML required attribute failed
@@ -152,7 +152,6 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (formData.get('hygiene_check')) checklistArr.push("Agreed to Hull City Council Hygiene Regs");
 
                 const sbData = {
-                    id: newBookingId,
                     instance_prefix: PREFIX,
                     status: 'Pending',
                     stall_type: 'Food',
@@ -178,10 +177,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
                     // Docs
                     docs_checklist: checklistArr.join(', '),
-                    documents: uploadedUrls.length > 0 ? uploadedUrls : null,
-
-                    // Other
-                    other_requirements: formData.get('other_requirements')
                 };
 
                 // 4. Call Secure Edge Function
@@ -190,7 +185,9 @@ document.addEventListener('DOMContentLoaded', function () {
                 const { data, error } = await sb.functions.invoke('submit-booking', {
                     body: {
                         token: captchaToken.value, // Pass the Turnstile token to the backend
-                        bookingData: sbData        // Pass the booking object
+                        bookingData: sbData,       // Pass the booking object
+                        tempUuid: tempUuid,
+                        fileNames: fileNames
                     }
                 });
 
@@ -201,6 +198,8 @@ document.addEventListener('DOMContentLoaded', function () {
                     throw new Error(data.error); // Catch Cloudflare rejection messages
                 }
 
+                const returnedBooking = data?.data?.[0] || data?.[0];
+                const finalBookingId = returnedBooking ? returnedBooking.id : "TBA";
 
                 // 6. Success - HIDE FORM, SHOW SUMMARY
 
@@ -223,10 +222,10 @@ document.addEventListener('DOMContentLoaded', function () {
               
               ${sbData.other_requirements ? `<div class="sm:col-span-2"><dt class="text-sm font-medium text-gray-500">Other Requirements</dt><dd class="mt-1 text-sm text-gray-900">${sbData.other_requirements}</dd></div>` : ''}
               
-              <div class="sm:col-span-2"><dt class="text-sm font-medium text-gray-500">Files</dt><dd class="mt-1 text-sm text-gray-900">${sbData.documents ? 'Insurance Certification Uploaded' : 'None'}</dd></div>
+              <div class="sm:col-span-2"><dt class="text-sm font-medium text-gray-500">Files</dt><dd class="mt-1 text-sm text-gray-900">${(returnedBooking && returnedBooking.documents) ? 'Insurance Certification Uploaded' : 'None'}</dd></div>
           `;
 
-                document.getElementById('success-ref').innerText = newBookingId;
+                document.getElementById('success-ref').innerText = finalBookingId;
                 document.getElementById('success-details').innerHTML = detailsHtml;
 
                 document.getElementById('form-section').classList.add('hidden');
