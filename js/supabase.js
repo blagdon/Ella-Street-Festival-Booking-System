@@ -3,6 +3,7 @@
  * Wrapper for Supabase client initialization and authentication.
  */
 import { CONFIG, loadStallCosts } from './config.js';
+import { showToast } from './ui.js';
 
 let _activeSbClient = null;
 
@@ -62,9 +63,14 @@ export async function requireAuth(requiredRole = 'admin') {
         throw new Error('Unauthorized');
 
     } catch (e) {
-        if (e.message !== 'Not authenticated' && e.message !== 'Unauthorized') {
+        if (e.message === 'Not authenticated' || e.message === 'Unauthorized') {
             const loginPage = (requiredRole === 'steward') ? 'steward_login.html' : 'login.html';
             window.location.href = loginPage;
+        } else {
+            console.warn("Database connection issue during authentication check:", e);
+            if (typeof showToast === 'function') {
+                showToast("Database connection issue. Retrying...", "error");
+            }
         }
         throw e;
     }
