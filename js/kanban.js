@@ -447,11 +447,6 @@ function showConfirmModalLocal(id) {
     const booking = allBookings.find(b => b.id === id);
     if (!booking) return;
 
-    // Logic repeated from shared.js for UI parts, or just implement it here since shared.js only does the business logic?
-    // Actually, shared.js showConfirmModal sets up the modal UI. 
-    // Wait, my js/shared.js didn't implement showConfirmModal UI logic, only sharedUpdateStatus and populateDetailPane.
-    // So I need to implement showConfirmModal UI logic here.
-
     const businessNameEl = document.getElementById('confirmBusinessName');
     if (businessNameEl) {
         businessNameEl.innerText = booking.business_name || booking.business || 'Unknown Business';
