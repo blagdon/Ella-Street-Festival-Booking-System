@@ -91,6 +91,21 @@ Deno.serve(async (req) => {
         throw new Error('Zoho token response did not contain an access token.')
       }
 
+      // Calculate expiration and cache back to Supabase settings
+      const expiresInSec = tokenData.expires_in || 3600
+      const expiresAt = new Date(Date.now() + expiresInSec * 1000).toISOString()
+      const nowStr = new Date().toISOString()
+
+      const { error: saveError } = await supabaseClient
+        .from('settings')
+        .upsert([
+          { key: 'zoho_access_token', value: accessToken, updated_at: nowStr, updated_by: 'system_edge_function' },
+          { key: 'zoho_access_token_expires_at', value: expiresAt, updated_at: nowStr, updated_by: 'system_edge_function' }
+        ])
+      if (saveError) {
+        console.warn('Failed to cache Zoho access token in database during get_accounts:', saveError.message)
+      }
+
       const accountsUrl = `${apiDomain || 'https://mail.zoho.eu'}/api/accounts`
       const accountsResponse = await fetch(accountsUrl, {
         method: 'GET',
