@@ -1,4 +1,5 @@
 import { ESF_PUBLIC_CONFIG } from './supabase-public.js';
+import { escapeHtml } from './js/utils.js';
 
 const EmailConfig = {
     BANK_DETAILS: ESF_PUBLIC_CONFIG.BANK_DETAILS,
@@ -10,7 +11,7 @@ export const ESF_EMAIL_TEMPLATES = {
 
     // --- HELPER: Escape for safe HTML email content ---
     _esc: function (val) {
-        return typeof escapeHtml === 'function' ? escapeHtml(val) : (val || '');
+        return escapeHtml(val);
     },
 
     // --- HELPER: Generate Cancel Link ---
@@ -125,7 +126,7 @@ export const ESF_EMAIL_TEMPLATES = {
             subject: `Cancellation Confirmed (ID: ${b.id})`,
             body: `
                 Dear ${this._esc(b.owner_name || b.owner)},<br><br>
-                Your booking ${b.id} has been cancelled as requested.<br><br>
+                Your booking ${this._esc(b.id)} has been cancelled as requested.<br><br>
                 Regards,<br>
                 The Fest Stalls Team
             `
@@ -231,6 +232,7 @@ export const ESF_EMAIL_TEMPLATES = {
                 Kind regards,<br>
                 The Fest Stalls Team
             `
+        };
     }
 };
 

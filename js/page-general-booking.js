@@ -1,4 +1,5 @@
 import { getPublicSupabaseClient, loadPublicSettings, initPublicSettingsSync } from '../supabase-public.js';
+import { escapeHtml } from './utils.js';
 
 // Wait for DOM to load
 document.addEventListener('DOMContentLoaded', async function () {
@@ -237,21 +238,21 @@ document.addEventListener('DOMContentLoaded', async function () {
                 const boolYesNo = (val) => val ? '<span class="text-green-600 font-bold">Yes</span>' : 'No';
 
                 const detailsHtml = `
-              <div class="sm:col-span-1"><dt class="text-sm font-medium text-gray-500">Trading Name</dt><dd class="mt-1 text-sm text-gray-900">${sbData.business_name}</dd></div>
-              <div class="sm:col-span-1"><dt class="text-sm font-medium text-gray-500">Owner</dt><dd class="mt-1 text-sm text-gray-900">${sbData.owner_name}</dd></div>
+              <div class="sm:col-span-1"><dt class="text-sm font-medium text-gray-500">Trading Name</dt><dd class="mt-1 text-sm text-gray-900">${escapeHtml(sbData.business_name)}</dd></div>
+              <div class="sm:col-span-1"><dt class="text-sm font-medium text-gray-500">Owner</dt><dd class="mt-1 text-sm text-gray-900">${escapeHtml(sbData.owner_name)}</dd></div>
               
-              <div class="sm:col-span-1"><dt class="text-sm font-medium text-gray-500">Email</dt><dd class="mt-1 text-sm text-gray-900">${sbData.email}</dd></div>
-              <div class="sm:col-span-1"><dt class="text-sm font-medium text-gray-500">Phone</dt><dd class="mt-1 text-sm text-gray-900">${sbData.phone}</dd></div>
+              <div class="sm:col-span-1"><dt class="text-sm font-medium text-gray-500">Email</dt><dd class="mt-1 text-sm text-gray-900">${escapeHtml(sbData.email)}</dd></div>
+              <div class="sm:col-span-1"><dt class="text-sm font-medium text-gray-500">Phone</dt><dd class="mt-1 text-sm text-gray-900">${escapeHtml(sbData.phone)}</dd></div>
               
-              <div class="sm:col-span-1"><dt class="text-sm font-medium text-gray-500">Category</dt><dd class="mt-1 text-sm text-gray-900">${sbData.category}</dd></div>
-              <div class="sm:col-span-1"><dt class="text-sm font-medium text-gray-500">Charity Status</dt><dd class="mt-1 text-sm text-gray-900">${sbData.is_charity}</dd></div>
+              <div class="sm:col-span-1"><dt class="text-sm font-medium text-gray-500">Category</dt><dd class="mt-1 text-sm text-gray-900">${escapeHtml(sbData.category)}</dd></div>
+              <div class="sm:col-span-1"><dt class="text-sm font-medium text-gray-500">Charity Status</dt><dd class="mt-1 text-sm text-gray-900">${escapeHtml(sbData.is_charity)}</dd></div>
 
               <div class="sm:col-span-1"><dt class="text-sm font-medium text-gray-500">Resident</dt><dd class="mt-1 text-sm text-gray-900">${boolYesNo(sbData.is_resident)}</dd></div>
               <div class="sm:col-span-1"></div>
 
-              <div class="sm:col-span-2"><dt class="text-sm font-medium text-gray-500">Description</dt><dd class="mt-1 text-sm text-gray-900">${sbData.description}</dd></div>
+              <div class="sm:col-span-2"><dt class="text-sm font-medium text-gray-500">Description</dt><dd class="mt-1 text-sm text-gray-900">${escapeHtml(sbData.description)}</dd></div>
               
-              ${sbData.other_requirements ? `<div class="sm:col-span-2"><dt class="text-sm font-medium text-gray-500">Other Notes</dt><dd class="mt-1 text-sm text-gray-900">${sbData.other_requirements}</dd></div>` : ''}
+              ${sbData.other_requirements ? `<div class="sm:col-span-2"><dt class="text-sm font-medium text-gray-500">Other Notes</dt><dd class="mt-1 text-sm text-gray-900">${escapeHtml(sbData.other_requirements)}</dd></div>` : ''}
           `;
 
                 document.getElementById('success-ref').innerText = newBookingId;
