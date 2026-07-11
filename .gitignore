@@ -5,3 +5,4 @@ node_modules/
 backups/
 .env*
 *.local
+syntax_errors_report.json

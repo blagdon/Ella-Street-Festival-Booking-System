@@ -369,8 +369,8 @@ A: Yes — open the booking and click the correct status button, or drag it back
 
 ---
 
-**Q: The email queue shows emails still "Pending" after 10 minutes. What's wrong?**  
-A: The Google Apps Script trigger may have stopped. A developer needs to log into the Google Apps Script project and check that the `processEmailQueue` time-driven trigger is still active and running every minute.
+**Q: An email failed to send, or the Email Admin shows an error. What do I do?**  
+A: Go to the **Email Admin** page to view the logs in the email queue. If an email has an `Error` status, click on it to check the error message. Common issues include invalid trader email addresses, or expired Zoho credentials. If the Zoho credentials have expired, go to **Settings** and click **Auto-Fetch** (or re-authenticate) to refresh the OAuth connection.
 
 ---
 
