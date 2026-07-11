@@ -19,8 +19,8 @@ export const CONFIG = {
     HCC_COUNCIL_EMAIL: 'Foodand.Health&Safety@hullcc.gov.uk',
 
     // Deployment URLs
-    // ⚠️  If the Vercel deployment URL changes, update it in supabase-public.js (or the settings table) AND in /email_templates.js (EmailConfig.CANCEL_URL)
-    //     email_templates.js cannot use ES module imports so the URL is duplicated there.
+    // ⚠️  Single source of truth is supabase-public.js (or the settings table).
+    //     If the Vercel deployment URL changes, update it there.
     URLS: {
         BASE: ESF_PUBLIC_CONFIG.BASE_URL,
         CANCEL_URL: ESF_PUBLIC_CONFIG.CANCEL_URL,

@@ -458,7 +458,6 @@ Update `CONFIG.UI.STALL_COST` in `js/config.js`. Prices are picked up automatica
 ### Changing the Vercel URL
 1. Update the `base_url` and `cancel_url` values in the database `settings` table.
 2. Update `BASE_URL` and `CANCEL_URL` in `supabase-public.js` (which serves as the local configuration and emergency fallback).
-3. Also update the legacy fallback URL in `email_templates.js` (search for `stallbookingstailwinds.vercel.app`).
 
 ### Adding a new booking status
 1. Add the new status string to `CONFIG.UI.STATUS_LIST` in `config.js`
