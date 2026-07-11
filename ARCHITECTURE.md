@@ -118,9 +118,8 @@ Fills in booking form           ──►  Booking appears in Kanban board
 │   ├── page-*.js               ← Entry-point scripts (one per HTML page)
 │   └── ...
 │
-└── GAS/                        ← Google Apps Script (email sending)
-    ├── Main.gs                 ← Entry points (doGet, doPost, triggers)
-    └── email-service.gs        ← Email queue processor + template engine
+└── GAS/                        ← Google Apps Script (keep-alive)
+    └── Main.gs                 ← Keep-alive database pinger (pingDatabase)
 ```
 
 ---
@@ -338,21 +337,19 @@ Row per user granting admin or steward access.
 
 ## 9. Email System
 
-Emails are **never sent directly from the browser**. Instead, the system uses a **queued, asynchronous pipeline**:
+Emails are sent using a **secure serverside Edge Function**:
 
 ```
 Admin action (e.g. Confirm booking)
         │
         ▼
 api.js → sendEmail()
-Inserts row into email_queue (status: Pending)
         │
-        ▼  (every ~1 minute)
-Google Apps Script (GAS/email-service.gs)
-→ processEmailQueue() polls for Pending rows
-  matching the active instance_prefix
-→ Sends via Gmail MailApp
-→ Updates status to Sent (or Error)
+        ▼
+Supabase Edge Function (send-email)
+→ Requests Zoho Mail API token
+→ Sends email via Zoho API
+→ Logs transaction to email_queue table (status: Sent/Error)
 ```
 
 ### Email templates
@@ -370,9 +367,7 @@ Templates live in the `email_templates` Supabase table. The function `shared.js 
 | Manual payment reminder | `payment_reminder` |
 
 ### Google Apps Script setup
-The GAS project lives in the `GAS/` folder but must be deployed separately in Google Apps Script. It requires:
-- A time-driven trigger calling `processEmailQueue()` every minute
-- A separate GAS `Supabase` helper library (or equivalent REST calls) to read/write the `email_queue` table
+The GAS folder contains a keep-alive script (`GAS/Main.gs`) with the `pingDatabase` function. It is designed to be set up on a daily time-driven trigger in Google Apps Script to keep the free-tier Supabase database from pausing due to inactivity.
 
 ---
 
