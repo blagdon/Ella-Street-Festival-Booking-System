@@ -97,13 +97,22 @@ function createCard(item) {
     <div class="flex justify-between items-start mb-1">
         <span class="text-[10px] font-mono text-gray-400 uppercase tracking-widest">${escapeHtml(item.id)}</span>
         <div class="opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
-            <button onclick="window.openEmailModal('${item.id}')" class="text-gray-400 hover:text-blue-500 p-1" title="Email"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg></button>
+            <button class="btn-card-email text-gray-400 hover:text-blue-500 p-1" title="Email"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg></button>
         </div>
     </div>
     <h4 class="font-bold text-gray-800 text-sm leading-tight mb-1">${escapeHtml(item.business_name || item.business)} ${powerIcon}</h4>
     <div class="text-xs text-gray-500 truncate">${escapeHtml(item.category || 'Uncategorized')}</div>
     ${item.stall_type ? `<div class="mt-2 text-[10px] bg-gray-100 inline-block px-2 py-0.5 rounded text-gray-600 font-bold uppercase">${escapeHtml(item.stall_type)}</div>` : ''}
     `;
+
+    const btnEmail = div.querySelector('.btn-card-email');
+    if (btnEmail) {
+        btnEmail.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openEmailModal(item.id);
+        });
+    }
+
     return div;
 }
 
