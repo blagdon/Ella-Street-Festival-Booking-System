@@ -38,14 +38,12 @@ Fills in booking form           ──►  Booking appears in Kanban board
                                    Admin reviews + changes status
                                    (Pending → Confirmed / Rejected)
                                        ↓
-                                   Confirmation email auto-queued
-                                       ↓
-                                   Google Apps Script picks up
-                                   the queue and sends via Gmail
+                                   Confirmation email sent directly
+                                   via Edge Function (Zoho Mail API)
                                        ↓
                                    Admin assigns physical location
                                        ↓
-                                   Location email queued + sent
+                                   Location email sent directly
                                        ↓
                                    Payment tracked (paid / unpaid)
 ```
@@ -60,7 +58,7 @@ Fills in booking form           ──►  Booking appears in Kanban board
 | **Styling** | Tailwind CSS (compiled to `css/output.css`) |
 | **Database / Auth** | Supabase (PostgreSQL + Row Level Security) |
 | **File Storage** | Supabase Storage bucket (`esf-documents`) |
-| **Email Delivery** | Google Apps Script (GAS) + Gmail — polls a queue table |
+| **Email Delivery** | Zoho Mail API via Supabase Edge Function (`send-email`) |
 | **Hosting** | Vercel (`stallbookingstailwinds.vercel.app`) |
 | **Bot Protection** | Cloudflare Turnstile (on public forms) |
 | **Map** | Leaflet.js (visitor-facing map view) |
@@ -289,15 +287,15 @@ Reference data for physical pitches on the festival site.
 | `power` | Indicates if power is available |
 
 #### `email_queue`
-Jobs waiting to be processed by Google Apps Script.
+Log of emails sent (or failed) via the Supabase Edge Function.
 
 | Column | Notes |
 |---|---|
 | `recipient` | Email address |
 | `subject` | Email subject line |
 | `body` | HTML email body |
-| `status` | `Pending`, `Sent`, `Error` |
-| `instance_prefix` | Routes to the correct Gmail account |
+| `status` | `Sent`, `Error` |
+| `instance_prefix` | Identifies which festival instance sent the email |
 | `error_message` | Set if sending fails |
 
 #### `email_templates`
