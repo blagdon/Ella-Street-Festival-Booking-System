@@ -1,6 +1,6 @@
 import { initAdminPage, getSupabaseClient } from './supabase.js';
 import { CONFIG } from './config.js';
-import { showToast } from './ui.js';
+import { showToast, showConfirm } from './ui.js';
 import { safeError, escapeHtml } from './utils.js';
 import { auditLog, sendEmailDirect } from './api.js';
 
@@ -63,8 +63,6 @@ async function loadData(reset = true) {
     }
 
     try {
-        console.log(`Loading HCC data: range [${offset}, ${offset + limit - 1}]`);
-
         // We use a JOIN to fetch email, phone, status, business_name, owner_name, and registered_business_name from the referenced 'bookings' table
         const { data, error } = await sb
             .from('hcc_checks')
@@ -427,92 +425,96 @@ async function sendBulkEmail() {
     const selectedRecords = currentData.filter(r => uniqueIds.includes(r.id));
     const btn = document.getElementById('btnBulkEmail');
 
-    if (!confirm(`Send details for ${uniqueIds.length} traders to Hull City Council?`)) return;
+    showConfirm(
+        "Send Bulk Details",
+        `Send details for ${uniqueIds.length} traders to Hull City Council?`,
+        async () => {
+            const originalContent = btn.innerHTML;
+            btn.innerHTML = `<svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white inline-block align-text-bottom" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Sending...`;
+            btn.disabled = true;
 
-    const originalContent = btn.innerHTML;
-    btn.innerHTML = `<svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white inline-block align-text-bottom" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Sending...`;
-    btn.disabled = true;
+            try {
+                // Fetch template from database
+                const { data: template, error: templateErr } = await sb
+                    .from('email_templates')
+                    .select('subject, body_html')
+                    .eq('id', 'hcc_batch_check')
+                    .single();
 
-    try {
-        // Fetch template from database
-        const { data: template, error: templateErr } = await sb
-            .from('email_templates')
-            .select('subject, body_html')
-            .eq('id', 'hcc_batch_check')
-            .single();
+                if (templateErr) throw new Error("Failed to load email template: " + templateErr.message);
+                if (!template) throw new Error("HCC Batch Check template not found in database");
 
-        if (templateErr) throw new Error("Failed to load email template: " + templateErr.message);
-        if (!template) throw new Error("HCC Batch Check template not found in database");
+                // Build trader list table
+                const traderRows = selectedRecords.map(r => `
+                  <tr style="border-bottom: 1px solid #ddd;">
+                    <td style="padding: 8px; border: 1px solid #ddd; vertical-align: top;">${escapeHtml(r.booking_id)}</td>
+                    <td style="padding: 8px; border: 1px solid #ddd; vertical-align: top;">${escapeHtml(r.business_name)}</td>
+                    <td style="padding: 8px; border: 1px solid #ddd; vertical-align: top;">${escapeHtml(r.owner_name)}</td>
+                    <td style="padding: 8px; border: 1px solid #ddd; vertical-align: top;">${escapeHtml(r.registered_business_name || 'N/A')}</td>
+                    <td style="padding: 8px; border: 1px solid #ddd; vertical-align: top;">${escapeHtml(r.bookings?.email || 'N/A')}</td>
+                    <td style="padding: 8px; border: 1px solid #ddd; vertical-align: top;">${escapeHtml(r.bookings?.phone || 'N/A')}</td>
+                  </tr>
+                `).join('');
 
-        // Build trader list table
-        const traderRows = selectedRecords.map(r => `
-          <tr style="border-bottom: 1px solid #ddd;">
-            <td style="padding: 8px; border: 1px solid #ddd; vertical-align: top;">${escapeHtml(r.booking_id)}</td>
-            <td style="padding: 8px; border: 1px solid #ddd; vertical-align: top;">${escapeHtml(r.business_name)}</td>
-            <td style="padding: 8px; border: 1px solid #ddd; vertical-align: top;">${escapeHtml(r.owner_name)}</td>
-            <td style="padding: 8px; border: 1px solid #ddd; vertical-align: top;">${escapeHtml(r.registered_business_name || 'N/A')}</td>
-            <td style="padding: 8px; border: 1px solid #ddd; vertical-align: top;">${escapeHtml(r.bookings?.email || 'N/A')}</td>
-            <td style="padding: 8px; border: 1px solid #ddd; vertical-align: top;">${escapeHtml(r.bookings?.phone || 'N/A')}</td>
-          </tr>
-        `).join('');
+                const traderTable = `
+                  <table style="width: 100%; border-collapse: collapse; margin: 10px 0; font-family: sans-serif; font-size: 13px; table-layout: fixed;">
+                    <thead>
+                      <tr style="background-color: #f3f4f6;">
+                        <th style="padding: 10px; border: 1px solid #ddd; text-align: left; font-weight: bold; width: 12%;">ID</th>
+                        <th style="padding: 10px; border: 1px solid #ddd; text-align: left; font-weight: bold; width: 20%;">Business</th>
+                        <th style="padding: 10px; border: 1px solid #ddd; text-align: left; font-weight: bold; width: 18%;">Owner</th>
+                        <th style="padding: 10px; border: 1px solid #ddd; text-align: left; font-weight: bold; width: 18%;">Registered</th>
+                        <th style="padding: 10px; border: 1px solid #ddd; text-align: left; font-weight: bold; width: 20%;">Email</th>
+                        <th style="padding: 10px; border: 1px solid #ddd; text-align: left; font-weight: bold; width: 12%;">Phone</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${traderRows}
+                    </tbody>
+                  </table>
+                `;
 
-        const traderTable = `
-          <table style="width: 100%; border-collapse: collapse; margin: 10px 0; font-family: sans-serif; font-size: 13px; table-layout: fixed;">
-            <thead>
-              <tr style="background-color: #f3f4f6;">
-                <th style="padding: 10px; border: 1px solid #ddd; text-align: left; font-weight: bold; width: 12%;">ID</th>
-                <th style="padding: 10px; border: 1px solid #ddd; text-align: left; font-weight: bold; width: 20%;">Business</th>
-                <th style="padding: 10px; border: 1px solid #ddd; text-align: left; font-weight: bold; width: 18%;">Owner</th>
-                <th style="padding: 10px; border: 1px solid #ddd; text-align: left; font-weight: bold; width: 18%;">Registered</th>
-                <th style="padding: 10px; border: 1px solid #ddd; text-align: left; font-weight: bold; width: 20%;">Email</th>
-                <th style="padding: 10px; border: 1px solid #ddd; text-align: left; font-weight: bold; width: 12%;">Phone</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${traderRows}
-            </tbody>
-          </table>
-        `;
+                // Replace placeholders in template
+                const emailBody = template.body_html.replace('{{trader_list}}', traderTable);
+                const emailSubject = template.subject;
 
-        // Replace placeholders in template
-        const emailBody = template.body_html.replace('{{trader_list}}', traderTable);
-        const emailSubject = template.subject;
+                const currentInstance = localStorage.getItem('ESF_INSTANCE') || 'DEV';
+                const prefix = CONFIG.INSTANCE_MAP[currentInstance] || CONFIG.INSTANCE_MAP['DEV'];
 
-        const currentInstance = localStorage.getItem('ESF_INSTANCE') || 'DEV';
-        const prefix = CONFIG.INSTANCE_MAP[currentInstance] || CONFIG.INSTANCE_MAP['DEV'];
+                const { data: { session } } = await sb.auth.getSession();
+                const userEmail = session?.user?.email;
+                const recipientEmail = (currentInstance === 'DEV' && userEmail)
+                    ? userEmail
+                    : CONFIG.HCC_COUNCIL_EMAIL;
 
-        const { data: { session } } = await sb.auth.getSession();
-        const userEmail = session?.user?.email;
-        const recipientEmail = (currentInstance === 'DEV' && userEmail)
-            ? userEmail
-            : CONFIG.HCC_COUNCIL_EMAIL;
+                // Send Email directly via Zoho
+                await sendEmailDirect(recipientEmail, emailSubject, emailBody, null, prefix);
 
-        // Send Email directly via Zoho
-        await sendEmailDirect(recipientEmail, emailSubject, emailBody, null, prefix);
+                // Update Records Status
+                const { error: updateErr } = await sb
+                    .from('hcc_checks')
+                    .update({ council_status: 'Email Sent' })
+                    .in('id', uniqueIds);
 
-        // Update Records Status
-        const { error: updateErr } = await sb
-            .from('hcc_checks')
-            .update({ council_status: 'Email Sent' })
-            .in('id', uniqueIds);
+                if (updateErr) throw updateErr;
 
-        if (updateErr) throw updateErr;
+                showToast(`Email sent for ${uniqueIds.length} records.`);
 
-        showToast(`Email sent for ${uniqueIds.length} records.`);
+                // Log Audit for bulk sent
+                for (const r of selectedRecords) {
+                    await auditLog('hcc_bulk_email_sent', r.booking_id, { batch_size: uniqueIds.length });
+                }
 
-        // Log Audit for bulk sent
-        for (const r of selectedRecords) {
-            await auditLog('hcc_bulk_email_sent', r.booking_id, { batch_size: uniqueIds.length });
+                await loadData(); // Refresh table
+
+            } catch (err) {
+                showToast("Failed to send email: " + err.message, 'error');
+            } finally {
+                btn.innerHTML = originalContent;
+                btn.disabled = false;
+            }
         }
-
-        await loadData(); // Refresh table
-
-    } catch (err) {
-        showToast("Failed to send email: " + err.message, 'error');
-    } finally {
-        btn.innerHTML = originalContent;
-        btn.disabled = false;
-    }
+    );
 }
 
 // 2. Save Row
@@ -579,130 +581,134 @@ async function saveAllChanges() {
     const btn = document.getElementById('btnSaveAll');
     const msg = document.getElementById('statusMsg');
 
-    if (!confirm('Save all changes for all records?')) return;
-
-    if (btn) {
-        btn.innerText = "Saving...";
-        btn.disabled = true;
-    }
-    if (msg) {
-        msg.classList.remove('hidden');
-        msg.innerText = "Saving all changes...";
-    }
-
-    try {
-        let successCount = 0;
-        let failCount = 0;
-
-        // Process all records from currentData
-        for (const record of currentData) {
-            const id = record.id;
-
-            // Try desktop inputs first, fallback to mobile
-            const statusDesktop = document.getElementById(`status-${id}`);
-            const dateDesktop = document.getElementById(`date-${id}`);
-            const editorDesktop = document.getElementById(`editor-${id}`);
-
-            const statusMobile = document.getElementById(`status-mobile-${id}`);
-            const dateMobile = document.getElementById(`date-mobile-${id}`);
-            const editorMobile = document.getElementById(`editor-mobile-${id}`);
-
-            // CRITICAL FIX: On mobile, both desktop and mobile elements exist in DOM
-            // Desktop table is just hidden with CSS, but elements are still there
-            // We need to prioritize MOBILE inputs on small screens
-            const isMobileView = window.innerWidth <= 768;
-
-            // Get values from whichever input is visible
-            let status = '';
-            let date = '';
-            let editor = '';
+    showConfirm(
+        "Save All Changes",
+        "Save all changes for all records?",
+        async () => {
+            if (btn) {
+                btn.innerText = "Saving...";
+                btn.disabled = true;
+            }
+            if (msg) {
+                msg.classList.remove('hidden');
+                msg.innerText = "Saving all changes...";
+            }
 
             try {
-                if (isMobileView) {
-                    // Mobile view: use mobile inputs (they're visible)
-                    status = statusMobile ? statusMobile.value : (statusDesktop ? statusDesktop.value : '');
-                    date = dateMobile ? dateMobile.value : (dateDesktop ? dateDesktop.value : '');
-                    editor = editorMobile ? editorMobile.value : (editorDesktop ? editorDesktop.value : '');
-                } else {
-                    // Desktop view: use desktop inputs
-                    status = statusDesktop ? statusDesktop.value : (statusMobile ? statusMobile.value : '');
-                    date = dateDesktop ? dateDesktop.value : (dateMobile ? dateMobile.value : '');
-                    editor = editorDesktop ? editorDesktop.value : (editorMobile ? editorMobile.value : '');
-                }
+                let successCount = 0;
+                let failCount = 0;
 
-                // Validate required fields for Approved status
-                if (status === 'Approved') {
-                    if (!date || !editor.trim()) {
-                        console.warn(`Record ${id} requires Date and Editor when Approved.`);
-                        throw new Error(`Approval Date and Updated By are required for ${record.business_name}`);
+                // Process all records from currentData
+                for (const record of currentData) {
+                    const id = record.id;
+
+                    // Try desktop inputs first, fallback to mobile
+                    const statusDesktop = document.getElementById(`status-${id}`);
+                    const dateDesktop = document.getElementById(`date-${id}`);
+                    const editorDesktop = document.getElementById(`editor-${id}`);
+
+                    const statusMobile = document.getElementById(`status-mobile-${id}`);
+                    const dateMobile = document.getElementById(`date-mobile-${id}`);
+                    const editorMobile = document.getElementById(`editor-mobile-${id}`);
+
+                    // CRITICAL FIX: On mobile, both desktop and mobile elements exist in DOM
+                    // Desktop table is just hidden with CSS, but elements are still there
+                    // We need to prioritize MOBILE inputs on small screens
+                    const isMobileView = window.innerWidth <= 768;
+
+                    // Get values from whichever input is visible
+                    let status = '';
+                    let date = '';
+                    let editor = '';
+
+                    try {
+                        if (isMobileView) {
+                            // Mobile view: use mobile inputs (they're visible)
+                            status = statusMobile ? statusMobile.value : (statusDesktop ? statusDesktop.value : '');
+                            date = dateMobile ? dateMobile.value : (dateDesktop ? dateDesktop.value : '');
+                            editor = editorMobile ? editorMobile.value : (editorDesktop ? editorDesktop.value : '');
+                        } else {
+                            // Desktop view: use desktop inputs
+                            status = statusDesktop ? statusDesktop.value : (statusMobile ? statusMobile.value : '');
+                            date = dateDesktop ? dateDesktop.value : (dateMobile ? dateMobile.value : '');
+                            editor = editorDesktop ? editorDesktop.value : (editorMobile ? editorMobile.value : '');
+                        }
+
+                        // Validate required fields for Approved status
+                        if (status === 'Approved') {
+                            if (!date || !editor.trim()) {
+                                console.warn(`Record ${id} requires Date and Editor when Approved.`);
+                                throw new Error(`Approval Date and Updated By are required for ${record.business_name}`);
+                            }
+                        }
+                    } catch (err) {
+                        console.error(`Error reading values for record ${id}:`, err);
+                        failCount++;
+                        continue;
+                    }
+
+                    // Normalize values for comparison (empty string = null for date)
+                    const normalizeDate = (val) => val === '' || val === null || val === undefined ? null : val;
+                    const normalizeText = (val) => val === '' || val === null || val === undefined ? '' : val;
+
+                    const currentDateNorm = normalizeDate(date);
+                    const recordDateNorm = normalizeDate(record.approval_date);
+                    const currentEditorNorm = normalizeText(editor);
+                    const recordEditorNorm = normalizeText(record.updated_by);
+
+                    // Skip if no changes detected (compare with original record)
+                    if (status === record.council_status &&
+                        currentDateNorm === recordDateNorm &&
+                        currentEditorNorm === recordEditorNorm) {
+                        continue;
+                    }
+
+                    const updateData = {
+                        council_status: status,
+                        approval_date: date || null,
+                        updated_by: editor || ''
+                    };
+
+                    try {
+                        const { error } = await sb
+                            .from('hcc_checks')
+                            .update(updateData)
+                            .eq('id', id);
+
+                        if (error) {
+                            console.error(`Failed to save record ${id}:`, error);
+                            failCount++;
+                        } else {
+                            successCount++;
+                            await auditLog('hcc_bulk_save_updated', record.booking_id, { new_council_status: status, approval_date: date, editor: editor });
+                        }
+                    } catch (err) {
+                        console.error(`Exception saving record ${id}:`, err);
+                        failCount++;
                     }
                 }
-            } catch (err) {
-                console.error(`Error reading values for record ${id}:`, err);
-                failCount++;
-                continue;
-            }
 
-            // Normalize values for comparison (empty string = null for date)
-            const normalizeDate = (val) => val === '' || val === null || val === undefined ? null : val;
-            const normalizeText = (val) => val === '' || val === null || val === undefined ? '' : val;
+                msg.classList.add('hidden');
 
-            const currentDateNorm = normalizeDate(date);
-            const recordDateNorm = normalizeDate(record.approval_date);
-            const currentEditorNorm = normalizeText(editor);
-            const recordEditorNorm = normalizeText(record.updated_by);
-
-            // Skip if no changes detected (compare with original record)
-            if (status === record.council_status &&
-                currentDateNorm === recordDateNorm &&
-                currentEditorNorm === recordEditorNorm) {
-                continue;
-            }
-
-            const updateData = {
-                council_status: status,
-                approval_date: date || null,
-                updated_by: editor || ''
-            };
-
-            try {
-                const { error } = await sb
-                    .from('hcc_checks')
-                    .update(updateData)
-                    .eq('id', id);
-
-                if (error) {
-                    console.error(`Failed to save record ${id}:`, error);
-                    failCount++;
+                if (successCount > 0) {
+                    showToast(`Successfully saved ${successCount} record(s)${failCount > 0 ? `, ${failCount} failed` : ''}.`);
+                    await loadData(); // Refresh to show updated data
+                } else if (failCount > 0) {
+                    showToast(`Failed to save ${failCount} record(s). Check console for details.`, 'error');
                 } else {
-                    successCount++;
-                    await auditLog('hcc_bulk_save_updated', record.booking_id, { new_council_status: status, approval_date: date, editor: editor });
+                    showToast("No changes detected.", 'info');
                 }
+
             } catch (err) {
-                console.error(`Exception saving record ${id}:`, err);
-                failCount++;
+                console.error('Error in saveAllChanges:', err);
+                showToast("Error during save all: " + err.message, 'error');
+                if (msg) msg.classList.add('hidden');
+            } finally {
+                if (btn) {
+                    btn.innerText = "Save All Changes";
+                    btn.disabled = false;
+                }
             }
         }
-
-        msg.classList.add('hidden');
-
-        if (successCount > 0) {
-            showToast(`Successfully saved ${successCount} record(s)${failCount > 0 ? `, ${failCount} failed` : ''}.`);
-            await loadData(); // Refresh to show updated data
-        } else if (failCount > 0) {
-            showToast(`Failed to save ${failCount} record(s). Check console for details.`, 'error');
-        } else {
-            showToast("No changes detected.", 'info');
-        }
-
-    } catch (err) {
-        console.error('Error in saveAllChanges:', err);
-        showToast("Error during save all: " + err.message, 'error');
-        if (msg) msg.classList.add('hidden');
-    } finally {
-        if (btn) {
-            btn.innerText = "Save All Changes";
-            btn.disabled = false;
-        }
-    }
+    );
 }

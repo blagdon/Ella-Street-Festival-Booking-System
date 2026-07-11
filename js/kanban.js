@@ -2,7 +2,7 @@ import { fetchKanbanData, updateBookingStatus, addNote, sendEmail, emailAllConfi
 import { CONFIG, getStallCost } from './config.js';
 import { safeError, escapeHtml } from './utils.js';
 import { sharedUpdateStatus, populateDetailPane } from './shared.js';
-import { showToast, renderInstanceBadge } from './ui.js';
+import { showToast, renderInstanceBadge, showConfirm } from './ui.js';
 
 let drake;
 let allBookings = [];
@@ -299,18 +299,23 @@ export async function promptStatusChange(newStatus) {
         return;
     }
 
-    if (!confirm(`Are you sure you want to mark this as ${newStatus}?`)) return;
-    try {
-        if (newStatus === 'Rejected') {
-            closeModal('detailModal');
-            document.getElementById('rejectBookingId').value = currentId;
-            document.getElementById('rejectReason').value = "";
-            document.getElementById('rejectReasonModal').classList.remove('opacity-0', 'pointer-events-none');
-        } else {
-            await updateStatus(currentId, newStatus);
-            openDetails(currentId);
+    showConfirm(
+        "Confirm Status Change",
+        `Are you sure you want to mark this as ${newStatus}?`,
+        async () => {
+            try {
+                if (newStatus === 'Rejected') {
+                    closeModal('detailModal');
+                    document.getElementById('rejectBookingId').value = currentId;
+                    document.getElementById('rejectReason').value = "";
+                    document.getElementById('rejectReasonModal').classList.remove('opacity-0', 'pointer-events-none');
+                } else {
+                    await updateStatus(currentId, newStatus);
+                    openDetails(currentId);
+                }
+            } catch (e) { showToast("Error changing status: " + e.message, 'error'); }
         }
-    } catch (e) { showToast("Error changing status: " + e.message, 'error'); }
+    );
 }
 
 export function changeStatus(newStatus) {

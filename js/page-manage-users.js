@@ -1,6 +1,6 @@
 import { initAdminPage, getSupabaseClient } from './supabase.js';
 import { CONFIG } from './config.js';
-import { showToast } from './ui.js';
+import { showToast, showConfirm } from './ui.js';
 import { escapeHtml } from './utils.js';
 
 let adminSb; // Main (admin) client
@@ -77,16 +77,20 @@ async function loadUsers() {
 
 // ---- DELETE USER ----
 async function deleteUser(id, label) {
-    if (!confirm(`Remove access for "${label}"?\n\nThis removes their system role. Their login account will remain but they will not be able to access the admin system.`)) return;
-
-    try {
-        const { error } = await adminSb.from('user_roles').delete().eq('id', id);
-        if (error) throw error;
-        showToast('Access removed for user.', 'success');
-        loadUsers();
-    } catch (err) {
-        showToast('Failed to remove user: ' + err.message, 'error');
-    }
+    showConfirm(
+        "Remove User Access",
+        `Remove access for "${label}"?\n\nThis removes their system role. Their login account will remain but they will not be able to access the admin system.`,
+        async () => {
+            try {
+                const { error } = await adminSb.from('user_roles').delete().eq('id', id);
+                if (error) throw error;
+                showToast('Access removed for user.', 'success');
+                loadUsers();
+            } catch (err) {
+                showToast('Failed to remove user: ' + err.message, 'error');
+            }
+        }
+    );
 }
 
 // ---- CREATE USER ----

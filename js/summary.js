@@ -1,6 +1,6 @@
 import { fetchKanbanData, updateBookingStatus, addNote, sendEmail, emailAllConfirmedBookings } from './api.js';
 import { sharedUpdateStatus, populateDetailPane } from './shared.js';
-import { showToast, renderInstanceBadge } from './ui.js';
+import { showToast, renderInstanceBadge, showConfirm } from './ui.js';
 import { escapeHtml } from './utils.js';
 import { CONFIG, getStallCost } from './config.js';
 
@@ -319,19 +319,24 @@ async function promptStatusChange(newStatus) {
         return;
     }
 
-    if (!confirm(`Are you sure you want to mark this as ${newStatus}?`)) return;
-    try {
-        if (newStatus === 'Rejected') {
-            window.closeModal('detailModal');
-            document.getElementById('rejectBookingId').value = currentId;
-            document.getElementById('rejectReason').value = "";
-            document.getElementById('rejectReasonModal').classList.remove('opacity-0', 'pointer-events-none');
-        } else {
-            await updateStatus(currentId, newStatus);
-            window.closeModal('detailModal');
-            window.filterTable();
+    showConfirm(
+        "Confirm Status Change",
+        `Are you sure you want to mark this as ${newStatus}?`,
+        async () => {
+            try {
+                if (newStatus === 'Rejected') {
+                    window.closeModal('detailModal');
+                    document.getElementById('rejectBookingId').value = currentId;
+                    document.getElementById('rejectReason').value = "";
+                    document.getElementById('rejectReasonModal').classList.remove('opacity-0', 'pointer-events-none');
+                } else {
+                    await updateStatus(currentId, newStatus);
+                    window.closeModal('detailModal');
+                    window.filterTable();
+                }
+            } catch (e) { showToast("Error changing status: " + e.message, 'error'); }
         }
-    } catch (e) { showToast("Error changing status: " + e.message, 'error'); }
+    );
 }
 
 window.changeStatus = function (newStatus) {

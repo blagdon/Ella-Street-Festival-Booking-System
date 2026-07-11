@@ -1,6 +1,6 @@
 import { fetchLocationData, updateLocation } from './api.js';
 import { queueLocationEmail } from './shared.js';
-import { showToast, renderInstanceBadge } from './ui.js';
+import { showToast, showConfirm, renderInstanceBadge } from './ui.js';
 import { escapeHtml } from './utils.js';
 
 let allBookings = [];
@@ -8,7 +8,6 @@ let allLocations = [];
 let globalOccupiedIds = [];
 let currentFilter = 'all';
 let currentMobileBookingId = null;
-let activeConfirmCallback = null;
 
 export async function initLocations() {
     renderInstanceBadge('instanceBadge');
@@ -163,7 +162,7 @@ export async function assignLocation(id, newLocId) {
 }
 
 export async function sendEmail(id) {
-    showConfirmModal(
+    showConfirm(
         "Send Email",
         "Send confirmation email to this stallholder?",
         async () => {
@@ -192,7 +191,7 @@ export async function sendBulkEmails() {
         return;
     }
 
-    showConfirmModal(
+    showConfirm(
         "Send Bulk Emails",
         `Send emails to ALL ${targets.length} assigned stalls?`,
         async () => {
@@ -505,33 +504,3 @@ window.addEventListener('touchend', (e) => {
         pullStartY = 0;
     }
 });
-
-export function showConfirmModal(title, message, onConfirm) {
-    const modal = document.getElementById('confirmModal');
-    const titleEl = document.getElementById('confirmTitle');
-    const msgEl = document.getElementById('confirmMessage');
-
-    if (!modal) return;
-
-    if (titleEl) titleEl.innerText = title;
-    if (msgEl) msgEl.innerText = message;
-
-    activeConfirmCallback = onConfirm;
-
-    modal.classList.remove('opacity-0', 'pointer-events-none');
-}
-
-export function closeConfirmModal() {
-    const modal = document.getElementById('confirmModal');
-    if (modal) {
-        modal.classList.add('opacity-0', 'pointer-events-none');
-    }
-    activeConfirmCallback = null;
-}
-
-export function confirmAction() {
-    if (typeof activeConfirmCallback === 'function') {
-        activeConfirmCallback();
-    }
-    closeConfirmModal();
-}

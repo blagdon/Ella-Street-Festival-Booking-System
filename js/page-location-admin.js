@@ -1,5 +1,5 @@
 import { initAdminPage } from './supabase.js';
-import { initLocations, setFilter, loadData, sendBulkEmails, closeLocationSheet, assignMobileLocation, sendEmail, closeConfirmModal, confirmAction, openLocationSheet, assignLocation } from './locations.js';
+import { initLocations, setFilter, loadData, sendBulkEmails, closeLocationSheet, assignMobileLocation, sendEmail, openLocationSheet, assignLocation } from './locations.js';
 
 async function init() {
     await initLocations();
@@ -28,12 +28,6 @@ async function init() {
 
     const btnClearAssignment = document.getElementById('btn-clear-assignment');
     if (btnClearAssignment) btnClearAssignment.addEventListener('click', () => assignMobileLocation(null));
-
-    const btnCancelConfirm = document.getElementById('btn-cancel-confirm');
-    if (btnCancelConfirm) btnCancelConfirm.addEventListener('click', closeConfirmModal);
-
-    const btnConfirmButton = document.getElementById('confirmButton');
-    if (btnConfirmButton) btnConfirmButton.addEventListener('click', confirmAction);
 
 
     // Attach delegated event listeners for dynamic content

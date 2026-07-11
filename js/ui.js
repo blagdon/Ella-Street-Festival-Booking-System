@@ -78,4 +78,71 @@ export function renderInstanceBadge(badgeId) {
     }
 }
 
+let activeConfirmCallback = null;
+
+/**
+ * Shows a styled confirmation modal, dynamically injecting it if missing.
+ * @param {string} title - Modal title
+ * @param {string} message - Modal body text
+ * @param {Function} onConfirm - Callback executed when user clicks "Confirm"
+ */
+export function showConfirm(title, message, onConfirm) {
+    let modal = document.getElementById('confirmModal');
+
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'confirmModal';
+        modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 opacity-0 pointer-events-none transition-opacity duration-200';
+        modal.innerHTML = `
+            <div class="bg-white rounded-lg shadow-2xl max-w-md w-full mx-4 transform transition-all">
+                <div class="p-6">
+                    <h3 class="text-lg font-bold text-gray-900 mb-2" id="confirmTitle">Confirm Action</h3>
+                    <p class="text-sm text-gray-600 mb-6" id="confirmMessage">Are you sure you want to proceed?</p>
+                    <div class="flex gap-3 justify-end">
+                        <button id="btn-cancel-confirm"
+                            class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">
+                            Cancel
+                        </button>
+                        <button id="confirmButton"
+                            class="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors">
+                            Confirm
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+
+        // Attach listeners to the newly created buttons
+        document.getElementById('btn-cancel-confirm').addEventListener('click', closeConfirmModal);
+        document.getElementById('confirmButton').addEventListener('click', executeConfirmAction);
+    }
+
+    const titleEl = document.getElementById('confirmTitle');
+    const msgEl = document.getElementById('confirmMessage');
+
+    if (titleEl) titleEl.innerText = title;
+    if (msgEl) msgEl.innerText = message;
+
+    activeConfirmCallback = onConfirm;
+
+    // Show modal
+    modal.classList.remove('opacity-0', 'pointer-events-none');
+}
+
+export function closeConfirmModal() {
+    const modal = document.getElementById('confirmModal');
+    if (modal) {
+        modal.classList.add('opacity-0', 'pointer-events-none');
+    }
+    activeConfirmCallback = null;
+}
+
+function executeConfirmAction() {
+    if (typeof activeConfirmCallback === 'function') {
+        activeConfirmCallback();
+    }
+    closeConfirmModal();
+}
+
 
