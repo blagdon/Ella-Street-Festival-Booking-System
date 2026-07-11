@@ -1,5 +1,6 @@
 import { fetchStatsData } from './api.js';
 import { showToast } from './ui.js';
+import { escapeHtml } from './utils.js';
 
 // Constants for Prefixes
 const PREFIX_FOOD = 'ESF26-FOOD-';
@@ -436,10 +437,6 @@ function renderCategoryList(catMap, total, barColorClass) {
     }).join('');
 }
 
-function escapeHtml(str) {
-    if (str === null || str === undefined) return '';
-    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#x27;');
-}
 
 function setText(id, text) {
     const el = document.getElementById(id);

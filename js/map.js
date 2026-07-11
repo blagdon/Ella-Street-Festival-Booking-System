@@ -1,4 +1,5 @@
 import { fetchMapData } from './api.js';
+import { escapeHtml } from './utils.js';
 
 // ===================================================================
 // === TOAST NOTIFICATION SYSTEM (Map Specific) ===
@@ -89,10 +90,6 @@ const FestivalIcons = (function () {
 // ===================================================================
 // === MAP LOGIC ===
 // ===================================================================
-function escapeHtml(str) {
-    if (str === null || str === undefined) return '';
-    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#x27;');
-}
 
 let map = null;
 let markersLayer = null;
