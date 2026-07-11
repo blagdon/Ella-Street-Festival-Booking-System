@@ -9,7 +9,7 @@ INSERT INTO settings (key, value, updated_at, updated_by) VALUES
 ('stall_cost_general', '25.00', now(), 'system'),
 ('stall_cost_dev', '90.00', now(), 'system'),
 ('turnstile_site_key', '0x4AAAAAACZTfDIHzMhGqnER', now(), 'system'),
-('bank_details', 'Bank: Ella Street Residents Association | Sort: 30-99-50 | Acc: 51276368', now(), 'system'),
+('bank_details', '', now(), 'system'),
 ('base_url', 'https://stallbookingstailwinds.vercel.app', now(), 'system'),
 ('cancel_url', 'https://stallbookingstailwinds.vercel.app/cancel_booking.html', now(), 'system'),
 ('portal_url', 'https://www.ellastreet.co.uk/fest26/portal', now(), 'system'),

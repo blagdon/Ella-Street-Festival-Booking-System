@@ -17,7 +17,7 @@ export const ESF_PUBLIC_CONFIG = {
     SUPABASE_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJzbnhodWhpYmdsaWVvZmlra3BvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk2Nzg5MjcsImV4cCI6MjA4NTI1NDkyN30.QNrMVCc9FFdIAR4wRv6g4V4p2JA8pbCoaf8zLRuu0fw",
     BUCKET_NAME: "esf-documents",
     TURNSTILE_SITE_KEY: "0x4AAAAAACZTfDIHzMhGqnER",
-    BANK_DETAILS: "Bank: Ella Street Residents Association | Sort: 30-99-50 | Acc: 51276368",
+    BANK_DETAILS: "",
     BASE_URL: "https://stallbookingstailwinds.vercel.app",
     CANCEL_URL: "https://stallbookingstailwinds.vercel.app/cancel_booking.html",
     PORTAL_URL: "https://www.ellastreet.co.uk/fest26/portal",
