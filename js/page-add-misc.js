@@ -1,37 +1,30 @@
-import { initNavigation } from './nav.js';
-import { requireAuth } from './supabase.js';
+import { initAdminPage } from './supabase.js';
 import { insertMiscBooking } from './api.js';
 import { showToast } from './ui.js';
 import { CONFIG } from './config.js';
 
-document.addEventListener('DOMContentLoaded', async () => {
-    try {
-        await requireAuth('admin');
-        initNavigation();
+initAdminPage(initAddMisc);
 
-        // Populate stall types
-        const typeSelect = document.getElementById('entryType');
-        if (CONFIG && CONFIG.UI && CONFIG.UI.ALLOWED_TYPES) {
-            CONFIG.UI.ALLOWED_TYPES.forEach(type => {
-                const opt = document.createElement('option');
-                opt.value = type;
-                opt.innerText = type;
-                typeSelect.appendChild(opt);
-            });
-        }
-
-        const form = document.getElementById('miscForm');
-        if (form) {
-            form.addEventListener('submit', async (e) => {
-                e.preventDefault();
-                await submitMiscEntry();
-            });
-        }
-
-    } catch (e) {
-        console.error("Initialization failed:", e);
+function initAddMisc() {
+    // Populate stall types
+    const typeSelect = document.getElementById('entryType');
+    if (CONFIG && CONFIG.UI && CONFIG.UI.ALLOWED_TYPES) {
+        CONFIG.UI.ALLOWED_TYPES.forEach(type => {
+            const opt = document.createElement('option');
+            opt.value = type;
+            opt.innerText = type;
+            typeSelect.appendChild(opt);
+        });
     }
-});
+
+    const form = document.getElementById('miscForm');
+    if (form) {
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            await submitMiscEntry();
+        });
+    }
+}
 
 async function submitMiscEntry() {
     const btn = document.getElementById('submitBtn');

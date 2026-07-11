@@ -1,5 +1,4 @@
-import { initNavigation } from './nav.js';
-import { requireAuth, getSupabaseClient } from './supabase.js';
+import { initAdminPage, getSupabaseClient } from './supabase.js';
 import { CONFIG } from './config.js';
 import { showToast } from './ui.js';
 import { safeError, escapeHtml } from './utils.js';
@@ -11,12 +10,8 @@ let offset = 0;
 const limit = 25;
 let allRecordsLoaded = false;
 
-document.addEventListener('DOMContentLoaded', async () => {
-    try {
-        await requireAuth('admin');
-        initNavigation();
-        loadData(true);
-    } catch (e) { return; }
+function initHcc() {
+    loadData(true);
 
     const statusFilter = document.getElementById('statusFilter');
     if (statusFilter) {
@@ -37,7 +32,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (btnLoadMore) {
         btnLoadMore.addEventListener('click', () => loadData(false));
     }
-});
+}
+
+initAdminPage(initHcc);
 
 // Load Data
 async function loadData(reset = true) {

@@ -4,6 +4,7 @@
  */
 import { CONFIG, loadStallCosts } from './config.js';
 import { showToast } from './ui.js';
+import { initNavigation } from './nav.js';
 
 let _activeSbClient = null;
 
@@ -92,4 +93,32 @@ export async function signOut() {
     }
     await sb.auth.signOut();
     window.location.href = 'login.html';
+}
+
+/**
+ * Shared helper to initialize admin and steward dashboard pages.
+ * Handles DOM ready state, role authorization, and navigation setup.
+ * @param {Function} initCallback - The page-specific initialization function.
+ * @param {string} requiredRole - 'admin' or 'steward'
+ */
+export function initAdminPage(initCallback, requiredRole = 'admin') {
+    const runInit = async () => {
+        try {
+            await requireAuth(requiredRole);
+            if (requiredRole === 'admin') {
+                initNavigation();
+            }
+            if (typeof initCallback === 'function') {
+                await initCallback();
+            }
+        } catch (e) {
+            console.error(`[Init Failed] Error loading ${window.location.pathname}:`, e);
+        }
+    };
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', runInit);
+    } else {
+        runInit();
+    }
 }

@@ -1,83 +1,71 @@
-import { initNavigation } from './nav.js';
+import { initAdminPage } from './supabase.js';
 import { initKanban, filterCards, loadBoard, emailAllConfirmed, closeModal, openEmailModal, saveNote, changeStatus, promptStatusChange, finalizeConfirm, sendSystemEmail, confirmRejection, sendBulkEmail, cancelDrag } from './kanban.js';
-import { requireAuth } from './supabase.js';
 
-async function init() {
-    try {
-        await requireAuth('admin');
-        initNavigation();
-        initKanban();
+function init() {
+    initKanban();
 
-        // 1. Static Elements by ID
-        const kanbanSearch = document.getElementById('searchInput');
-        if (kanbanSearch) kanbanSearch.addEventListener('keyup', filterCards);
+    // 1. Static Elements by ID
+    const kanbanSearch = document.getElementById('searchInput');
+    if (kanbanSearch) kanbanSearch.addEventListener('keyup', filterCards);
 
-        const btnRefreshBoard = document.getElementById('btn-refresh-board');
-        if (btnRefreshBoard) btnRefreshBoard.addEventListener('click', loadBoard);
+    const btnRefreshBoard = document.getElementById('btn-refresh-board');
+    if (btnRefreshBoard) btnRefreshBoard.addEventListener('click', loadBoard);
 
-        const btnEmailConfirmed = document.getElementById('btn-email-confirmed');
-        if (btnEmailConfirmed) btnEmailConfirmed.addEventListener('click', emailAllConfirmed);
+    const btnEmailConfirmed = document.getElementById('btn-email-confirmed');
+    if (btnEmailConfirmed) btnEmailConfirmed.addEventListener('click', emailAllConfirmed);
 
-        const btnOpenEmail = document.getElementById('btn-open-email');
-        if (btnOpenEmail) btnOpenEmail.addEventListener('click', openEmailModal);
+    const btnOpenEmail = document.getElementById('btn-open-email');
+    if (btnOpenEmail) btnOpenEmail.addEventListener('click', openEmailModal);
 
-        const btnSaveNote = document.getElementById('btn-save-note');
-        if (btnSaveNote) btnSaveNote.addEventListener('click', saveNote);
+    const btnSaveNote = document.getElementById('btn-save-note');
+    if (btnSaveNote) btnSaveNote.addEventListener('click', saveNote);
 
-        const btnFinalizeTrue = document.getElementById('btn-finalize-true');
-        if (btnFinalizeTrue) btnFinalizeTrue.addEventListener('click', () => finalizeConfirm(true));
+    const btnFinalizeTrue = document.getElementById('btn-finalize-true');
+    if (btnFinalizeTrue) btnFinalizeTrue.addEventListener('click', () => finalizeConfirm(true));
 
-        const btnFinalizeFalse = document.getElementById('btn-finalize-false');
-        if (btnFinalizeFalse) btnFinalizeFalse.addEventListener('click', () => finalizeConfirm(false));
+    const btnFinalizeFalse = document.getElementById('btn-finalize-false');
+    if (btnFinalizeFalse) btnFinalizeFalse.addEventListener('click', () => finalizeConfirm(false));
 
-        const btnConfirmRejection = document.getElementById('btn-confirm-rejection');
-        if (btnConfirmRejection) btnConfirmRejection.addEventListener('click', confirmRejection);
+    const btnConfirmRejection = document.getElementById('btn-confirm-rejection');
+    if (btnConfirmRejection) btnConfirmRejection.addEventListener('click', confirmRejection);
 
-        const btnSendSystemEmail = document.getElementById('btn-send-system-email');
-        if (btnSendSystemEmail) btnSendSystemEmail.addEventListener('click', function () { sendSystemEmail(this); });
+    const btnSendSystemEmail = document.getElementById('btn-send-system-email');
+    if (btnSendSystemEmail) btnSendSystemEmail.addEventListener('click', function () { sendSystemEmail(this); });
 
-        const btnSendBulkEmail = document.getElementById('btn-send-bulk-email');
-        if (btnSendBulkEmail) btnSendBulkEmail.addEventListener('click', function () { sendBulkEmail(this); });
+    const btnSendBulkEmail = document.getElementById('btn-send-bulk-email');
+    if (btnSendBulkEmail) btnSendBulkEmail.addEventListener('click', function () { sendBulkEmail(this); });
 
-        // 2. Event Delegation for Data Attributes
-        document.body.addEventListener('click', (e) => {
-            // Close Modal Actions
-            const closeBtn = e.target.closest('[data-action="close-modal"]');
-            if (closeBtn) {
-                closeModal(closeBtn.dataset.modal);
-                // Specifically for kanban, call cancelDrag on close
-                cancelDrag();
-                return;
-            }
+    // 2. Event Delegation for Data Attributes
+    document.body.addEventListener('click', (e) => {
+        // Close Modal Actions
+        const closeBtn = e.target.closest('[data-action="close-modal"]');
+        if (closeBtn) {
+            closeModal(closeBtn.dataset.modal);
+            // Specifically for kanban, call cancelDrag on close
+            cancelDrag();
+            return;
+        }
 
-            // Change Status Actions
-            const changeStatusBtn = e.target.closest('[data-action="change-status"]');
-            if (changeStatusBtn) {
-                changeStatus(changeStatusBtn.dataset.status);
-                return;
-            }
+        // Change Status Actions
+        const changeStatusBtn = e.target.closest('[data-action="change-status"]');
+        if (changeStatusBtn) {
+            changeStatus(changeStatusBtn.dataset.status);
+            return;
+        }
 
-            // Prompt Status Change Actions
-            const promptChangeBtn = e.target.closest('[data-action="prompt-status-change"]');
-            if (promptChangeBtn) {
-                promptStatusChange(promptChangeBtn.dataset.status);
-                return;
-            }
-        });
+        // Prompt Status Change Actions
+        const promptChangeBtn = e.target.closest('[data-action="prompt-status-change"]');
+        if (promptChangeBtn) {
+            promptStatusChange(promptChangeBtn.dataset.status);
+            return;
+        }
+    });
 
-        // 3. Initialize Auto-scroll logic formerly inline
-        initAutoScroll();
-
-    } catch (e) {
-        console.error("Initialization failed:", e);
-    }
+    // 3. Initialize Auto-scroll logic formerly inline
+    initAutoScroll();
 }
 
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
-} else {
-    init();
-}
+initAdminPage(init);
 
 function initAutoScroll() {
     const EDGE_SIZE = 80; // px from edge to trigger scroll

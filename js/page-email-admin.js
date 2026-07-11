@@ -1,38 +1,30 @@
-import { initNavigation } from './nav.js';
-import { requireAuth, getSupabaseClient } from './supabase.js';
+import { initAdminPage, getSupabaseClient } from './supabase.js';
 import { showToast } from './ui.js';
 
 const sb = getSupabaseClient();
 let allTemplates = [];
 let currentTemplateId = null;
 
-async function init() {
-    try {
-        await requireAuth('admin');
-        initNavigation();
-        loadTemplates();
+function init() {
+    loadTemplates();
 
-        // Event Listeners for statically loaded DOM elements that had click handlers
-        const btnPreviewEmail = document.getElementById('btn-preview-email');
-        if (btnPreviewEmail) btnPreviewEmail.addEventListener('click', previewEmail);
+    // Event Listeners for statically loaded DOM elements that had click handlers
+    const btnPreviewEmail = document.getElementById('btn-preview-email');
+    if (btnPreviewEmail) btnPreviewEmail.addEventListener('click', previewEmail);
 
-        const btnSaveTemplate = document.getElementById('btn-save-template');
-        if (btnSaveTemplate) btnSaveTemplate.addEventListener('click', saveTemplate);
+    const btnSaveTemplate = document.getElementById('btn-save-template');
+    if (btnSaveTemplate) btnSaveTemplate.addEventListener('click', saveTemplate);
 
-        // Delegation for Modal Close
-        document.body.addEventListener('click', (e) => {
-            const closePreviewBtn = e.target.closest('[data-action="close-preview"]');
-            if (closePreviewBtn) {
-                closePreview();
-                return;
-            }
-        });
-
-    } catch (e) {
-        console.error("Initialization failed:", e);
-    }
+    // Delegation for Modal Close
+    document.body.addEventListener('click', (e) => {
+        const closePreviewBtn = e.target.closest('[data-action="close-preview"]');
+        if (closePreviewBtn) {
+            closePreview();
+            return;
+        }
+    });
 }
-document.addEventListener('DOMContentLoaded', init);
+initAdminPage(init);
 
 async function loadTemplates() {
     try {

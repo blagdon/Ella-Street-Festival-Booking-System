@@ -1,4 +1,4 @@
-import { getSupabaseClient, requireAuth } from './supabase.js';
+import { getSupabaseClient, initAdminPage } from './supabase.js';
 import { safeError, validateString, validateBookingId, escapeHtml, MAX_FIELD_LENGTHS } from './utils.js';
 import { auditLog } from './api.js';
 
@@ -14,56 +14,49 @@ let masterLocations = [];
 let currentEditId = null;
 
 // --- 2. INITIALIZATION ---
-document.addEventListener('DOMContentLoaded', async () => {
-    try {
-        // A. Auth Check
-        const session = await requireAuth('steward');
-        if (!session) return;
+async function initSteward() {
+    // B. Load Data
+    loadFromLocal();
+    updateQueueBadge();
 
-        // B. Load Data
-        loadFromLocal();
-        updateQueueBadge();
-
-        if (navigator.onLine) {
-            await processSyncQueue();
-            await syncDown();
-        } else {
-            document.getElementById('loading').classList.add('hidden');
-        }
-
-        // C. UI Setup
-        document.getElementById('searchInput').addEventListener('input', (e) => renderList(e.target.value));
-
-        window.addEventListener('online', async () => {
-            updateStatus(true);
-            // Refresh auth session first (may have expired while offline)
-            try { await sb.auth.getSession(); } catch (e) { }
-            // Sync queued changes BEFORE pulling fresh data
-            await processSyncQueue();
-            await syncDown();
-            updateQueueBadge();
-        });
-        window.addEventListener('offline', () => {
-            updateStatus(false);
-            updateQueueBadge();
-        });
-
-        // Event delegation
-        document.body.addEventListener('click', (e) => {
-            const closeModalBtn = e.target.closest('[data-action="close-modal"]');
-            if (closeModalBtn) {
-                closeModal();
-                return;
-            }
-        });
-
-        const btnSaveLocation = document.getElementById('btn-save-location');
-        if (btnSaveLocation) btnSaveLocation.addEventListener('click', saveLocation);
-
-    } catch (e) {
-        showToast("⚠️ Initialization Error: " + safeError(e));
+    if (navigator.onLine) {
+        await processSyncQueue();
+        await syncDown();
+    } else {
+        document.getElementById('loading').classList.add('hidden');
     }
-});
+
+    // C. UI Setup
+    document.getElementById('searchInput').addEventListener('input', (e) => renderList(e.target.value));
+
+    window.addEventListener('online', async () => {
+        updateStatus(true);
+        // Refresh auth session first (may have expired while offline)
+        try { await sb.auth.getSession(); } catch (e) { }
+        // Sync queued changes BEFORE pulling fresh data
+        await processSyncQueue();
+        await syncDown();
+        updateQueueBadge();
+    });
+    window.addEventListener('offline', () => {
+        updateStatus(false);
+        updateQueueBadge();
+    });
+
+    // Event delegation
+    document.body.addEventListener('click', (e) => {
+        const closeModalBtn = e.target.closest('[data-action="close-modal"]');
+        if (closeModalBtn) {
+            closeModal();
+            return;
+        }
+    });
+
+    const btnSaveLocation = document.getElementById('btn-save-location');
+    if (btnSaveLocation) btnSaveLocation.addEventListener('click', saveLocation);
+}
+
+initAdminPage(initSteward, 'steward');
 
 // --- 3. DATA & SYNC LOGIC ---
 

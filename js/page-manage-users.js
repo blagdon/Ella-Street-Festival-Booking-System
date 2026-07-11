@@ -1,17 +1,11 @@
-import { initNavigation } from './nav.js';
-import { requireAuth, getSupabaseClient } from './supabase.js';
+import { initAdminPage, getSupabaseClient } from './supabase.js';
 import { CONFIG } from './config.js';
 import { showToast } from './ui.js';
 import { escapeHtml } from './utils.js';
 
 let adminSb; // Main (admin) client
 
-document.addEventListener('DOMContentLoaded', async () => {
-    try {
-        await requireAuth('admin');
-        initNavigation();
-    } catch (e) { return; }
-
+function initManageUsers() {
     adminSb = getSupabaseClient();
     loadUsers();
 
@@ -32,7 +26,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         });
     }
-});
+}
+
+initAdminPage(initManageUsers);
 
 // ---- LOAD EXISTING USERS ----
 async function loadUsers() {

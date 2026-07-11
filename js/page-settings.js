@@ -1,5 +1,4 @@
-import { requireAuth, getSupabaseClient } from './supabase.js';
-import { initNavigation } from './nav.js';
+import { initAdminPage, getSupabaseClient } from './supabase.js';
 import { showToast } from './ui.js';
 import { auditLog } from './api.js';
 import { CONFIG } from './config.js';
@@ -8,18 +7,14 @@ import { parseEdgeFunctionError } from './utils.js';
 
 const sb = getSupabaseClient();
 
-document.addEventListener('DOMContentLoaded', async () => {
-    try {
-        await requireAuth('admin');
-        initNavigation();
-        initToggles();
-        initStallCosts();
-        initSystemConstants();
-        initZohoSettings();
-    } catch (e) {
-        // Redirection handled in requireAuth
-    }
-});
+function initSettings() {
+    initToggles();
+    initStallCosts();
+    initSystemConstants();
+    initZohoSettings();
+}
+
+initAdminPage(initSettings);
 
 async function initToggles() {
     const btnGeneral = document.getElementById('toggle-general');

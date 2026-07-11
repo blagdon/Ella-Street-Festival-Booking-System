@@ -1,16 +1,10 @@
-import { initNavigation } from './nav.js';
-import { requireAuth, getSupabaseClient } from './supabase.js';
+import { initAdminPage, getSupabaseClient } from './supabase.js';
 import { getCurrentInstance } from './config.js';
 import { showToast } from './ui.js';
 
 let sb;
 
-document.addEventListener('DOMContentLoaded', async () => {
-    try {
-        await requireAuth('admin');
-        initNavigation();
-    } catch (e) { return; }
-
+function initIndex() {
     updateVisibility();
 
     sb = getSupabaseClient();
@@ -35,7 +29,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (updatePassBtn) {
         updatePassBtn.addEventListener('click', updateUserPassword);
     }
-});
+}
+
+initAdminPage(initIndex);
 
 function updateVisibility() {
     const val = getCurrentInstance();
