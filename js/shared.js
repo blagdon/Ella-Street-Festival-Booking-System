@@ -118,10 +118,13 @@ export async function getEmailFromTemplate(templateId, booking, id, extraVars = 
         }
     }
 
-    const cancelBase = CONFIG.URLS.CANCEL_URL || 'https://stallbookingstailwinds.vercel.app/cancel_booking.html';
-    const cancelLink = cancelToken
+    const cancelBase = CONFIG.URLS.CANCEL_URL;
+    if (!cancelBase) {
+        console.warn('CONFIG.URLS.CANCEL_URL is not set — check the cancel_url row in the settings table / supabase-public.js.');
+    }
+    const cancelLink = (cancelToken && cancelBase)
         ? `${cancelBase}?token=${encodeURIComponent(cancelToken)}`
-        : cancelBase;
+        : (cancelBase || '');
     const bankDetails = CONFIG.BANK_DETAILS;
     const locationId = escapeHtml(booking.location_id || 'TBA');
     const reason = escapeHtml(extraVars.reason || 'Oversubscribed / Category Full');
