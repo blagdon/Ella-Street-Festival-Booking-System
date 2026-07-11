@@ -194,6 +194,7 @@ export async function sharedUpdateStatus(id, status, allBookings, options = {}) 
                 const templateId = chargeable ? 'confirmed_chargeable' : 'confirmed_free';
                 const { subject, body } = await getEmailFromTemplate(templateId, booking, id);
                 await sendEmail(id, subject, body);
+                showToast('Booking confirmed and email queued');
             } else {
                 showToast('Booking confirmed');
             }
@@ -202,6 +203,7 @@ export async function sharedUpdateStatus(id, status, allBookings, options = {}) 
             if (booking) {
                 const { subject, body } = await getEmailFromTemplate('rejected', booking, id, { reason: reason });
                 await sendEmail(id, subject, body);
+                showToast('Booking rejected and email queued', 'info');
             } else {
                 showToast('Booking rejected', 'info');
             }
