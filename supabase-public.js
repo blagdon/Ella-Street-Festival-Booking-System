@@ -3,10 +3,9 @@
  * Supabase credentials for PUBLIC-FACING pages (non-module script).
  * Used by: General_Booking.html, Food_Stall_booking.html, cancel_booking.html
  *
- * ⚠️  KEEP IN SYNC WITH js/config.js (SUPABASE.URL and SUPABASE.KEY)
- *     These two files contain the same credentials because public pages
- *     cannot use ES module imports. If you rotate the anon key or change
- *     the Supabase URL, you MUST update BOTH this file AND js/config.js.
+ * ⚠️  This file is the single source of truth for public configurations and credentials.
+ *     js/config.js imports and references this file directly, so you do NOT need to
+ *     update credentials in js/config.js when you rotate the anon key or change the URL.
  *
  * The anon key is intentionally client-facing.
  * Security is enforced by Row Level Security (RLS) on Supabase tables.

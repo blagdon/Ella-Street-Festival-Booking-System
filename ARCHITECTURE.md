@@ -424,9 +424,7 @@ CONFIG.UI.STATUS_LIST          ← Valid status values
 CONFIG.INSTANCE_MAP            ← Maps instance keys to DB prefixes
 ```
 
-### `supabase-public.js` — Public page credentials
-
-This file duplicates the Supabase credentials from `config.js` because public pages cannot use ES module imports. **Keep both in sync** whenever you rotate the anon key.
+This file contains the Supabase credentials and other global configuration settings. It is the single source of truth for public configurations, as `js/config.js` imports and references `ESF_PUBLIC_CONFIG` from this file.
 
 ### `email_templates.js` — Legacy fallback
 
@@ -438,9 +436,8 @@ This file contains hardcoded email template strings as a fallback. The primary t
 
 ### Rotating the Supabase anon key
 1. Generate new key in Supabase dashboard → Project Settings → API
-2. Update `CONFIG.SUPABASE.KEY` in `js/config.js`
-3. Update `SUPABASE_KEY` in `supabase-public.js`
-4. Re-deploy to Vercel
+2. Update `SUPABASE_KEY` (and `SUPABASE_URL` if needed) in `supabase-public.js`
+3. Re-deploy to Vercel
 
 ### Changing the bank account details
 Update `CONFIG.BANK_DETAILS` in `js/config.js`. This is automatically used in all email templates via the `{{bank_details}}` placeholder.
@@ -459,9 +456,9 @@ Update `CONFIG.UI.STALL_COST` in `js/config.js`. Prices are picked up automatica
 4. Call `getEmailFromTemplate('my_new_template', booking, id)` from JS
 
 ### Changing the Vercel URL
-1. Update `CONFIG.URLS.BASE` and `CONFIG.URLS.CANCEL_URL` in `js/config.js`
-2. Also update the hardcoded URL in `email_templates.js` (search for `stallbookingstailwinds.vercel.app`)
-3. Update the cancellation link in `shared.js` (line ~122) which has a fallback URL
+1. Update the `base_url` and `cancel_url` values in the database `settings` table.
+2. Update `BASE_URL` and `CANCEL_URL` in `supabase-public.js` (which serves as the local configuration and emergency fallback).
+3. Also update the legacy fallback URL in `email_templates.js` (search for `stallbookingstailwinds.vercel.app`).
 
 ### Adding a new booking status
 1. Add the new status string to `CONFIG.UI.STATUS_LIST` in `config.js`
