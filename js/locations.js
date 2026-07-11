@@ -8,6 +8,7 @@ let allLocations = [];
 let globalOccupiedIds = [];
 let currentFilter = 'all';
 let currentMobileBookingId = null;
+let activeConfirmCallback = null;
 
 export async function initLocations() {
     initInstanceBadge();
@@ -182,22 +183,26 @@ export async function assignLocation(id, newLocId) {
 }
 
 export async function sendEmail(id) {
-    if (!confirm("Send confirmation email to this stallholder?")) return;
-
-    try {
-        const statusEl = document.getElementById('statusMsg');
-        if (statusEl) {
-            statusEl.innerText = "Queuing Email...";
-            statusEl.classList.remove('hidden');
+    showConfirmModal(
+        "Send Email",
+        "Send confirmation email to this stallholder?",
+        async () => {
+            try {
+                const statusEl = document.getElementById('statusMsg');
+                if (statusEl) {
+                    statusEl.innerText = "Queuing Email...";
+                    statusEl.classList.remove('hidden');
+                }
+                await queueLocationEmail(id);
+                showToast("Email Added to Queue");
+            } catch (err) {
+                showToast("Email Failed: " + (err.message || err), 'error');
+            } finally {
+                const statusEl = document.getElementById('statusMsg');
+                if (statusEl) statusEl.classList.add('hidden');
+            }
         }
-        await queueLocationEmail(id);
-        showToast("Email Added to Queue");
-    } catch (err) {
-        showToast("Email Failed: " + (err.message || err), 'error');
-    } finally {
-        const statusEl = document.getElementById('statusMsg');
-        if (statusEl) statusEl.classList.add('hidden');
-    }
+    );
 }
 
 export async function sendBulkEmails() {
@@ -207,47 +212,52 @@ export async function sendBulkEmails() {
         return;
     }
 
-    if (!confirm(`Send emails to ALL ${targets.length} assigned stalls?`)) return;
+    showConfirmModal(
+        "Send Bulk Emails",
+        `Send emails to ALL ${targets.length} assigned stalls?`,
+        async () => {
+            let count = 0;
+            let failedCount = 0;
+            const failedIds = [];
+            const statusEl = document.getElementById('statusMsg');
+            if (statusEl) statusEl.classList.remove('hidden');
 
-    let count = 0;
-    let failedCount = 0;
-    const failedIds = [];
-    const statusEl = document.getElementById('statusMsg');
-    if (statusEl) statusEl.classList.remove('hidden');
-
-    const btn = document.getElementById('btn-send-bulk-emails');
-    const originalContent = btn ? btn.innerHTML : '';
-    if (btn) {
-        btn.innerHTML = `<svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white inline-block align-text-bottom" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Sending...`;
-        btn.disabled = true;
-    }
-
-    try {
-        for (const b of targets) {
-            count++;
-            try {
-                if (statusEl) statusEl.innerText = `Queuing ${count}/${targets.length}...`;
-                await queueLocationEmail(b.id);
-            } catch (e) {
-                failedCount++;
-                failedIds.push(b.id);
-                console.warn(`Failed to queue location email for ${b.id}:`, e);
+            const btn = document.getElementById('btn-send-bulk-emails');
+            const originalContent = btn ? btn.innerHTML : '';
+            if (btn) {
+                btn.innerHTML = `<svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white inline-block align-text-bottom" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Sending...`;
+                btn.disabled = true;
             }
-            await new Promise(r => setTimeout(r, 50));
-        }
 
-        if (statusEl) statusEl.classList.add('hidden');
-        if (failedCount > 0) {
-            showToast(`Queued ${count - failedCount} emails. Failed: ${failedCount} (IDs: ${failedIds.join(', ')})`, 'warning');
-        } else {
-            showToast(`Queued all ${count} Emails successfully.`);
+            try {
+                for (const b of targets) {
+                    count++;
+                    try {
+                        if (statusEl) statusEl.innerText = `Queuing ${count}/${targets.length}...`;
+                        await queueLocationEmail(b.id);
+                    } catch (e) {
+                        failedCount++;
+                        failedIds.push(b.id);
+                        console.warn(`Failed to queue location email for ${b.id}:`, e);
+                    }
+                    await new Promise(r => setTimeout(r, 50));
+                }
+
+                if (statusEl) statusEl.classList.add('hidden');
+                if (failedCount > 0) {
+                    showToast(`Queued ${count - failedCount} emails. Failed: ${failedCount} (IDs: ${failedIds.join(', ')})`, 'warning');
+                } else {
+                    showToast(`Queued all ${count} Emails successfully.`);
+                }
+            } finally {
+                if (btn) {
+                    btn.innerHTML = originalContent;
+                    btn.disabled = false;
+                }
+                if (statusEl) statusEl.classList.add('hidden');
+            }
         }
-    } finally {
-        if (btn) {
-            btn.innerHTML = originalContent;
-            btn.disabled = false;
-        }
-    }
+    );
 }
 
 export function setFilter(type) {
@@ -516,10 +526,32 @@ window.addEventListener('touchend', (e) => {
     }
 });
 
+export function showConfirmModal(title, message, onConfirm) {
+    const modal = document.getElementById('confirmModal');
+    const titleEl = document.getElementById('confirmTitle');
+    const msgEl = document.getElementById('confirmMessage');
+
+    if (!modal) return;
+
+    if (titleEl) titleEl.innerText = title;
+    if (msgEl) msgEl.innerText = message;
+
+    activeConfirmCallback = onConfirm;
+
+    modal.classList.remove('opacity-0', 'pointer-events-none');
+}
+
 export function closeConfirmModal() {
-    // Need to implement this if it is used
+    const modal = document.getElementById('confirmModal');
+    if (modal) {
+        modal.classList.add('opacity-0', 'pointer-events-none');
+    }
+    activeConfirmCallback = null;
 }
 
 export function confirmAction() {
-    // Need to implement this if it is used
+    if (typeof activeConfirmCallback === 'function') {
+        activeConfirmCallback();
+    }
+    closeConfirmModal();
 }
