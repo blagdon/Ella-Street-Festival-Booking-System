@@ -1,6 +1,6 @@
 import { fetchLocationData, updateLocation } from './api.js';
 import { queueLocationEmail } from './shared.js';
-import { showToast } from './ui.js';
+import { showToast, renderInstanceBadge } from './ui.js';
 import { escapeHtml } from './utils.js';
 
 let allBookings = [];
@@ -11,28 +11,8 @@ let currentMobileBookingId = null;
 let activeConfirmCallback = null;
 
 export async function initLocations() {
-    initInstanceBadge();
+    renderInstanceBadge('instanceBadge');
     await loadData();
-}
-
-function initInstanceBadge() {
-    const instance = localStorage.getItem('ESF_INSTANCE') || 'DEV';
-    const badge = document.getElementById('instanceBadge');
-    if (badge) {
-        if (instance === 'FOOD') {
-            badge.className = "bg-red-100 text-red-800 text-xs font-bold px-2 py-1 rounded uppercase tracking-wide";
-            badge.innerText = "Food Stalls";
-        } else if (instance === 'GENERAL') {
-            badge.className = "bg-blue-100 text-blue-800 text-xs font-bold px-2 py-1 rounded uppercase tracking-wide";
-            badge.innerText = "Non-Food";
-        } else if (instance === 'MISC') {
-            badge.className = "bg-purple-100 text-purple-800 text-xs font-bold px-2 py-1 rounded uppercase tracking-wide";
-            badge.innerText = "Misc / Facilities";
-        } else {
-            badge.className = "bg-green-100 text-green-800 text-xs font-bold px-2 py-1 rounded uppercase tracking-wide";
-            badge.innerText = "Dev Environment";
-        }
-    }
 }
 
 export async function loadData() {

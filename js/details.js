@@ -1,5 +1,5 @@
 import { fetchKanbanData, updateBookingDetails } from './api.js';
-import { showToast } from './ui.js';
+import { showToast, renderInstanceBadge } from './ui.js';
 import { escapeHtml, safeError } from './utils.js';
 import { CONFIG } from './config.js';
 
@@ -9,7 +9,7 @@ let originalValues = {};
 const trackedFields = ['editBusiness', 'editOwner', 'editCategory', 'editType', 'editEmail', 'editPhone', 'editPower', 'editHouse', 'editDesc', 'editOther', 'editResident', 'editCharity'];
 
 export function initDetails() {
-    initInstanceBadge();
+    renderInstanceBadge('instanceBadge');
     populateDropdowns();
     loadBookings();
 
@@ -22,27 +22,6 @@ function checkDirty(e) {
     const el = e.target;
     if (trackedFields.includes(el.id) && originalValues.hasOwnProperty(el.id)) {
         el.classList.toggle('field-dirty', el.value !== originalValues[el.id]);
-    }
-}
-
-// Initialize instance badge
-function initInstanceBadge() {
-    const instance = localStorage.getItem('ESF_INSTANCE') || 'DEV';
-    const badge = document.getElementById('instanceBadge');
-    if (badge) {
-        if (instance === 'FOOD') {
-            badge.className = "bg-red-100 text-red-800 text-xs font-bold px-2 py-1 rounded uppercase tracking-wide";
-            badge.innerText = "Food Stalls";
-        } else if (instance === 'GENERAL') {
-            badge.className = "bg-blue-100 text-blue-800 text-xs font-bold px-2 py-1 rounded uppercase tracking-wide";
-            badge.innerText = "Non-Food";
-        } else if (instance === 'MISC') {
-            badge.className = "bg-purple-100 text-purple-800 text-xs font-bold px-2 py-1 rounded uppercase tracking-wide";
-            badge.innerText = "Misc / Facilities";
-        } else {
-            badge.className = "bg-green-100 text-green-800 text-xs font-bold px-2 py-1 rounded uppercase tracking-wide";
-            badge.innerText = "Dev Environment";
-        }
     }
 }
 

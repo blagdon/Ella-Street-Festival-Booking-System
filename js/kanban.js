@@ -2,7 +2,7 @@ import { fetchKanbanData, updateBookingStatus, addNote, sendEmail, emailAllConfi
 import { CONFIG, getStallCost } from './config.js';
 import { safeError, escapeHtml } from './utils.js';
 import { sharedUpdateStatus, populateDetailPane } from './shared.js';
-import { showToast } from './ui.js';
+import { showToast, renderInstanceBadge } from './ui.js';
 
 let drake;
 let allBookings = [];
@@ -20,7 +20,6 @@ export function initKanban() {
 // Instance Badge
 function initInstanceBadge() {
     const instance = localStorage.getItem('ESF_INSTANCE') || 'DEV';
-    const badge = document.getElementById('pageInstanceBadge');
     const hccColumn = document.getElementById('hcc-checks-column');
     const hccButton = document.getElementById('hcc-checks-button');
 
@@ -32,21 +31,7 @@ function initInstanceBadge() {
         if (hccButton) hccButton.style.display = 'block';
     }
 
-    if (badge) {
-        if (instance === 'FOOD') {
-            badge.className = "bg-red-100 text-red-800 text-xs font-bold px-2 py-1 rounded uppercase tracking-wide";
-            badge.innerText = "Food Stalls";
-        } else if (instance === 'GENERAL') {
-            badge.className = "bg-blue-100 text-blue-800 text-xs font-bold px-2 py-1 rounded uppercase tracking-wide";
-            badge.innerText = "Non-Food";
-        } else if (instance === 'MISC') {
-            badge.className = "bg-purple-100 text-purple-800 text-xs font-bold px-2 py-1 rounded uppercase tracking-wide";
-            badge.innerText = "Misc / Facilities";
-        } else {
-            badge.className = "bg-green-100 text-green-800 text-xs font-bold px-2 py-1 rounded uppercase tracking-wide";
-            badge.innerText = "Dev Environment";
-        }
-    }
+    renderInstanceBadge('pageInstanceBadge');
 }
 
 
