@@ -54,14 +54,19 @@ document.addEventListener('DOMContentLoaded', async () => {
             msg.classList.add('hidden');
 
             try {
-                const { data, error } = await sb.rpc('cancel_booking_secure', {
-                    p_token: cancelToken,
-                    p_reason: reason || null
+                const { data, error } = await sb.functions.invoke('cancel-booking', {
+                    body: {
+                        token: captchaToken.value,
+                        cancelToken: cancelToken,
+                        reason: reason || null
+                    }
                 });
 
-                if (error || (data && data.success === false)) {
-                    const errMsg = (data && data.error) ? data.error : "Could not cancel. The link may have already been used or has expired.";
-                    throw new Error(errMsg);
+                if (error) {
+                    throw new Error("Server error: " + error.message);
+                }
+                if (data && data.error) {
+                    throw new Error(data.error);
                 }
 
                 // Success
