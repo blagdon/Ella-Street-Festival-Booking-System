@@ -68,8 +68,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 // --- 3. DATA & SYNC LOGIC ---
 
 function loadFromLocal() {
-    const raw = sessionStorage.getItem(DB_KEY);
-    const rawLocs = sessionStorage.getItem(LOCS_KEY);
+    const raw = localStorage.getItem(DB_KEY);
+    const rawLocs = localStorage.getItem(LOCS_KEY);
 
     if (raw) localData = JSON.parse(raw);
     if (rawLocs) masterLocations = JSON.parse(rawLocs);
@@ -91,10 +91,10 @@ async function syncDown() {
         if (locationsReq.error) throw locationsReq.error;
 
         localData = bookingsReq.data;
-        sessionStorage.setItem(DB_KEY, JSON.stringify(localData));
+        localStorage.setItem(DB_KEY, JSON.stringify(localData));
 
         masterLocations = locationsReq.data;
-        sessionStorage.setItem(LOCS_KEY, JSON.stringify(masterLocations));
+        localStorage.setItem(LOCS_KEY, JSON.stringify(masterLocations));
 
         if (document.getElementById('searchInput').value === '') renderList('');
 
@@ -212,7 +212,7 @@ async function saveLocation() {
 
     // 2. Optimistic Update
     localData[idx].location_id = newLoc;
-    sessionStorage.setItem(DB_KEY, JSON.stringify(localData));
+    localStorage.setItem(DB_KEY, JSON.stringify(localData));
     renderList(document.getElementById('searchInput').value);
     closeModal();
 
@@ -252,7 +252,7 @@ async function saveLocation() {
 
             // 4. Revert Optimistic Update
             localData[idx].location_id = previousLoc;
-            sessionStorage.setItem(DB_KEY, JSON.stringify(localData));
+            localStorage.setItem(DB_KEY, JSON.stringify(localData));
             renderList(document.getElementById('searchInput').value);
         }
     } else {
@@ -263,18 +263,18 @@ async function saveLocation() {
 // --- 6. UTILS ---
 
 function addToQueue(id, location) {
-    const queue = JSON.parse(sessionStorage.getItem(QUEUE_KEY) || '[]');
+    const queue = JSON.parse(localStorage.getItem(QUEUE_KEY) || '[]');
     const filtered = queue.filter(item => item.id !== id);
     const safeLoc = (location === "" || location === null) ? null : location;
 
     filtered.push({ id, location: safeLoc, timestamp: Date.now(), retries: 0 });
-    sessionStorage.setItem(QUEUE_KEY, JSON.stringify(filtered));
+    localStorage.setItem(QUEUE_KEY, JSON.stringify(filtered));
     updateQueueBadge();
     showToast("Saved offline — will sync when back online");
 }
 
 async function processSyncQueue() {
-    const queue = JSON.parse(sessionStorage.getItem(QUEUE_KEY) || '[]');
+    const queue = JSON.parse(localStorage.getItem(QUEUE_KEY) || '[]');
     if (queue.length === 0) return;
 
     showToast(`Syncing ${queue.length} change${queue.length > 1 ? 's' : ''}...`);
@@ -320,7 +320,7 @@ async function processSyncQueue() {
         }
     }
 
-    sessionStorage.setItem(QUEUE_KEY, JSON.stringify(failedQueue));
+    localStorage.setItem(QUEUE_KEY, JSON.stringify(failedQueue));
     updateQueueBadge();
 
     if (successCount > 0) {
@@ -332,7 +332,7 @@ async function processSyncQueue() {
 }
 
 function updateQueueBadge() {
-    const queue = JSON.parse(sessionStorage.getItem(QUEUE_KEY) || '[]');
+    const queue = JSON.parse(localStorage.getItem(QUEUE_KEY) || '[]');
     let badge = document.getElementById('queueBadge');
 
     if (queue.length === 0) {
