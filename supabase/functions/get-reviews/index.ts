@@ -66,10 +66,35 @@ Deno.serve(async (req) => {
       })
     }
 
-    // TEMP DEBUG: log the raw first result so we can see the real field names.
-    // SerpApi's rating/review-count fields aren't consistently documented across
-    // TripAdvisor result types, so confirm from a live response before removing this.
+    // TEMP DEBUG: log the raw first result and match decision BEFORE any
+    // early return below, so we can see what happened even on a rejection.
     console.log('SerpApi firstResult raw:', JSON.stringify(firstResult))
+
+    // Guard against a confident-looking but wrong match. A plain substring
+    // check would let a short name like "Noos" match unrelated results such
+    // as "Noosa Ferry & Cruise Co" — require at least one shared whole word
+    // (3+ letters) between the business name and the result title instead.
+    const normalizeForMatch = (s: string) =>
+      (s || '').toLowerCase().replace(/[-'’]/g, ' ').replace(/\s+/g, ' ').trim()
+
+    const isRelevantMatch = (resultTitle: string, name: string) => {
+      const titleWords = new Set(normalizeForMatch(resultTitle).split(' ').filter(w => w.length > 2))
+      const nameWords = normalizeForMatch(name).split(' ').filter(w => w.length > 2)
+      return nameWords.some(w => titleWords.has(w))
+    }
+
+    const relevant = isRelevantMatch(firstResult.title, business_name)
+    console.log(`isRelevantMatch("${firstResult.title}", "${business_name}"):`, relevant)
+
+    if (!relevant) {
+      return new Response(JSON.stringify({
+        found: false,
+        message: `No confident TripAdvisor match found for "${business_name}".`
+      }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
+    }
 
     const place_id = firstResult.place_id
     const title = firstResult.title
