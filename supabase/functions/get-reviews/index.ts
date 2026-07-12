@@ -117,16 +117,31 @@ Deno.serve(async (req) => {
     }
 
     // Backstop against the location bias not being fully respected: reject
-    // any result whose address doesn't look like a UK address. UK addresses
-    // here should contain "Hull" and either a UK postcode pattern (starting
-    // HU) or "UK"/"United Kingdom" — US addresses instead carry a two-letter
-    // state code (e.g. ", GA 30646") which this pattern won't match.
-    const address = firstResult.address || ''
-    const looksLikeUkAddress = /\bHU\d[A-Z\d]?\s*\d[A-Z]{2}\b/i.test(address) ||
-      /united kingdom|\buk\b/i.test(address)
+    // any result whose coordinates are far from Hull, UK. Using distance
+    // from GPS coordinates rather than parsing the address string, since
+    // mobile caterers/trailers (e.g. a horsebox bar) often have no `address`
+    // field at all — only `gps_coordinates` — which an address-text check
+    // would wrongly treat as "not UK" and reject.
+    const HULL_UK_LAT = 53.7676
+    const HULL_UK_LON = -0.3274
+    const MAX_DISTANCE_KM = 80 // generous radius to cover East Yorkshire mobile caterers
 
-    if (!looksLikeUkAddress) {
-      console.log('Rejected non-UK address:', address)
+    const distanceKm = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+      const R = 6371
+      const dLat = (lat2 - lat1) * Math.PI / 180
+      const dLon = (lon2 - lon1) * Math.PI / 180
+      const a = Math.sin(dLat / 2) ** 2 +
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+    }
+
+    const coords = firstResult.gps_coordinates
+    const isNearHull = coords
+      ? distanceKm(HULL_UK_LAT, HULL_UK_LON, coords.latitude, coords.longitude) <= MAX_DISTANCE_KM
+      : false
+
+    if (!isNearHull) {
+      console.log('Rejected out-of-area result:', coords ?? 'no gps_coordinates', firstResult.address ?? 'no address')
       return new Response(JSON.stringify({
         found: false,
         message: `No confident Google Maps match found for "${business_name}" in Hull, UK.`
