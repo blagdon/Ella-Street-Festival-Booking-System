@@ -849,17 +849,18 @@ async function fetchFsaEstablishments(name, address = null, businessTypeId = nul
     }
 }
 
-function renderRatingBubbles(rating) {
+function renderRatingBubbles(rating, showValue = true) {
     const r = parseFloat(rating) || 0;
-    let html = '';
+    let stars = '';
     for (let i = 1; i <= 5; i++) {
-        if (i <= r) {
-            html += `<span class="inline-block w-2.5 h-2.5 rounded-full bg-[#00aa6c] border border-[#00aa6c] mr-0.5"></span>`;
-        } else if (i - 0.5 <= r) {
-            html += `<span class="inline-block w-2.5 h-2.5 rounded-full bg-gradient-to-r from-[#00aa6c] to-gray-200 border border-gray-300 mr-0.5"></span>`;
+        if (i <= Math.round(r)) {
+            stars += `<span class="text-amber-400" style="font-size:14px;line-height:1;">★</span>`;
         } else {
-            html += `<span class="inline-block w-2.5 h-2.5 rounded-full bg-gray-100 border border-gray-300 mr-0.5"></span>`;
+            stars += `<span class="text-gray-300" style="font-size:14px;line-height:1;">★</span>`;
         }
     }
-    return html;
+    const valueHtml = (showValue && r > 0)
+        ? `<span class="text-xs font-bold text-gray-700 ml-1">${r.toFixed(1)}</span>`
+        : '';
+    return `<span class="inline-flex items-center">${stars}${valueHtml}</span>`;
 }
