@@ -12,6 +12,7 @@ function initSettings() {
     initStallCosts();
     initSystemConstants();
     initZohoSettings();
+    initSerpApiSettings();
 }
 
 initAdminPage(initSettings);
@@ -434,4 +435,65 @@ async function initZohoSettings() {
             }
         });
     }
+}
+
+async function initSerpApiSettings() {
+    const txtSerpApiKey = document.getElementById('serpapi-api-key');
+    const btnSaveSerpApi = document.getElementById('btn-save-serpapi');
+
+    if (!txtSerpApiKey || !btnSaveSerpApi) return;
+
+    // Load current value
+    try {
+        const { data, error } = await sb
+            .from('settings')
+            .select('key, value')
+            .eq('key', 'serpapi_api_key')
+            .single();
+
+        if (error && error.code !== 'PGRST116') throw error; // Ignore not found error
+
+        if (data) {
+            txtSerpApiKey.value = data.value || '';
+        }
+    } catch (err) {
+        showToast("Failed to load SerpApi settings: " + err.message, "error");
+    }
+
+    // Save handler
+    btnSaveSerpApi.addEventListener('click', async () => {
+        const valSerpApiKey = txtSerpApiKey.value.trim();
+
+        if (!valSerpApiKey) {
+            showToast("SerpApi API Key is required.", "error");
+            return;
+        }
+
+        btnSaveSerpApi.disabled = true;
+        btnSaveSerpApi.textContent = "Saving...";
+
+        try {
+            const { data: { session } } = await sb.auth.getSession();
+            const userEmail = session?.user?.email || 'admin';
+            const now = new Date().toISOString();
+
+            const { error } = await sb.from('settings').upsert({
+                key: 'serpapi_api_key',
+                value: valSerpApiKey,
+                updated_at: now,
+                updated_by: userEmail
+            });
+            if (error) throw error;
+
+            showToast("SerpApi API key saved successfully!");
+            await auditLog('update_serpapi_settings', 'system', {
+                has_key: true
+            });
+        } catch (err) {
+            showToast(`Failed to save SerpApi settings: ${err.message}`, 'error');
+        } finally {
+            btnSaveSerpApi.disabled = false;
+            btnSaveSerpApi.textContent = "Save SerpApi Settings";
+        }
+    });
 }
