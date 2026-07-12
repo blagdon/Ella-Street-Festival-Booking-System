@@ -58,7 +58,7 @@ Deno.serve(async (req) => {
     // (e.g. ll=@40.7455096,-74.0083012,14z directly in the URL). Wrapping it
     // in encodeURIComponent turns "@"/"," into %40/%2C, which may not parse
     // the same way server-side. Logging the final URL below to confirm.
-    const searchUrl = `https://serpapi.com/search.json?engine=google_maps&q=${encodeURIComponent(searchQuery)}&ll=${HULL_UK_LL}&google_domain=google.co.uk&gl=uk&api_key=${apiKey}`
+    const searchUrl = `https://serpapi.com/search.json?engine=google_maps&type=search&q=${encodeURIComponent(searchQuery)}&ll=${HULL_UK_LL}&google_domain=google.co.uk&gl=uk&api_key=${apiKey}`
     console.log('Google Maps search URL (key redacted):', searchUrl.replace(apiKey, 'REDACTED'))
     const searchResponse = await fetch(searchUrl)
     if (!searchResponse.ok) {
