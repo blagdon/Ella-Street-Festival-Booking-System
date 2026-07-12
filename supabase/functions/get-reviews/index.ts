@@ -49,8 +49,12 @@ Deno.serve(async (req) => {
     // Append 'Hull' to scope search locally
     const searchQuery = `${business_name} Hull`
 
-    // 3. Search Google Maps for the business via SerpApi
-    const searchUrl = `https://serpapi.com/search.json?engine=google_maps&q=${encodeURIComponent(searchQuery)}&api_key=${apiKey}`
+    // 3. Search Google Maps for the business via SerpApi, biased to Hull, UK
+    //    via the `ll` (latitude,longitude,zoom) parameter — without this, a
+    //    bare "Hull" keyword can match Hull, Georgia (USA) just as easily as
+    //    Hull, UK, since Maps search has no country/region context otherwise.
+    const HULL_UK_LL = '@53.7676,-0.3274,13z'
+    const searchUrl = `https://serpapi.com/search.json?engine=google_maps&q=${encodeURIComponent(searchQuery)}&ll=${encodeURIComponent(HULL_UK_LL)}&google_domain=google.co.uk&gl=uk&api_key=${apiKey}`
     const searchResponse = await fetch(searchUrl)
     if (!searchResponse.ok) {
       throw new Error(`SerpApi Google Maps search failed with status ${searchResponse.status}`)
@@ -91,6 +95,26 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({
         found: false,
         message: `No confident Google Maps match found for "${business_name}".`
+      }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
+    }
+
+    // Backstop against the location bias not being fully respected: reject
+    // any result whose address doesn't look like a UK address. UK addresses
+    // here should contain "Hull" and either a UK postcode pattern (starting
+    // HU) or "UK"/"United Kingdom" — US addresses instead carry a two-letter
+    // state code (e.g. ", GA 30646") which this pattern won't match.
+    const address = firstResult.address || ''
+    const looksLikeUkAddress = /\bHU\d[A-Z\d]?\s*\d[A-Z]{2}\b/i.test(address) ||
+      /united kingdom|\buk\b/i.test(address)
+
+    if (!looksLikeUkAddress) {
+      console.log('Rejected non-UK address:', address)
+      return new Response(JSON.stringify({
+        found: false,
+        message: `No confident Google Maps match found for "${business_name}" in Hull, UK.`
       }), {
         status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
