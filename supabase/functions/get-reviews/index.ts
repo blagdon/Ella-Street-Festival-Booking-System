@@ -69,8 +69,14 @@ Deno.serve(async (req) => {
     console.log('SerpApi response keys:', Object.keys(searchData))
     if (searchData.error) console.log('SerpApi error field:', searchData.error)
     console.log('local_results count:', searchData.local_results?.length ?? 0)
+    console.log('place_results present:', !!searchData.place_results)
 
-    const firstResult = searchData.local_results?.[0]
+    // SerpApi returns a `local_results` array when a query has multiple
+    // candidate matches, but a single `place_results` object (not an array)
+    // when it resolves to one confident, unambiguous match — which happens
+    // more often now that the search is properly location-biased. Fall back
+    // to place_results if local_results is empty.
+    const firstResult = searchData.local_results?.[0] || searchData.place_results
 
     if (!firstResult) {
       return new Response(JSON.stringify({ found: false, message: 'No Google Maps results found.' }), {
