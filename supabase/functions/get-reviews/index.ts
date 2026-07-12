@@ -54,13 +54,22 @@ Deno.serve(async (req) => {
     //    bare "Hull" keyword can match Hull, Georgia (USA) just as easily as
     //    Hull, UK, since Maps search has no country/region context otherwise.
     const HULL_UK_LL = '@53.7676,-0.3274,13z'
-    const searchUrl = `https://serpapi.com/search.json?engine=google_maps&q=${encodeURIComponent(searchQuery)}&ll=${encodeURIComponent(HULL_UK_LL)}&google_domain=google.co.uk&gl=uk&api_key=${apiKey}`
+    // NOTE: ll is sent unencoded — every SerpApi doc example does this
+    // (e.g. ll=@40.7455096,-74.0083012,14z directly in the URL). Wrapping it
+    // in encodeURIComponent turns "@"/"," into %40/%2C, which may not parse
+    // the same way server-side. Logging the final URL below to confirm.
+    const searchUrl = `https://serpapi.com/search.json?engine=google_maps&q=${encodeURIComponent(searchQuery)}&ll=${HULL_UK_LL}&google_domain=google.co.uk&gl=uk&api_key=${apiKey}`
+    console.log('Google Maps search URL (key redacted):', searchUrl.replace(apiKey, 'REDACTED'))
     const searchResponse = await fetch(searchUrl)
     if (!searchResponse.ok) {
       throw new Error(`SerpApi Google Maps search failed with status ${searchResponse.status}`)
     }
 
     const searchData = await searchResponse.json()
+    console.log('SerpApi response keys:', Object.keys(searchData))
+    if (searchData.error) console.log('SerpApi error field:', searchData.error)
+    console.log('local_results count:', searchData.local_results?.length ?? 0)
+
     const firstResult = searchData.local_results?.[0]
 
     if (!firstResult) {
