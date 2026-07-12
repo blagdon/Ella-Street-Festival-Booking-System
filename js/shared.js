@@ -386,13 +386,13 @@ export function populateDetailPane(item) {
     const fsaResults = document.getElementById('fsa-results');
 
     if (fsaContainer) {
-        const isFoodStall = (item.id && item.id.includes('-FOOD-')) ||
-            (item.category && (
-                item.category.toLowerCase().includes('food') ||
-                item.category.toLowerCase().includes('catering') ||
-                item.category.toLowerCase().includes('alcohol')
-            )) ||
-            (localStorage.getItem('ESF_INSTANCE') === 'FOOD');
+        const isFoodStall = (item.id && item.id.includes('-FOOD-')) || 
+                            (item.category && (
+                                item.category.toLowerCase().includes('food') || 
+                                item.category.toLowerCase().includes('catering') || 
+                                item.category.toLowerCase().includes('alcohol')
+                            )) ||
+                            (localStorage.getItem('ESF_INSTANCE') === 'FOOD');
 
         if (isFoodStall) {
             fsaContainer.classList.remove('hidden');
@@ -565,7 +565,7 @@ export function populateDetailPane(item) {
                                 resultsHtml += establishments.map(est => {
                                     const address = [est.AddressLine1, est.AddressLine2, est.AddressLine3, est.PostCode].filter(Boolean).join(', ');
                                     const ratingDate = est.RatingDate ? new Date(est.RatingDate).toLocaleDateString('en-GB') : 'Unknown';
-
+                                    
                                     // Color code rating badge
                                     const ratingVal = est.RatingValue;
                                     let ratingColor = "bg-gray-100 text-gray-800";
@@ -631,13 +631,13 @@ export function populateDetailPane(item) {
     const taResults = document.getElementById('ta-results');
 
     if (taContainer) {
-        const isFoodStall = (item.id && item.id.includes('-FOOD-')) ||
-            (item.category && (
-                item.category.toLowerCase().includes('food') ||
-                item.category.toLowerCase().includes('catering') ||
-                item.category.toLowerCase().includes('alcohol')
-            )) ||
-            (localStorage.getItem('ESF_INSTANCE') === 'FOOD');
+        const isFoodStall = (item.id && item.id.includes('-FOOD-')) || 
+                            (item.category && (
+                                item.category.toLowerCase().includes('food') || 
+                                item.category.toLowerCase().includes('catering') || 
+                                item.category.toLowerCase().includes('alcohol')
+                            )) ||
+                            (localStorage.getItem('ESF_INSTANCE') === 'FOOD');
 
         if (isFoodStall) {
             taContainer.classList.remove('hidden');
@@ -803,7 +803,7 @@ export function hasNameMatch(establishments, bizName, regName) {
     return establishments.some(est => {
         const estName = normalize(est.BusinessName);
         return (cleanBiz && (estName.includes(cleanBiz) || cleanBiz.includes(estName))) ||
-            (cleanReg && (estName.includes(cleanReg) || cleanReg.includes(estName)));
+               (cleanReg && (estName.includes(cleanReg) || cleanReg.includes(estName)));
     });
 }
 
