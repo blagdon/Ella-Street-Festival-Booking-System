@@ -74,9 +74,14 @@ Deno.serve(async (req) => {
       (s || '').toLowerCase().replace(/[-'']/g, ' ').replace(/\s+/g, ' ').trim()
 
     const isRelevantMatch = (resultTitle: string, name: string) => {
-      const titleWords = new Set(normalizeForMatch(resultTitle).split(' ').filter(w => w.length > 2))
-      const nameWords = normalizeForMatch(name).split(' ').filter(w => w.length > 2)
-      return nameWords.some(w => titleWords.has(w))
+      const normTitle = normalizeForMatch(resultTitle)
+      const normName  = normalizeForMatch(name)
+      // Primary: shared whole word (3+ chars)
+      const titleWords = new Set(normTitle.split(' ').filter(w => w.length > 2))
+      const nameWords  = normName.split(' ').filter(w => w.length > 2)
+      if (nameWords.some(w => titleWords.has(w))) return true
+      // Fallback: substring containment (handles short/possessive names like "Barley's")
+      return normTitle.includes(normName) || normName.includes(normTitle)
     }
 
     const relevant = isRelevantMatch(firstResult.title, business_name)
