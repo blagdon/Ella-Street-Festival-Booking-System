@@ -685,7 +685,7 @@ export function populateDetailPane(item) {
                             if (data && data.found) {
                                 let resultsHtml = '';
 
-                                // Render TripAdvisor Profile Summary Header
+                                // Render Google Maps Profile Summary Header
                                 const ratingVal = data.rating;
                                 const ratingBubbles = renderRatingBubbles(ratingVal);
                                 
