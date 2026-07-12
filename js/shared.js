@@ -683,22 +683,28 @@ export function populateDetailPane(item) {
                         if (taResults) {
                             taResults.innerHTML = '';
                             if (data && data.found) {
-                                let resultsHtml = '';
+                                // Compute average rating from reviews if top-level rating is null
+                                let displayRating = data.rating;
+                                if (!displayRating && data.reviews && data.reviews.length > 0) {
+                                    const ratingsWithValues = data.reviews.filter(r => r.rating);
+                                    if (ratingsWithValues.length > 0) {
+                                        displayRating = ratingsWithValues.reduce((sum, r) => sum + r.rating, 0) / ratingsWithValues.length;
+                                    }
+                                }
 
-                                // Render TripAdvisor Profile Summary Header
-                                const ratingVal = data.rating;
-                                const ratingBubbles = renderRatingBubbles(ratingVal);
-                                
-                                resultsHtml += `
-                                    <div class="p-3 bg-white border border-gray-200 rounded-lg shadow-sm space-y-2">
-                                        <div class="flex items-start gap-3">
-                                            ${data.thumbnail ? `<img src="${escapeHtml(data.thumbnail)}" alt="${escapeHtml(data.title)}" class="w-12 h-12 object-cover rounded-lg border border-gray-100 shrink-0">` : ''}
-                                            <div class="flex-1 min-w-0">
-                                                <div class="font-bold text-gray-900 text-sm truncate">${escapeHtml(data.title)}</div>
-                                                <div class="text-gray-500 text-[11px] truncate">${escapeHtml(data.location || 'Unknown Location')}</div>
-                                                <div class="flex items-center gap-2 mt-1">
-                                                    <div class="flex">${ratingBubbles}</div>
-                                                    <span class="text-[10px] text-gray-400 font-medium">(${data.reviewsCount || 0} reviews)</span>
+                                const ratingBubbles = renderRatingBubbles(displayRating);
+                                const taLink = data.ta_url ? ` <a href="${escapeHtml(data.ta_url)}" target="_blank" rel="noopener" style="font-size:9px;color:#00aa6c;text-decoration:none;margin-left:4px;">View on TripAdvisor ↗</a>` : '';
+
+                                let resultsHtml = `
+                                    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:10px;margin-top:6px;">
+                                        <div style="display:flex;align-items:flex-start;gap:10px;">
+                                            ${data.thumbnail ? `<img src="${escapeHtml(data.thumbnail)}" alt="${escapeHtml(data.title)}" style="width:40px;height:40px;object-fit:cover;border-radius:6px;border:1px solid #f3f4f6;flex-shrink:0;">` : ''}
+                                            <div style="flex:1;min-width:0;">
+                                                <div style="font-weight:700;font-size:12px;color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(data.title)}${taLink}</div>
+                                                <div style="font-size:10px;color:#6b7280;margin-top:2px;">Hull, UK</div>
+                                                <div style="display:flex;align-items:center;gap:6px;margin-top:4px;">
+                                                    <div>${ratingBubbles}</div>
+                                                    <span style="font-size:10px;color:#9ca3af;">${displayRating ? displayRating.toFixed(1) + ' / 5' : 'Rating not available'}</span>
                                                 </div>
                                             </div>
                                         </div>
@@ -707,29 +713,30 @@ export function populateDetailPane(item) {
                                 // Render individual reviews (if any)
                                 if (data.reviews && data.reviews.length > 0) {
                                     resultsHtml += `
-                                        <div class="mt-3 pt-3 border-t border-gray-100 space-y-3">
-                                            <div class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Recent Reviews</div>
+                                        <div style="margin-top:10px;padding-top:10px;border-top:1px solid #f3f4f6;">
+                                            <div style="font-size:9px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">Recent Reviews</div>
                                     `;
 
                                     resultsHtml += data.reviews.map(rev => {
                                         const revBubbles = renderRatingBubbles(rev.rating);
-                                        const revDate = rev.date || 'Recent';
+                                        const revDate = rev.date ? new Date(rev.date).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }) : 'Recent';
+                                        const revLink = rev.link ? ` href="${escapeHtml(rev.link)}" target="_blank" rel="noopener"` : '';
                                         return `
-                                            <div class="space-y-1 text-[11px]">
-                                                <div class="flex justify-between items-center gap-2">
-                                                    <span class="font-bold text-gray-800 line-clamp-1">${escapeHtml(rev.title)}</span>
-                                                    <span class="text-[9px] text-gray-400 shrink-0">${escapeHtml(revDate)}</span>
+                                            <div style="margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid #f9fafb;">
+                                                <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:6px;margin-bottom:3px;">
+                                                    <a${revLink} style="font-weight:600;font-size:11px;color:#1f2937;text-decoration:none;line-height:1.3;">${escapeHtml(rev.title)}</a>
+                                                    <span style="font-size:9px;color:#9ca3af;white-space:nowrap;">${escapeHtml(revDate)}</span>
                                                 </div>
-                                                <div class="flex items-center gap-1">${revBubbles}</div>
-                                                <p class="text-gray-600 line-clamp-3 italic">"${escapeHtml(rev.comment)}"</p>
+                                                <div style="display:flex;align-items:center;gap:4px;margin-bottom:4px;">${revBubbles}${rev.author ? `<span style="font-size:9px;color:#9ca3af;"> — ${escapeHtml(rev.author)}</span>` : ''}</div>
+                                                <p style="font-size:11px;color:#4b5563;font-style:italic;line-height:1.5;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;">"${escapeHtml(rev.comment)}"</p>
                                             </div>
                                         `;
-                                    }).join('<hr class="border-gray-100 my-2">');
+                                    }).join('');
 
                                     resultsHtml += `</div>`;
                                 } else {
                                     resultsHtml += `
-                                        <div class="text-[10px] text-gray-400 italic mt-2 border-t border-gray-100 pt-2 text-center">
+                                        <div style="font-size:10px;color:#9ca3af;font-style:italic;margin-top:8px;padding-top:8px;border-top:1px solid #f3f4f6;text-align:center;">
                                             No review text available.
                                         </div>
                                     `;
@@ -821,11 +828,11 @@ function renderRatingBubbles(rating) {
     let html = '';
     for (let i = 1; i <= 5; i++) {
         if (i <= r) {
-            html += `<span class="inline-block w-2.5 h-2.5 rounded-full bg-[#00aa6c] border border-[#00aa6c] mr-0.5"></span>`;
+            html += `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#00aa6c;border:1px solid #00aa6c;margin-right:2px;"></span>`;
         } else if (i - 0.5 <= r) {
-            html += `<span class="inline-block w-2.5 h-2.5 rounded-full bg-gradient-to-r from-[#00aa6c] to-gray-200 border border-gray-300 mr-0.5"></span>`;
+            html += `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:linear-gradient(to right,#00aa6c 50%,#e5e7eb 50%);border:1px solid #d1d5db;margin-right:2px;"></span>`;
         } else {
-            html += `<span class="inline-block w-2.5 h-2.5 rounded-full bg-gray-100 border border-gray-300 mr-0.5"></span>`;
+            html += `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#f3f4f6;border:1px solid #d1d5db;margin-right:2px;"></span>`;
         }
     }
     return html;
