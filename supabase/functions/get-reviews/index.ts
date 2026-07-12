@@ -99,8 +99,20 @@ Deno.serve(async (req) => {
       const titleWords = new Set(normTitle.split(' ').filter(w => w.length > 2))
       const nameWords  = normName.split(' ').filter(w => w.length > 2)
       if (nameWords.some(w => titleWords.has(w))) return true
-      // Fallback: substring containment (handles short/possessive names like "Barley's")
-      return normTitle.includes(normName) || normName.includes(normTitle)
+      // Fallback 1: substring containment (handles short/possessive names like "Barley's")
+      if (normTitle.includes(normName) || normName.includes(normTitle)) return true
+      // Fallback 2: domain-style names with no spaces at all (e.g. a trading
+      // name stored as "lovehogroast.com" against a listing titled
+      // "Hog Roast Hull") — strip a trailing domain suffix, remove all
+      // spaces, and check whether any real title word (4+ chars, to avoid
+      // noise from short generic words) appears inside the run-together name.
+      const nameNoSuffix  = normName.replace(/\.(com|co\.uk|org|net|shop|uk)$/i, '')
+      const nameNoSpaces  = nameNoSuffix.replace(/\s+/g, '')
+      if (nameNoSpaces.length > 3) {
+        const substantialTitleWords = normTitle.split(' ').filter(w => w.length >= 4)
+        if (substantialTitleWords.some(w => nameNoSpaces.includes(w))) return true
+      }
+      return false
     }
 
     const relevant = isRelevantMatch(firstResult.title, business_name)
