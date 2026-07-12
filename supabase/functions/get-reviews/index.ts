@@ -6,8 +6,30 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
 }
 
+/**
+ * Extract TripAdvisor place_id from a TripAdvisor URL.
+ * TripAdvisor URLs contain: -d<number>-
+ */
+function extractPlaceId(url: string): string | null {
+  const match = url.match(/-d(\d+)-/)
+  return match ? match[1] : null
+}
+
+/**
+ * Clean up a Google search result title to get just the business name.
+ * Strips SEO suffixes like ", Kingston-upon-Hull - 2026 Reviews & Information"
+ */
+function cleanTitle(rawTitle: string, fallback: string): string {
+  if (!rawTitle) return fallback
+  // Remove common TripAdvisor SEO suffixes
+  return rawTitle
+    .replace(/,?\s*Kingston[-\s]upon[-\s]Hull.*$/i, '')
+    .replace(/\s*[-–|]\s*TripAdvisor.*$/i, '')
+    .replace(/\s*\d{4}\s+Reviews.*$/i, '')
+    .trim() || fallback
+}
+
 Deno.serve(async (req) => {
-  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
@@ -22,7 +44,7 @@ Deno.serve(async (req) => {
       })
     }
 
-    // 1. Initialize Supabase client
+    // 1. Initialize Supabase client (service role bypasses RLS)
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
@@ -40,98 +62,97 @@ Deno.serve(async (req) => {
     }
 
     if (!apiKey) {
-      return new Response(JSON.stringify({ error: 'SerpApi API Key not configured. Please configure it in System Settings.' }), {
+      return new Response(JSON.stringify({
+        error: 'SerpApi API Key not configured. Please configure it in System Settings.'
+      }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
     }
 
-    // Append 'Hull' to scope search locally
-    const searchQuery = `${business_name} Hull`
+    // 3. Use Google Search to find the TripAdvisor UK listing for the business.
+    //    This is far more reliable for small/local venues than the TripAdvisor search engine.
+    const googleQuery = `site:tripadvisor.co.uk "${business_name}" Hull`
+    const googleUrl = `https://serpapi.com/search.json?engine=google&q=${encodeURIComponent(googleQuery)}&gl=uk&hl=en&num=5&api_key=${apiKey}`
 
-    // 3. Search Google Maps for the business via SerpApi
-    const searchUrl = `https://serpapi.com/search.json?engine=google_maps&q=${encodeURIComponent(searchQuery)}&api_key=${apiKey}`
-    const searchResponse = await fetch(searchUrl)
-    if (!searchResponse.ok) {
-      throw new Error(`SerpApi Google Maps search failed with status ${searchResponse.status}`)
+    const googleResponse = await fetch(googleUrl)
+    if (!googleResponse.ok) {
+      throw new Error(`SerpApi Google search failed with status ${googleResponse.status}`)
     }
 
-    const searchData = await searchResponse.json()
-    const firstResult = searchData.local_results?.[0]
+    const googleData = await googleResponse.json()
+    const googleResults: any[] = googleData.organic_results || []
 
-    if (!firstResult) {
-      return new Response(JSON.stringify({ found: false, message: 'No Google Maps results found.' }), {
-        status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      })
-    }
+    // 4. Find the first result that is a TripAdvisor review page (restaurant or attraction)
+    const taResult = googleResults.find(r => {
+      const link = (r.link || '').toLowerCase()
+      return link.includes('tripadvisor.co.uk') &&
+        (link.includes('restaurant_review') || link.includes('attraction_review') || link.includes('_review'))
+    })
 
-    console.log('SerpApi Google Maps firstResult raw:', JSON.stringify(firstResult))
-
-    // Guard against a confident-looking but wrong match. Require at least one
-    // shared whole word (3+ letters) between the queried name and the result title.
-    const normalizeForMatch = (s: string) =>
-      (s || '').toLowerCase().replace(/[-'']/g, ' ').replace(/\s+/g, ' ').trim()
-
-    const isRelevantMatch = (resultTitle: string, name: string) => {
-      const normTitle = normalizeForMatch(resultTitle)
-      const normName  = normalizeForMatch(name)
-      // Primary: shared whole word (3+ chars)
-      const titleWords = new Set(normTitle.split(' ').filter(w => w.length > 2))
-      const nameWords  = normName.split(' ').filter(w => w.length > 2)
-      if (nameWords.some(w => titleWords.has(w))) return true
-      // Fallback: substring containment (handles short/possessive names like "Barley's")
-      return normTitle.includes(normName) || normName.includes(normTitle)
-    }
-
-    const relevant = isRelevantMatch(firstResult.title, business_name)
-    console.log(`isRelevantMatch("${firstResult.title}", "${business_name}"):`, relevant)
-
-    if (!relevant) {
+    if (!taResult) {
       return new Response(JSON.stringify({
         found: false,
-        message: `No confident Google Maps match found for "${business_name}".`
+        message: `"${business_name}" does not appear to be listed on TripAdvisor.`
       }), {
         status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
     }
 
-    const data_id  = firstResult.data_id   // used for reviews lookup
-    const place_id = firstResult.place_id  // Google place_id (informational)
-    const title    = firstResult.title
-    const thumbnail = firstResult.thumbnail ?? null
-    const location  = firstResult.address ?? null
-    const rating    = firstResult.rating ?? null
-    const reviewsCount = firstResult.reviews ?? null
+    // 5. Extract the TripAdvisor place_id from the URL
+    const taUrl = taResult.link
+    const placeId = extractPlaceId(taUrl)
 
-    // 4. Fetch the actual reviews using SerpApi Google Maps Reviews engine
-    let reviewsList: Array<{ title: string; rating: number | null; comment: string; date: string }> = []
-    if (data_id) {
-      const reviewsUrl = `https://serpapi.com/search.json?engine=google_maps_reviews&data_id=${encodeURIComponent(data_id)}&api_key=${apiKey}`
-      const reviewsResponse = await fetch(reviewsUrl)
-      if (reviewsResponse.ok) {
-        const reviewsData = await reviewsResponse.json()
-        const rawReviews = reviewsData.reviews ?? []
-        reviewsList = rawReviews.map((rev: any) => ({
-          // Google Maps reviews have no separate title — use author name as substitute
-          title:   rev.user?.name ?? 'Anonymous',
-          rating:  rev.rating ?? null,
-          comment: rev.snippet ?? '',
-          date:    rev.date ?? ''
-        }))
-      }
+    if (!placeId) {
+      return new Response(JSON.stringify({
+        found: false,
+        message: `Found a TripAdvisor page but could not extract place ID.`
+      }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
     }
+
+    // 6. Fetch TripAdvisor reviews using the place_id
+    const reviewsUrl = `https://serpapi.com/search.json?engine=tripadvisor_reviews&place_id=${placeId}&tripadvisor_domain=www.tripadvisor.co.uk&api_key=${apiKey}`
+    const reviewsResponse = await fetch(reviewsUrl)
+
+    let reviewsList: any[] = []
+    let rating: number | null = null
+    let reviewsCount: number | null = null
+    const title = cleanTitle(taResult.title, business_name)
+    const thumbnail: string | null = taResult.thumbnail || null
+
+    if (reviewsResponse.ok) {
+      const reviewsData = await reviewsResponse.json()
+      reviewsList = reviewsData.reviews || []
+
+      // The overall rating/count come from search_information
+      const searchInfo = reviewsData.search_information || {}
+      rating = searchInfo.rating || null
+      reviewsCount = searchInfo.total_results || null
+    }
+
+    // Map SerpApi review fields to a clean consistent shape
+    const reviews = reviewsList.slice(0, 3).map((rev: any) => ({
+      title: rev.title || '',
+      comment: rev.snippet || rev.text || '',
+      rating: rev.rating || null,
+      date: rev.date || '',
+      author: rev.author?.display_name || rev.author?.username || 'Anonymous',
+      link: rev.link || null,
+    }))
 
     return new Response(JSON.stringify({
       found: true,
       title,
-      place_id,
+      place_id: placeId,
+      ta_url: taUrl,
       rating,
       reviewsCount,
       thumbnail,
-      location,
-      reviews: reviewsList.slice(0, 3) // Return top 3 reviews
+      reviews,
     }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
