@@ -624,7 +624,7 @@ export function populateDetailPane(item) {
         }
     }
 
-    // --- TRIPADVISOR REVIEWS FOR FOOD STALLS ---
+    // --- GOOGLE MAPS REVIEWS FOR FOOD STALLS ---
     const taContainer = document.getElementById('ta-reviews-container');
     const taSearchBtn = document.getElementById('btn-ta-search');
     const taStatus = document.getElementById('ta-status');
@@ -651,7 +651,7 @@ export function populateDetailPane(item) {
             }
             if (taSearchBtn) {
                 taSearchBtn.dataset.business = item.business || item.business_name || '';
-                taSearchBtn.innerText = "Search TripAdvisor";
+                taSearchBtn.innerText = "Search Google Maps";
                 taSearchBtn.disabled = false;
 
                 const runAutoTaSearch = async () => {
@@ -664,7 +664,7 @@ export function populateDetailPane(item) {
                     taSearchBtn.disabled = true;
                     taSearchBtn.innerText = "Searching...";
                     if (taStatus) {
-                        taStatus.innerText = `Searching TripAdvisor for "${bizName}"...`;
+                        taStatus.innerText = `Searching Google Maps for "${bizName}"...`;
                         taStatus.classList.remove('hidden');
                     }
                     if (taResults) taResults.classList.add('hidden');
@@ -740,20 +740,20 @@ export function populateDetailPane(item) {
                                 taResults.classList.remove('hidden');
                             } else {
                                 if (taStatus) {
-                                    taStatus.innerText = data.message || "No TripAdvisor listing found.";
+                                    taStatus.innerText = data.message || "No Google Maps listing found.";
                                     taStatus.classList.remove('hidden');
                                 }
                             }
                         }
                     } catch (err) {
-                        console.error("TripAdvisor lookup error:", err);
+                        console.error("Google Maps lookup error:", err);
                         if (taStatus) {
-                            taStatus.innerText = err.message || "Failed to fetch TripAdvisor reviews.";
+                            taStatus.innerText = err.message || "Failed to fetch Google Maps reviews.";
                             taStatus.classList.remove('hidden');
                         }
                     } finally {
                         taSearchBtn.disabled = false;
-                        taSearchBtn.innerText = "Refresh TripAdvisor";
+                        taSearchBtn.innerText = "Refresh Google Maps";
                     }
                 };
 
