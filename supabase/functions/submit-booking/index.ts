@@ -6,6 +6,19 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
 }
 
+// Mirrors js/utils.js's escapeHtml() exactly — user-supplied booking fields
+// (owner_name, business_name) must never be substituted into email HTML
+// unescaped.
+function escapeHtml(str: unknown): string {
+  if (str === null || str === undefined) return ''
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;')
+}
+
 /**
  * Sends the "received" auto-responder for a newly submitted booking, and
  * logs the attempt to email_queue (mirrors js/api.js's sendEmailDirect()
@@ -30,8 +43,8 @@ async function sendReceivedEmail(supabaseAdmin: ReturnType<typeof createClient>,
 
   const replaceVars = (str: string) =>
     (str || '')
-      .replace(/\{\{owner_name\}\}/g, booking.owner_name || 'Trader')
-      .replace(/\{\{business_name\}\}/g, booking.business_name || 'your business')
+      .replace(/\{\{owner_name\}\}/g, escapeHtml(booking.owner_name || 'Trader'))
+      .replace(/\{\{business_name\}\}/g, escapeHtml(booking.business_name || 'your business'))
       .replace(/\{\{booking_id\}\}/g, booking.id || '')
       .replace(/\{\{cancel_link\}\}/g, cancelLink)
       // Not relevant at submission time (no cost/location assigned yet) —
