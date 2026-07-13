@@ -102,7 +102,10 @@ async function syncDown() {
         localData = bookings.map(b => ({ ...b, location_ids: locsByBooking.get(b.id) || [] }));
         localStorage.setItem(DB_KEY, JSON.stringify(localData));
 
-        masterLocations = locationsReq.data;
+        // locations.id may be a numeric Postgres column, while booking_locations'
+        // location_id (and everything compared against it below) is always a
+        // string — normalize here so takenSpots/pre-selection checks match.
+        masterLocations = (locationsReq.data || []).map(l => ({ ...l, id: String(l.id) }));
         localStorage.setItem(LOCS_KEY, JSON.stringify(masterLocations));
 
         if (document.getElementById('searchInput').value === '') renderList('');

@@ -9,6 +9,15 @@ const TBL_BOOKING_LOCATIONS = 'booking_locations';
 const TBL_EMAIL_QUEUE = 'email_queue';
 const TBL_AUDIT_LOGS = 'audit_logs';
 
+/**
+ * locations.id may be a numeric Postgres column, while booking_locations.location_id
+ * (and every ID assigned/compared client-side) is always a string. Normalize to
+ * string here, once, so no caller has to worry about the mismatch.
+ */
+function normalizeLocationIds(locs) {
+    return (locs || []).map(l => ({ ...l, id: String(l.id) }));
+}
+
 
 
 /**
@@ -381,7 +390,7 @@ export async function fetchLocationData(currentInstance) {
     let locs = [];
     try {
         const { data: lData } = await sb.from(TBL_LOCATIONS).select('*').eq('dataset', dataset);
-        if (lData) locs = lData;
+        if (lData) locs = normalizeLocationIds(lData);
     } catch (e) { }
 
     return {
@@ -464,7 +473,7 @@ export async function fetchMapData(currentInstance) {
 
     // 1. Get Locations
     const { data: mapLocs } = await sb.from(TBL_LOCATIONS).select('*').eq('dataset', mapDataset);
-    const safeMapLocs = mapLocs || [];
+    const safeMapLocs = normalizeLocationIds(mapLocs);
 
     // 2. Get Confirmed Bookings
     let bQuery = sb.from(TBL_BOOKINGS)
