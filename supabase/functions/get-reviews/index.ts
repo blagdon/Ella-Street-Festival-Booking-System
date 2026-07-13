@@ -13,6 +13,51 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // 1. Initialize Supabase client
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    )
+
+    // This endpoint calls SerpApi on every request, which is metered/paid —
+    // require an authenticated admin (same check as send-email) so a public
+    // caller with just the anon key (which alone satisfies Supabase's
+    // platform-level JWT gate) can't script requests against it and run up
+    // the bill or exhaust rate limits.
+    const authHeader = req.headers.get('Authorization')
+    if (!authHeader) {
+      return new Response(JSON.stringify({ error: 'Missing Authorization header' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
+    }
+    const token = authHeader.replace('Bearer ', '')
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    const isTrustedServiceCall = !!serviceRoleKey && token === serviceRoleKey
+
+    if (!isTrustedServiceCall) {
+      const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token)
+      if (authError || !user) {
+        return new Response(JSON.stringify({ error: 'Unauthorized: ' + authError?.message }), {
+          status: 401,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        })
+      }
+
+      const { data: roleData, error: roleError } = await supabaseClient
+        .from('user_roles')
+        .select('role')
+        .eq('id', user.id)
+        .single()
+
+      if (roleError || !roleData || roleData.role !== 'admin') {
+        return new Response(JSON.stringify({ error: 'Forbidden: Admin role required' }), {
+          status: 403,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        })
+      }
+    }
+
     const { business_name } = await req.json()
 
     if (!business_name) {
@@ -21,12 +66,6 @@ Deno.serve(async (req) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
     }
-
-    // 1. Initialize Supabase client
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    )
 
     // 2. Fetch SerpApi key and map center from env/settings table (single query)
     const { data: settingsRows } = await supabaseClient
