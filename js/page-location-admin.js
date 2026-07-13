@@ -1,5 +1,5 @@
 import { initAdminPage } from './supabase.js';
-import { initLocations, setFilter, loadData, sendBulkEmails, closeLocationSheet, assignMobileLocation, sendEmail, openLocationSheet, assignLocation, getBookingById, downloadLocationsForMyMaps } from './locations.js';
+import { initLocations, setFilter, setSearchTerm, loadData, sendBulkEmails, closeLocationSheet, assignMobileLocation, sendEmail, openLocationSheet, assignLocation, getBookingById, downloadLocationsForMyMaps } from './locations.js';
 
 async function init() {
     await initLocations();
@@ -31,6 +31,9 @@ async function init() {
 
     const btnClearAssignment = document.getElementById('btn-clear-assignment');
     if (btnClearAssignment) btnClearAssignment.addEventListener('click', () => assignMobileLocation(null));
+
+    const searchInput = document.getElementById('searchInput');
+    if (searchInput) searchInput.addEventListener('input', (e) => setSearchTerm(e.target.value));
 
 
     // Attach delegated event listeners for dynamic content

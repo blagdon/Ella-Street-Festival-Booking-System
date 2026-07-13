@@ -7,7 +7,17 @@ let allBookings = [];
 let allLocations = [];
 let globalOccupiedIds = [];
 let currentFilter = 'all';
+let currentSearchTerm = '';
 let currentMobileBookingId = null;
+
+function matchesSearch(b, term) {
+    if (!term) return true;
+    const haystack = [
+        b.id, b.business, b.business_name, b.owner, b.owner_name,
+        ...(b.location_ids || [])
+    ].join(' ').toLowerCase();
+    return haystack.includes(term);
+}
 
 export async function initLocations() {
     renderInstanceBadge('instanceBadge');
@@ -45,10 +55,11 @@ function renderTable() {
     const occupiedSet = new Set(globalOccupiedIds.filter(Boolean));
 
     // 2. APPLY FILTER
+    const term = currentSearchTerm.trim().toLowerCase();
     const filtered = allBookings.filter(b => {
-        if (currentFilter === 'unassigned') return !b.location_ids?.length;
-        if (currentFilter === 'assigned') return b.location_ids?.length;
-        return true;
+        if (currentFilter === 'unassigned' && b.location_ids?.length) return false;
+        if (currentFilter === 'assigned' && !b.location_ids?.length) return false;
+        return matchesSearch(b, term);
     });
 
     // 3. SORT MASTER LIST
@@ -329,6 +340,12 @@ export async function downloadLocationsForMyMaps() {
     }
 }
 
+export function setSearchTerm(term) {
+    currentSearchTerm = term || '';
+    renderTable();
+    renderMobileCards();
+}
+
 export function setFilter(type) {
     currentFilter = type;
     ['all', 'unassigned', 'assigned'].forEach(t => {
@@ -367,10 +384,11 @@ function renderMobileCards() {
     if (elUnassigned) elUnassigned.textContent = unassignedCount;
 
     // Filter bookings
+    const mobileTerm = currentSearchTerm.trim().toLowerCase();
     const filtered = allBookings.filter(b => {
-        if (currentFilter === 'unassigned') return !b.location_ids?.length;
-        if (currentFilter === 'assigned') return b.location_ids?.length;
-        return true;
+        if (currentFilter === 'unassigned' && b.location_ids?.length) return false;
+        if (currentFilter === 'assigned' && !b.location_ids?.length) return false;
+        return matchesSearch(b, mobileTerm);
     });
 
     if (filtered.length === 0) {
