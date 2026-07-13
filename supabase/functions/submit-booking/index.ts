@@ -19,6 +19,68 @@ function escapeHtml(str: unknown): string {
     .replace(/'/g, '&#x27;')
 }
 
+const MAX_FIELD_LENGTHS: Record<string, number> = {
+  business_name: 128,
+  registered_business_name: 128,
+  owner_name: 64,
+  email: 254,
+  phone: 30,
+  address: 256,
+  description: 500,
+  other_requirements: 500,
+  category: 200,
+  docs_checklist: 500,
+  is_charity: 30,
+  power_required: 60,
+}
+
+const VALID_STALL_TYPES = ['Food', 'Non-Food']
+
+function sanitizeString(val: unknown, maxLen: number): string {
+  const str = (val === null || val === undefined) ? '' : String(val).trim()
+  return str.length > maxLen ? str.slice(0, maxLen) : str
+}
+
+/**
+ * Builds a safe booking row from raw, untrusted client input via an explicit
+ * allow-list rather than inserting the request body as-is. This endpoint is
+ * public and unauthenticated (Turnstile only proves a human made *a*
+ * request, not that its JSON body matches what the form's own JS would have
+ * sent) and runs under the service role, which bypasses RLS entirely — so
+ * without this, a caller could set fields the UI never exposes (stall_cost,
+ * admin_notes, date_confirmed, cancel_token, status, etc.) directly.
+ */
+function sanitizeBookingInput(raw: Record<string, any>, bookingPrefix: string): Record<string, any> {
+  const instancePrefix = String(raw.instance_prefix || '')
+  const validPrefixes = [`${bookingPrefix}-FOOD-`, `${bookingPrefix}-NONFOOD-`, `${bookingPrefix}-DEV-`]
+  if (!validPrefixes.includes(instancePrefix)) {
+    throw new Error('Invalid instance_prefix.')
+  }
+
+  const stallType = String(raw.stall_type || '')
+  if (!VALID_STALL_TYPES.includes(stallType)) {
+    throw new Error('Invalid stall_type.')
+  }
+
+  return {
+    instance_prefix: instancePrefix,
+    stall_type: stallType,
+    business_name: sanitizeString(raw.business_name, MAX_FIELD_LENGTHS.business_name),
+    registered_business_name: sanitizeString(raw.registered_business_name, MAX_FIELD_LENGTHS.registered_business_name),
+    owner_name: sanitizeString(raw.owner_name, MAX_FIELD_LENGTHS.owner_name),
+    email: sanitizeString(raw.email, MAX_FIELD_LENGTHS.email),
+    phone: sanitizeString(raw.phone, MAX_FIELD_LENGTHS.phone),
+    address: sanitizeString(raw.address, MAX_FIELD_LENGTHS.address),
+    description: sanitizeString(raw.description, MAX_FIELD_LENGTHS.description),
+    other_requirements: sanitizeString(raw.other_requirements, MAX_FIELD_LENGTHS.other_requirements),
+    category: sanitizeString(raw.category, MAX_FIELD_LENGTHS.category),
+    docs_checklist: sanitizeString(raw.docs_checklist, MAX_FIELD_LENGTHS.docs_checklist),
+    is_charity: sanitizeString(raw.is_charity, MAX_FIELD_LENGTHS.is_charity),
+    is_resident: raw.is_resident === true,
+    power_required: sanitizeString(raw.power_required, MAX_FIELD_LENGTHS.power_required),
+  }
+}
+
 /**
  * Sends the "received" auto-responder for a newly submitted booking, and
  * logs the attempt to email_queue (mirrors js/api.js's sendEmailDirect()
@@ -132,19 +194,30 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    // 3. Atomically generate the next sequential ID
+    // 3. Build a safe row from an explicit allow-list — never insert the
+    // raw request body (see sanitizeBookingInput's docstring).
+    const { data: prefixSetting } = await supabaseAdmin
+      .from('settings')
+      .select('value')
+      .eq('key', 'booking_prefix')
+      .single()
+    const bookingPrefix = prefixSetting?.value || 'ESF26'
+
+    const safeBookingData = sanitizeBookingInput(bookingData, bookingPrefix)
+
+    // 4. Atomically generate the next sequential ID
     const { data: newBookingId, error: rpcErr } = await supabaseAdmin.rpc('get_next_booking_id', {
-      p_prefix: bookingData.instance_prefix
+      p_prefix: safeBookingData.instance_prefix
     })
 
     if (rpcErr || !newBookingId) {
       throw new Error('Failed to generate Booking ID: ' + (rpcErr?.message || 'Empty ID returned.'))
     }
 
-    bookingData.id = newBookingId
-    bookingData.status = 'Pending'
+    safeBookingData.id = newBookingId
+    safeBookingData.status = 'Pending'
 
-    // 4. Move files from temporary location to final folder in Storage
+    // 5. Move files from temporary location to final folder in Storage
     if (tempUuid && fileNames && Array.isArray(fileNames) && fileNames.length > 0) {
       // Env var takes priority if set, otherwise fall back to the same
       // settings-table value the admin Settings page manages, so changing
@@ -176,14 +249,14 @@ Deno.serve(async (req) => {
         movedUrls.push(urlData.publicUrl)
       }
 
-      bookingData.documents = movedUrls
+      safeBookingData.documents = movedUrls
     }
 
-    // 5. Insert booking into database
-    const { data, error } = await supabaseAdmin.from('bookings').insert([bookingData]).select()
+    // 6. Insert booking into database
+    const { data, error } = await supabaseAdmin.from('bookings').insert([safeBookingData]).select()
     if (error) throw error
 
-    // 6. Send the "received" auto-responder. Best-effort: a failure here must
+    // 7. Send the "received" auto-responder. Best-effort: a failure here must
     // never fail the booking submission itself (the booking already exists).
     const newBooking = data?.[0]
     if (newBooking?.email) {
