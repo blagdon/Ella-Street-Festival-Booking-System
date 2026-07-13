@@ -1,4 +1,4 @@
-﻿/**
+/**
  * api/ping.js - Supabase Keep-Alive Ping
  *
  * Replaces the Google Apps Script keep-alive cron job (GAS/Main.gs).
