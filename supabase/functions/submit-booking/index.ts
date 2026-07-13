@@ -36,6 +36,15 @@ const MAX_FIELD_LENGTHS: Record<string, number> = {
 
 const VALID_STALL_TYPES = ['Food', 'Non-Food']
 
+// Matches what the client always sends: tempUuid is crypto.randomUUID()
+// (or a non-crypto fallback for older browsers), and each fileName is
+// already sanitized client-side (file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_'))
+// before upload. Re-validated here since this endpoint is public and the
+// client-side sanitization is trivially bypassable by calling it directly —
+// storage keys built from these values must never be trusted verbatim.
+const SAFE_TEMP_UUID_PATTERN = /^[a-zA-Z0-9_-]{8,64}$/
+const SAFE_FILENAME_PATTERN = /^[a-zA-Z0-9.\-_]{1,255}$/
+
 function sanitizeString(val: unknown, maxLen: number): string {
   const str = (val === null || val === undefined) ? '' : String(val).trim()
   return str.length > maxLen ? str.slice(0, maxLen) : str
@@ -219,6 +228,15 @@ Deno.serve(async (req) => {
 
     // 5. Move files from temporary location to final folder in Storage
     if (tempUuid && fileNames && Array.isArray(fileNames) && fileNames.length > 0) {
+      if (!SAFE_TEMP_UUID_PATTERN.test(tempUuid)) {
+        throw new Error('Invalid upload session identifier.')
+      }
+      for (const fileName of fileNames) {
+        if (typeof fileName !== 'string' || !SAFE_FILENAME_PATTERN.test(fileName)) {
+          throw new Error('Invalid file name in upload list.')
+        }
+      }
+
       // Env var takes priority if set, otherwise fall back to the same
       // settings-table value the admin Settings page manages, so changing
       // the bucket there actually takes effect here too.
