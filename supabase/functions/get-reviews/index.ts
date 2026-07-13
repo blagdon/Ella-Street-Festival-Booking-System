@@ -64,19 +64,14 @@ Deno.serve(async (req) => {
     // NOTE: ll is sent unencoded — every SerpApi doc example does this
     // (e.g. ll=@40.7455096,-74.0083012,14z directly in the URL). Wrapping it
     // in encodeURIComponent turns "@"/"," into %40/%2C, which may not parse
-    // the same way server-side. Logging the final URL below to confirm.
+    // the same way server-side.
     const searchUrl = `https://serpapi.com/search.json?engine=google_maps&type=search&q=${encodeURIComponent(searchQuery)}&ll=${HULL_UK_LL}&google_domain=google.co.uk&gl=uk&api_key=${apiKey}`
-    console.log('Google Maps search URL (key redacted):', searchUrl.replace(apiKey, 'REDACTED'))
     const searchResponse = await fetch(searchUrl)
     if (!searchResponse.ok) {
       throw new Error(`SerpApi Google Maps search failed with status ${searchResponse.status}`)
     }
 
     const searchData = await searchResponse.json()
-    console.log('SerpApi response keys:', Object.keys(searchData))
-    if (searchData.error) console.log('SerpApi error field:', searchData.error)
-    console.log('local_results count:', searchData.local_results?.length ?? 0)
-    console.log('place_results present:', !!searchData.place_results)
 
     // SerpApi returns a `local_results` array when a query has multiple
     // candidate matches, but a single `place_results` object (not an array)
@@ -91,8 +86,6 @@ Deno.serve(async (req) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
     }
-
-    console.log('SerpApi Google Maps firstResult raw:', JSON.stringify(firstResult))
 
     // Guard against a confident-looking but wrong match. Require at least one
     // shared whole word (3+ letters) between the queried name and the result title.
@@ -123,7 +116,6 @@ Deno.serve(async (req) => {
     }
 
     const relevant = isRelevantMatch(firstResult.title, business_name)
-    console.log(`isRelevantMatch("${firstResult.title}", "${business_name}"):`, relevant)
 
     if (!relevant) {
       return new Response(JSON.stringify({
@@ -158,7 +150,6 @@ Deno.serve(async (req) => {
       : false
 
     if (!isNearHull) {
-      console.log('Rejected out-of-area result:', coords ?? 'no gps_coordinates', firstResult.address ?? 'no address')
       return new Response(JSON.stringify({
         found: false,
         message: `No confident Google Maps match found for "${business_name}" in Hull, UK.`
