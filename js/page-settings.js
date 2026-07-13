@@ -252,6 +252,7 @@ function initStallTypes() {
 }
 
 async function initSystemConstants() {
+    const txtFestivalName = document.getElementById('festival-display-name');
     const txtTurnstile = document.getElementById('turnstile-key');
     const txtBank = document.getElementById('bank-details');
     const txtBaseUrl = document.getElementById('base-url');
@@ -264,9 +265,10 @@ async function initSystemConstants() {
     const txtWindow = document.getElementById('rate-window');
     const btnSave = document.getElementById('btn-save-constants');
 
-    if (!txtTurnstile || !txtBank || !txtBaseUrl || !txtCancelUrl || !txtPortalUrl || !txtCouncilEmail || !txtBucket || !txtPrefix || !txtLimit || !txtWindow || !btnSave) return;
+    if (!txtFestivalName || !txtTurnstile || !txtBank || !txtBaseUrl || !txtCancelUrl || !txtPortalUrl || !txtCouncilEmail || !txtBucket || !txtPrefix || !txtLimit || !txtWindow || !btnSave) return;
 
     // Load active settings from public config and CONFIG
+    txtFestivalName.value = CONFIG.FESTIVAL_DISPLAY_NAME || '';
     txtTurnstile.value = ESF_PUBLIC_CONFIG?.TURNSTILE_SITE_KEY || '';
     txtBank.value = ESF_PUBLIC_CONFIG?.BANK_DETAILS || '';
     txtBaseUrl.value = ESF_PUBLIC_CONFIG?.BASE_URL || '';
@@ -279,6 +281,7 @@ async function initSystemConstants() {
     txtWindow.value = CONFIG.EMAIL_RATE_WINDOW_MS || '';
 
     btnSave.addEventListener('click', async () => {
+        const valFestivalName = txtFestivalName.value.trim();
         const valTurnstile = txtTurnstile.value.trim();
         const valBank = txtBank.value.trim();
         const valBaseUrl = txtBaseUrl.value.trim();
@@ -290,7 +293,7 @@ async function initSystemConstants() {
         const valLimit = parseInt(txtLimit.value, 10);
         const valWindow = parseInt(txtWindow.value, 10);
 
-        if (!valTurnstile || !valBank || !valBaseUrl || !valCancelUrl || !valPortalUrl || !valCouncilEmail || !valBucket || !valPrefix || isNaN(valLimit) || valLimit < 1 || isNaN(valWindow) || valWindow < 1000) {
+        if (!valFestivalName || !valTurnstile || !valBank || !valBaseUrl || !valCancelUrl || !valPortalUrl || !valCouncilEmail || !valBucket || !valPrefix || isNaN(valLimit) || valLimit < 1 || isNaN(valWindow) || valWindow < 1000) {
             showToast("All fields are required and rate limits must be valid positive numbers", "error");
             return;
         }
@@ -309,6 +312,7 @@ async function initSystemConstants() {
             const now = new Date().toISOString();
 
             const updates = [
+                { key: 'festival_display_name', value: valFestivalName, updated_at: now, updated_by: userEmail },
                 { key: 'turnstile_site_key', value: valTurnstile, updated_at: now, updated_by: userEmail },
                 { key: 'bank_details', value: valBank, updated_at: now, updated_by: userEmail },
                 { key: 'base_url', value: valBaseUrl, updated_at: now, updated_by: userEmail },
@@ -335,6 +339,7 @@ async function initSystemConstants() {
                 ESF_PUBLIC_CONFIG.BOOKING_PREFIX = valPrefix;
             }
             CONFIG.HCC_COUNCIL_EMAIL = valCouncilEmail;
+            CONFIG.FESTIVAL_DISPLAY_NAME = valFestivalName;
             CONFIG.EMAIL_RATE_LIMIT = valLimit;
             CONFIG.EMAIL_RATE_WINDOW_MS = valWindow;
 
@@ -343,6 +348,7 @@ async function initSystemConstants() {
                 sessionStorage.removeItem('ESF_SETTINGS_CACHE');
             }
             await auditLog('update_system_constants', 'system', {
+                festival_display_name: valFestivalName,
                 turnstile_key: valTurnstile,
                 base_url: valBaseUrl,
                 council_email: valCouncilEmail,

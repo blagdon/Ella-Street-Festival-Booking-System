@@ -18,6 +18,10 @@ export const CONFIG = {
 
     HCC_COUNCIL_EMAIL: 'Foodand.Health&Safety@hullcc.gov.uk',
 
+    // Displayed in the admin header (js/nav.js). Falls back to this default
+    // until overridden by the festival_display_name settings-table value.
+    FESTIVAL_DISPLAY_NAME: 'Ella Street Festival',
+
     // Deployment URLs
     // ⚠️  Single source of truth is supabase-public.js (or the settings table).
     //     If the Vercel deployment URL changes, update it there.
@@ -137,6 +141,8 @@ export function applySettingsToConfig(data) {
             ESF_PUBLIC_CONFIG.BUCKET_NAME = val;
         } else if (item.key === 'hcc_council_email') {
             CONFIG.HCC_COUNCIL_EMAIL = val;
+        } else if (item.key === 'festival_display_name') {
+            CONFIG.FESTIVAL_DISPLAY_NAME = val;
         } else if (item.key === 'allowed_stall_types') {
             CONFIG.UI.ALLOWED_TYPES = val.split(',').map(s => s.trim()).filter(Boolean);
         } else if (item.key === 'email_rate_limit') {

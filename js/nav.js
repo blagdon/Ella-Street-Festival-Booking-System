@@ -4,6 +4,7 @@
  */
 import { getCurrentInstance, CONFIG } from './config.js';
 import { signOut } from './supabase.js';
+import { escapeHtml } from './utils.js';
 
 export function initNavigation() {
     const container = document.getElementById('nav-container');
@@ -47,7 +48,7 @@ export function initNavigation() {
                 ${backBtnDesktop}
                 <a href="index.html" class="flex items-center hover:opacity-80 transition">
                     <h1 class="text-base md:text-xl font-bold tracking-wide truncate">
-                        Ella Street Festival 
+                        ${escapeHtml(CONFIG.FESTIVAL_DISPLAY_NAME)}
                         <span class="hidden sm:inline opacity-50 font-normal text-sm md:text-lg">| ${year} Admin</span>
                     </h1>
                 </a>
