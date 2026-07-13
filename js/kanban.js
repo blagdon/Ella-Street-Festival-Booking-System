@@ -1,6 +1,6 @@
 import { fetchKanbanData, updateBookingStatus, addNote, sendEmail, emailAllConfirmedBookings } from './api.js';
 import { CONFIG, getStallCost } from './config.js';
-import { safeError, escapeHtml } from './utils.js';
+import { safeError, escapeHtml, sortBookings } from './utils.js';
 import { sharedUpdateStatus, populateDetailPane } from './shared.js';
 import { showToast, renderInstanceBadge, showConfirm } from './ui.js';
 
@@ -9,6 +9,8 @@ let allBookings = [];
 let draggedItem = null;
 let sourceStatus = null;
 let currentId = null;
+let currentSortField = 'id';
+let currentSortDir = 'asc';
 
 // Initializer
 export function initKanban() {
@@ -220,6 +222,16 @@ function updateCounts() {
     if (totalEl) totalEl.innerText = total + ' bookings';
 }
 
+// Re-sorts and re-renders the board, then re-applies the current search text
+// filter (renderBoard rebuilds every card, so any previously-hidden card
+// would otherwise reappear).
+export function setSort(field, direction) {
+    currentSortField = field;
+    currentSortDir = direction;
+    renderBoard(sortBookings(allBookings, currentSortField, currentSortDir));
+    filterCards();
+}
+
 // Global Exports for inline HTML handlers
 export function filterCards() {
     const term = document.getElementById('searchInput').value.toLowerCase();
@@ -246,7 +258,7 @@ export async function loadBoard() {
         const currentInstance = localStorage.getItem('ESF_INSTANCE') || 'DEV';
         const data = await fetchKanbanData(currentInstance);
         allBookings = data;
-        renderBoard(data);
+        renderBoard(sortBookings(allBookings, currentSortField, currentSortDir));
     } catch (err) {
         console.error(err);
         const safeMsg = (typeof safeError === 'function') ? safeError(err) : "Failed to load board. Please refresh or try again later.";

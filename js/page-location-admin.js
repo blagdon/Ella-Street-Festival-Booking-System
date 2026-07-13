@@ -1,5 +1,5 @@
 import { initAdminPage } from './supabase.js';
-import { initLocations, setFilter, setSearchTerm, loadData, sendBulkEmails, closeLocationSheet, assignMobileLocation, sendEmail, openLocationSheet, assignLocation, getBookingById, downloadLocationsForMyMaps } from './locations.js';
+import { initLocations, setFilter, setSearchTerm, setSort, loadData, sendBulkEmails, closeLocationSheet, assignMobileLocation, sendEmail, openLocationSheet, assignLocation, getBookingById, downloadLocationsForMyMaps } from './locations.js';
 
 async function init() {
     await initLocations();
@@ -34,6 +34,12 @@ async function init() {
 
     const searchInput = document.getElementById('searchInput');
     if (searchInput) searchInput.addEventListener('input', (e) => setSearchTerm(e.target.value));
+
+    const sortSelect = document.getElementById('sortSelect');
+    if (sortSelect) sortSelect.addEventListener('change', (e) => {
+        const [field, direction] = e.target.value.split('-');
+        setSort(field, direction);
+    });
 
 
     // Attach delegated event listeners for dynamic content

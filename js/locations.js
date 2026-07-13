@@ -1,13 +1,15 @@
 import { fetchLocationData, updateLocation } from './api.js';
 import { queueLocationEmail } from './shared.js';
 import { showToast, showConfirm, renderInstanceBadge } from './ui.js';
-import { escapeHtml } from './utils.js';
+import { escapeHtml, sortBookings } from './utils.js';
 
 let allBookings = [];
 let allLocations = [];
 let globalOccupiedIds = [];
 let currentFilter = 'all';
 let currentSearchTerm = '';
+let currentSortField = 'id';
+let currentSortDir = 'asc';
 let currentMobileBookingId = null;
 
 function matchesSearch(b, term) {
@@ -56,11 +58,12 @@ function renderTable() {
 
     // 2. APPLY FILTER
     const term = currentSearchTerm.trim().toLowerCase();
-    const filtered = allBookings.filter(b => {
+    const filteredUnsorted = allBookings.filter(b => {
         if (currentFilter === 'unassigned' && b.location_ids?.length) return false;
         if (currentFilter === 'assigned' && !b.location_ids?.length) return false;
         return matchesSearch(b, term);
     });
+    const filtered = sortBookings(filteredUnsorted, currentSortField, currentSortDir);
 
     // 3. SORT MASTER LIST
     const sortedLocs = [...allLocations].sort((a, b) =>
@@ -346,6 +349,13 @@ export function setSearchTerm(term) {
     renderMobileCards();
 }
 
+export function setSort(field, direction) {
+    currentSortField = field;
+    currentSortDir = direction;
+    renderTable();
+    renderMobileCards();
+}
+
 export function setFilter(type) {
     currentFilter = type;
     ['all', 'unassigned', 'assigned'].forEach(t => {
@@ -385,11 +395,12 @@ function renderMobileCards() {
 
     // Filter bookings
     const mobileTerm = currentSearchTerm.trim().toLowerCase();
-    const filtered = allBookings.filter(b => {
+    const mobileFilteredUnsorted = allBookings.filter(b => {
         if (currentFilter === 'unassigned' && b.location_ids?.length) return false;
         if (currentFilter === 'assigned' && !b.location_ids?.length) return false;
         return matchesSearch(b, mobileTerm);
     });
+    const filtered = sortBookings(mobileFilteredUnsorted, currentSortField, currentSortDir);
 
     if (filtered.length === 0) {
         container.innerHTML = '<div class="text-center py-10 text-gray-400">No bookings found</div>';

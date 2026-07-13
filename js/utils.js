@@ -14,6 +14,26 @@ export function escapeHtml(str) {
         .replace(/'/g, '&#x27;');
 }
 
+// ===================================================================
+// === SHARED: Booking List Sorting (Kanban, Summary, Location Manager) ===
+// ===================================================================
+/**
+ * Returns a new array of bookings sorted by id or business name.
+ * @param {Array} list
+ * @param {'id'|'business'} field
+ * @param {'asc'|'desc'} direction
+ */
+export function sortBookings(list, field, direction) {
+    const getValue = field === 'business'
+        ? (b) => (b.business_name || b.business || '').toString()
+        : (b) => (b.id || '').toString();
+
+    const sorted = [...list].sort((a, b) =>
+        getValue(a).localeCompare(getValue(b), undefined, { numeric: true, sensitivity: 'base' })
+    );
+    return direction === 'desc' ? sorted.reverse() : sorted;
+}
+
 export function sanitizeUrl(url) {
     if (!url || typeof url !== 'string') return '';
     const trimmed = url.trim();

@@ -1,5 +1,5 @@
 import { initAdminPage } from './supabase.js';
-import { initKanban, filterCards, loadBoard, emailAllConfirmed, closeModal, openEmailModal, saveNote, changeStatus, promptStatusChange, finalizeConfirm, sendSystemEmail, confirmRejection, sendBulkEmail, cancelDrag } from './kanban.js';
+import { initKanban, filterCards, loadBoard, setSort, emailAllConfirmed, closeModal, openEmailModal, saveNote, changeStatus, promptStatusChange, finalizeConfirm, sendSystemEmail, confirmRejection, sendBulkEmail, cancelDrag } from './kanban.js';
 
 function init() {
     initKanban();
@@ -7,6 +7,12 @@ function init() {
     // 1. Static Elements by ID
     const kanbanSearch = document.getElementById('searchInput');
     if (kanbanSearch) kanbanSearch.addEventListener('keyup', filterCards);
+
+    const sortSelect = document.getElementById('sortSelect');
+    if (sortSelect) sortSelect.addEventListener('change', (e) => {
+        const [field, direction] = e.target.value.split('-');
+        setSort(field, direction);
+    });
 
     const btnRefreshBoard = document.getElementById('btn-refresh-board');
     if (btnRefreshBoard) btnRefreshBoard.addEventListener('click', loadBoard);

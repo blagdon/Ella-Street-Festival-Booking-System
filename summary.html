@@ -73,6 +73,14 @@
                     class="w-full sm:w-64 pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-sm">
             </div>
 
+            <select id="sortSelect"
+                class="bg-white border border-gray-300 text-sm text-gray-700 rounded-lg py-2 pl-3 pr-8 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer">
+                <option value="id-asc">Sort: ID (A→Z)</option>
+                <option value="id-desc">Sort: ID (Z→A)</option>
+                <option value="business-asc">Sort: Business Name (A→Z)</option>
+                <option value="business-desc">Sort: Business Name (Z→A)</option>
+            </select>
+
             <button id="btn-export-csv"
                 class="flex items-center gap-2 px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-700 font-medium shadow-sm hover:bg-gray-50 hover:border-gray-400 transition-colors whitespace-nowrap">
                 <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">

@@ -11,6 +11,9 @@ function init() {
     const searchInput = document.getElementById('searchInput');
     if (searchInput) searchInput.addEventListener('keyup', window.filterTable);
 
+    const sortSelect = document.getElementById('sortSelect');
+    if (sortSelect) sortSelect.addEventListener('change', (e) => window.setSortOption(e.target.value));
+
     const btnExportCsv = document.getElementById('btn-export-csv');
     if (btnExportCsv) btnExportCsv.addEventListener('click', window.exportCSV);
 

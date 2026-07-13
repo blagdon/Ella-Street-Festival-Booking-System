@@ -1,7 +1,7 @@
 import { fetchKanbanData, updateBookingStatus, addNote, sendEmail, emailAllConfirmedBookings } from './api.js';
 import { sharedUpdateStatus, populateDetailPane } from './shared.js';
 import { showToast, renderInstanceBadge, showConfirm } from './ui.js';
-import { escapeHtml } from './utils.js';
+import { escapeHtml, sortBookings } from './utils.js';
 import { CONFIG, getStallCost } from './config.js';
 
 let allBookings = [];
@@ -225,7 +225,7 @@ let currentSortDir = 'asc';
 window.filterTable = function () {
     const term = document.getElementById('searchInput').value.toLowerCase();
     const statusVal = document.getElementById('statusFilter').value;
-    const filtered = allBookings.filter(b => {
+    let filtered = allBookings.filter(b => {
         const matchStatus = (statusVal === 'All') || b.status === statusVal;
         const matchSearch = (b.business_name || b.business || "").toLowerCase().includes(term) ||
             (b.owner_name || b.owner || "").toLowerCase().includes(term) ||
@@ -233,7 +233,11 @@ window.filterTable = function () {
             (b.email || "").toLowerCase().includes(term);
         return matchStatus && matchSearch;
     });
-    if (currentSortField) {
+    if (currentSortField === 'id' || currentSortField === 'business') {
+        // Shared helper correctly falls back business_name || business,
+        // unlike the bare-field compare below.
+        filtered = sortBookings(filtered, currentSortField, currentSortDir);
+    } else if (currentSortField) {
         filtered.sort((a, b) => {
             const va = (a[currentSortField] || "").toString().toLowerCase();
             const vb = (b[currentSortField] || "").toString().toLowerCase();
@@ -250,11 +254,28 @@ window.sortTable = function (field) {
         currentSortField = field;
         currentSortDir = 'asc';
     }
+    syncSortUI();
+    window.filterTable();
+}
+
+// Sets sort field/direction from the "Sort:" dropdown (id-asc, business-desc, etc).
+window.setSortOption = function (value) {
+    const [field, direction] = value.split('-');
+    currentSortField = field;
+    currentSortDir = direction;
+    syncSortUI();
+    window.filterTable();
+}
+
+function syncSortUI() {
     ['id', 'status', 'business', 'owner', 'category'].forEach(f => {
         const el = document.getElementById('sort-' + f);
-        if (el) el.innerText = (f === field) ? (currentSortDir === 'asc' ? '\u25B2' : '\u25BC') : '';
+        if (el) el.innerText = (f === currentSortField) ? (currentSortDir === 'asc' ? '\u25B2' : '\u25BC') : '';
     });
-    window.filterTable();
+    const sortSelect = document.getElementById('sortSelect');
+    if (sortSelect && (currentSortField === 'id' || currentSortField === 'business')) {
+        sortSelect.value = `${currentSortField}-${currentSortDir}`;
+    }
 }
 
 // Details Pane
