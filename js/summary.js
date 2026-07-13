@@ -64,7 +64,7 @@ function renderTable(data) {
             </td>
             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${escapeHtml(item.category || '-')}</td>
             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${(item.power_required || item.power) === 'No power' ? 'No' : '<span class="text-yellow-500 text-lg">\u26A1</span>'}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">${escapeHtml(item.location_id || '-')}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">${escapeHtml(item.location_display || '-')}</td>
         `;
         tbody.appendChild(tr);
 
@@ -127,7 +127,7 @@ function renderTable(data) {
                 <div class="flex items-center justify-between">
                     <div class="flex items-center">
                         <svg class="w-4 h-4 mr-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path></svg>
-                        <span class="text-xs font-mono ${item.location_id ? 'text-blue-600 font-semibold' : 'text-gray-400'}">${escapeHtml(item.location_id || 'No location')}</span>
+                        <span class="text-xs font-mono ${item.location_display ? 'text-blue-600 font-semibold' : 'text-gray-400'}">${escapeHtml(item.location_display || 'No location')}</span>
                     </div>
                     <span class="text-xs font-mono text-gray-400">${escapeHtml(item.id)}</span>
                 </div>
@@ -566,7 +566,7 @@ window.exportCSV = function () {
         b.category,
         b.stall_type,
         b.power_required || b.power,
-        b.location_id || '',
+        b.location_display || '',
         b.stall_cost || '',
         b.created_at ? new Date(b.created_at).toLocaleDateString('en-GB') : ''
     ].map(escape).join(','));

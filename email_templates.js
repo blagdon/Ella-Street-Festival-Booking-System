@@ -93,7 +93,7 @@ export const ESF_EMAIL_TEMPLATES = {
                 Your application for <b>${this._esc(b.business_name || b.business)}</b> has been approved and allocated a <b>Free Stall</b> at the festival.<br><br>
                 Booking reference: <b>${this._esc(b.id)}</b><br>
                 Stall type: <b>Free stall</b><br>
-                Location: <b>${this._esc(b.location_id || 'TBA')}</b><br><br>
+                Location: <b>${this._esc(b.location_display || 'TBA')}</b><br><br>
                 There is <b>no charge</b> for this booking.<br><br>
                 If you no longer require this stall, please let us know by cancelling your booking using the link below:<br>
                 <a href="${cancelLink}">Cancel Link</a><br><br>
@@ -155,7 +155,7 @@ export const ESF_EMAIL_TEMPLATES = {
                 Dear ${this._esc(b.owner_name || b.owner)},<br><br>
                 We are pleased to confirm your stall location for the festival.<br><br>
                 Business: <b>${this._esc(b.business_name || b.business)}</b><br>
-                Assigned Location: <b>${this._esc(b.location_id)}</b><br><br>
+                Assigned Location: <b>${this._esc(b.location_display)}</b><br><br>
                 Please refer to the festival map for exact positioning.<br><br>
                 Regards,<br>
                 The Festival Team

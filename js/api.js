@@ -5,6 +5,7 @@ import { validateString, validateEmail, validateBookingId, validateStatus, escap
 const TBL_BOOKINGS = 'bookings';
 const TBL_PAYMENTS = 'payments';
 const TBL_LOCATIONS = 'locations';
+const TBL_BOOKING_LOCATIONS = 'booking_locations';
 const TBL_EMAIL_QUEUE = 'email_queue';
 const TBL_AUDIT_LOGS = 'audit_logs';
 
@@ -26,7 +27,33 @@ export async function fetchKanbanData(currentInstance) {
         .order('created_at', { ascending: false });
 
     if (error) throw error;
-    return data || []; // Raw data, adaptation can happen in UI if needed
+    const bookings = data || [];
+    await attachLocationIds(sb, bookings);
+    return bookings; // Raw data, adaptation can happen in UI if needed
+}
+
+/**
+ * Attaches `location_ids` (array) and `location_display` (joined string) to
+ * each booking by querying booking_locations, replacing the old raw
+ * comma-separated bookings.location_id column.
+ */
+async function attachLocationIds(sb, bookings) {
+    const bookingIds = bookings.map(b => b.id);
+    const { data: joinRows, error } = bookingIds.length
+        ? await sb.from(TBL_BOOKING_LOCATIONS).select('booking_id, location_id').in('booking_id', bookingIds)
+        : { data: [], error: null };
+    if (error) throw error;
+
+    const locsByBooking = new Map();
+    (joinRows || []).forEach(r => {
+        if (!locsByBooking.has(r.booking_id)) locsByBooking.set(r.booking_id, []);
+        locsByBooking.get(r.booking_id).push(r.location_id);
+    });
+
+    bookings.forEach(b => {
+        b.location_ids = locsByBooking.get(b.id) || [];
+        b.location_display = b.location_ids.join(', ');
+    });
 }
 
 /**
@@ -41,7 +68,6 @@ export async function updateBookingStatus(id, status, reason = null) {
     const sb = getSupabaseClient();
 
     const updateFields = { status: status };
-    if (status !== 'Confirmed') updateFields.location_id = null;
     if (reason) updateFields.rejection_reason = reason;
 
     // Fetch booking details before updating if moving to HCC Checks
@@ -55,6 +81,12 @@ export async function updateBookingStatus(id, status, reason = null) {
     // Update the booking status
     const { error } = await sb.from(TBL_BOOKINGS).update(updateFields).eq('id', id);
     if (error) throw error;
+
+    // Clear any assigned locations when a booking leaves Confirmed status.
+    if (status !== 'Confirmed') {
+        const { error: locErr } = await sb.rpc('rpc_set_booking_locations', { p_booking_id: id, p_location_ids: [] });
+        if (locErr) console.warn("Failed to clear booking_locations on status change:", locErr);
+    }
 
     // Insert into hcc_checks
     if (status === 'HCC Checks' && bookingDetails) {
@@ -320,6 +352,8 @@ export async function fetchLocationData(currentInstance) {
         .eq('instance_prefix', currentPrefix);
     if (blErr) throw blErr;
 
+    await attachLocationIds(sb, bLocs);
+
     // 2. Fetch GLOBAL Occupancy
     let occupancyFilter = [];
     if (currentPrefix === CONFIG.INSTANCE_MAP['DEV']) {
@@ -328,12 +362,17 @@ export async function fetchLocationData(currentInstance) {
         occupancyFilter = [CONFIG.INSTANCE_MAP['FOOD'], CONFIG.INSTANCE_MAP['GENERAL'], CONFIG.INSTANCE_MAP['MISC']];
     }
 
-    const { data: allOccupants, error: occErr } = await sb
+    const { data: occupantBookings, error: occBErr } = await sb
         .from(TBL_BOOKINGS)
-        .select('location_id')
+        .select('id')
         .eq('status', 'Confirmed')
-        .in('instance_prefix', occupancyFilter)
-        .neq('location_id', null);
+        .in('instance_prefix', occupancyFilter);
+    if (occBErr) throw occBErr;
+
+    const occupantIds = (occupantBookings || []).map(b => b.id);
+    const { data: allOccupants, error: occErr } = occupantIds.length
+        ? await sb.from(TBL_BOOKING_LOCATIONS).select('location_id').in('booking_id', occupantIds)
+        : { data: [], error: null };
     if (occErr) throw occErr;
 
     // 3. Get Locations Reference
@@ -348,21 +387,21 @@ export async function fetchLocationData(currentInstance) {
     return {
         bookings: bLocs,
         locations: locs,
-        occupied_ids: allOccupants.map(o => o.location_id)
+        occupied_ids: (allOccupants || []).map(o => o.location_id)
     };
 }
 
 /**
- * Updates a booking's location.
- * @param {string} id 
- * @param {string} locationId 
+ * Replaces all of a booking's assigned locations.
+ * @param {string} id
+ * @param {string[]} locationIds - full desired set of location ids (empty array clears all)
  */
-export async function updateLocation(id, locationId) {
+export async function updateLocation(id, locationIds) {
     validateBookingId(id);
     const sb = getSupabaseClient();
-    const { error } = await sb.from(TBL_BOOKINGS).update({ location_id: locationId }).eq('id', id);
+    const { error } = await sb.rpc('rpc_set_booking_locations', { p_booking_id: id, p_location_ids: locationIds });
     if (error) throw error;
-    await auditLog('allocate_location', id, { location_id: locationId });
+    await auditLog('allocate_location', id, { location_ids: locationIds });
     return { status: 'success' };
 }
 
@@ -429,7 +468,7 @@ export async function fetchMapData(currentInstance) {
 
     // 2. Get Confirmed Bookings
     let bQuery = sb.from(TBL_BOOKINGS)
-        .select('id, business_name, description, stall_type, location_id, category, instance_prefix')
+        .select('id, business_name, description, stall_type, category, instance_prefix')
         .eq('status', 'Confirmed');
 
     if (currentInstance === 'DEV') {
@@ -441,17 +480,18 @@ export async function fetchMapData(currentInstance) {
     const { data: bData, error: mapBErr } = await bQuery;
     if (mapBErr) throw mapBErr;
 
-    // 3. Join Data
+    // 3. Join Data via booking_locations
+    const bookingIds = (bData || []).map(b => b.id);
+    const { data: joinRows, error: joinErr } = bookingIds.length
+        ? await sb.from(TBL_BOOKING_LOCATIONS).select('booking_id, location_id').in('booking_id', bookingIds)
+        : { data: [], error: null };
+    if (joinErr) throw joinErr;
+
+    const bookingsById = new Map((bData || []).map(b => [b.id, b]));
     const bookingMap = new Map();
-    (bData || []).forEach(b => {
-        if (b.location_id) {
-            b.location_id.split(',').forEach(part => {
-                const trimmed = part.trim();
-                if (trimmed) {
-                    bookingMap.set(trimmed, b);
-                }
-            });
-        }
+    (joinRows || []).forEach(r => {
+        const b = bookingsById.get(r.booking_id);
+        if (b) bookingMap.set(r.location_id, b);
     });
 
     return safeMapLocs.map(l => {

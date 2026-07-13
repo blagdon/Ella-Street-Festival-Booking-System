@@ -126,7 +126,7 @@ export async function getEmailFromTemplate(templateId, booking, id, extraVars = 
         ? `${cancelBase}?token=${encodeURIComponent(cancelToken)}`
         : (cancelBase || '');
     const bankDetails = CONFIG.BANK_DETAILS;
-    const locationId = escapeHtml(booking.location_id || 'TBA');
+    const locationId = escapeHtml(booking.location_display || 'TBA');
     const reason = escapeHtml(extraVars.reason || 'Oversubscribed / Category Full');
 
     const replaceVars = (str) => {
@@ -157,12 +157,21 @@ export async function queueLocationEmail(id) {
     // 1. Fetch booking data
     const { data: booking, error: fErr } = await sb
         .from('bookings')
-        .select('email, owner_name, business_name, location_id, instance_prefix, cancel_token')
+        .select('email, owner_name, business_name, instance_prefix, cancel_token')
         .eq('id', id)
         .single();
 
     if (fErr || !booking) throw new Error("Could not find booking data: " + (fErr?.message || "Not found"));
-    if (!booking.location_id) throw new Error("No location assigned yet.");
+
+    const { data: locRows, error: locErr } = await sb
+        .from('booking_locations')
+        .select('location_id')
+        .eq('booking_id', id);
+    if (locErr) throw locErr;
+
+    const locationIds = (locRows || []).map(r => r.location_id);
+    if (locationIds.length === 0) throw new Error("No location assigned yet.");
+    booking.location_display = locationIds.join(', ');
 
     // 2. Generate content from template
     const { subject, body } = await getEmailFromTemplate('location_update', booking, id);
@@ -171,7 +180,7 @@ export async function queueLocationEmail(id) {
     await sendEmail(id, subject, body);
 
     // 4. Audit Log
-    await auditLog('location_email_queued', id, { location_id: booking.location_id });
+    await auditLog('location_email_queued', id, { location_ids: locationIds });
 }
 
 /**
@@ -295,8 +304,8 @@ export function populateDetailPane(item) {
 
     const locEl = document.getElementById('d-location');
     if (locEl) {
-        locEl.innerText = item.location_id || "Unassigned";
-        locEl.className = item.location_id
+        locEl.innerText = item.location_display || "Unassigned";
+        locEl.className = item.location_display
             ? "text-sm font-mono bg-blue-100 px-1 rounded text-blue-800"
             : "text-sm font-mono bg-yellow-100 px-1 rounded text-yellow-800";
     }

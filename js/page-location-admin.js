@@ -1,5 +1,5 @@
 import { initAdminPage } from './supabase.js';
-import { initLocations, setFilter, loadData, sendBulkEmails, closeLocationSheet, assignMobileLocation, sendEmail, openLocationSheet, assignLocation, getBookingById, parseLocationIds } from './locations.js';
+import { initLocations, setFilter, loadData, sendBulkEmails, closeLocationSheet, assignMobileLocation, sendEmail, openLocationSheet, assignLocation, getBookingById } from './locations.js';
 
 async function init() {
     await initLocations();
@@ -41,11 +41,11 @@ async function init() {
                 // Read current locations from the in-memory data model, not the DOM,
                 // so this works correctly even after a table re-render.
                 const booking = getBookingById(bookingId);
-                const currentLocs = parseLocationIds(booking && booking.location_id);
+                const currentLocs = [...(booking?.location_ids || [])];
                 if (!currentLocs.includes(newLoc)) {
                     currentLocs.push(newLoc);
                 }
-                assignLocation(bookingId, currentLocs.join(', '));
+                assignLocation(bookingId, currentLocs);
             } else {
                 // Reset UI
                 const container = select.closest('div');
@@ -90,9 +90,8 @@ async function init() {
             const locToRemove = removeBtn.dataset.locationId;
             // Read current locations from the in-memory data model, not the DOM.
             const booking = getBookingById(bookingId);
-            const currentLocs = parseLocationIds(booking && booking.location_id)
-                .filter(loc => loc !== locToRemove);
-            assignLocation(bookingId, currentLocs.join(', '));
+            const currentLocs = (booking?.location_ids || []).filter(loc => loc !== locToRemove);
+            assignLocation(bookingId, currentLocs);
             e.stopPropagation();
             return;
         }

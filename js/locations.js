@@ -9,16 +9,6 @@ let globalOccupiedIds = [];
 let currentFilter = 'all';
 let currentMobileBookingId = null;
 
-/**
- * Parses a comma-separated location_id string into a clean array of trimmed,
- * non-empty location IDs.
- */
-export function parseLocationIds(locationIdString) {
-    return locationIdString
-        ? locationIdString.split(',').map(s => s.trim()).filter(s => s !== '')
-        : [];
-}
-
 export async function initLocations() {
     renderInstanceBadge('instanceBadge');
     await loadData();
@@ -52,20 +42,12 @@ function renderTable() {
     tbody.innerHTML = '';
 
     // 1. CALCULATE OCCUPIED SET
-    const occupiedSet = new Set();
-    globalOccupiedIds.forEach(id => {
-        if (id) {
-            id.split(',').forEach(part => {
-                const trimmed = part.trim();
-                if (trimmed) occupiedSet.add(trimmed);
-            });
-        }
-    });
+    const occupiedSet = new Set(globalOccupiedIds.filter(Boolean));
 
     // 2. APPLY FILTER
     const filtered = allBookings.filter(b => {
-        if (currentFilter === 'unassigned') return !b.location_id;
-        if (currentFilter === 'assigned') return b.location_id;
+        if (currentFilter === 'unassigned') return !b.location_ids?.length;
+        if (currentFilter === 'assigned') return b.location_ids?.length;
         return true;
     });
 
@@ -78,7 +60,7 @@ function renderTable() {
         const row = document.createElement('tr');
         row.className = 'hover-row group';
 
-        const assignedLocs = parseLocationIds(b.location_id);
+        const assignedLocs = b.location_ids || [];
         const isAssigned = assignedLocs.length > 0;
 
         // Render badges
@@ -134,20 +116,17 @@ function renderTable() {
 
 // Rebuild globalOccupiedIds based on the active local model
 function rebuildOccupiedIds() {
-    globalOccupiedIds = [];
-    allBookings.forEach(x => {
-        parseLocationIds(x.location_id).forEach(loc => globalOccupiedIds.push(loc));
-    });
+    globalOccupiedIds = allBookings.flatMap(x => x.location_ids || []);
 }
 
-export async function assignLocation(id, newLocId) {
+export async function assignLocation(id, newLocIds) {
     const b = allBookings.find(x => x.id === id);
-    const previousLocId = b ? b.location_id : undefined;
+    const previousLocIds = b ? [...(b.location_ids || [])] : undefined;
 
     // Optimistically update the local model *before* the network round-trip so
     // that any read of the model (e.g. getBookingById) during a rapid follow-up
     // action already reflects this change, instead of racing on stale data.
-    if (b) b.location_id = newLocId;
+    if (b) b.location_ids = newLocIds;
     rebuildOccupiedIds();
     renderTable();
     renderMobileCards();
@@ -159,12 +138,12 @@ export async function assignLocation(id, newLocId) {
             statusEl.classList.remove('hidden');
         }
 
-        await updateLocation(id, newLocId);
+        await updateLocation(id, newLocIds);
         showToast("Location Saved");
 
     } catch (err) {
         // Roll back the optimistic update on failure
-        if (b) b.location_id = previousLocId;
+        if (b) b.location_ids = previousLocIds;
         rebuildOccupiedIds();
         renderTable();
         renderMobileCards();
@@ -210,7 +189,7 @@ export async function sendEmail(id) {
 }
 
 export async function sendBulkEmails() {
-    const targets = allBookings.filter(b => b.location_id && b.location_id !== "");
+    const targets = allBookings.filter(b => b.location_ids?.length);
     if (targets.length === 0) {
         showToast("No assigned bookings found.", 'warning');
         return;
@@ -291,7 +270,7 @@ function renderMobileCards() {
 
     // Calculate stats
     const totalCount = allBookings.length;
-    const assignedCount = allBookings.filter(b => b.location_id).length;
+    const assignedCount = allBookings.filter(b => b.location_ids?.length).length;
     const unassignedCount = totalCount - assignedCount;
 
     const elTotal = document.getElementById('mobile-total');
@@ -303,8 +282,8 @@ function renderMobileCards() {
 
     // Filter bookings
     const filtered = allBookings.filter(b => {
-        if (currentFilter === 'unassigned') return !b.location_id;
-        if (currentFilter === 'assigned') return b.location_id;
+        if (currentFilter === 'unassigned') return !b.location_ids?.length;
+        if (currentFilter === 'assigned') return b.location_ids?.length;
         return true;
     });
 
@@ -315,7 +294,7 @@ function renderMobileCards() {
 
     filtered.forEach(booking => {
         const card = document.createElement('div');
-        const assignedLocs = parseLocationIds(booking.location_id);
+        const assignedLocs = booking.location_ids || [];
         const isAssigned = assignedLocs.length > 0;
         card.className = `location-card ${isAssigned ? 'assigned' : 'unassigned'}`;
 
@@ -393,17 +372,9 @@ export function openLocationSheet(bookingId) {
     }
 
     // Build location options
-    const occupiedSet = new Set();
-    globalOccupiedIds.forEach(id => {
-        if (id) {
-            id.split(',').forEach(part => {
-                const trimmed = part.trim();
-                if (trimmed) occupiedSet.add(trimmed);
-            });
-        }
-    });
+    const occupiedSet = new Set(globalOccupiedIds.filter(Boolean));
 
-    const assignedLocs = parseLocationIds(booking.location_id);
+    const assignedLocs = booking.location_ids || [];
 
     const sortedLocs = [...allLocations].sort((a, b) =>
         a.id.toString().localeCompare(b.id.toString(), undefined, { numeric: true })
@@ -441,8 +412,7 @@ export function openLocationSheet(bookingId) {
                     } else {
                         newAssignedLocs = [...assignedLocs, loc.id];
                     }
-                    const newLocationString = newAssignedLocs.join(', ');
-                    await assignLocation(bookingId, newLocationString);
+                    await assignLocation(bookingId, newAssignedLocs);
                     openLocationSheet(bookingId); // Re-open dynamically to refresh option list
                 });
                 optionsContainer.appendChild(option);
@@ -470,7 +440,7 @@ export async function assignMobileLocation(locationId) {
     if (!bookingId) return;
 
     closeLocationSheet();
-    await assignLocation(bookingId, locationId || '');
+    await assignLocation(bookingId, locationId ? [locationId] : []);
 }
 
 // ==========================================

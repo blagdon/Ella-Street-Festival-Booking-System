@@ -1,5 +1,5 @@
 import { getSupabaseClient, initAdminPage } from './supabase.js';
-import { safeError, validateString, validateBookingId, escapeHtml, MAX_FIELD_LENGTHS } from './utils.js';
+import { safeError, validateBookingId, escapeHtml } from './utils.js';
 import { auditLog } from './api.js';
 
 // --- 1. CONFIGURATION (uses modules) ---
@@ -73,7 +73,7 @@ function loadFromLocal() {
 async function syncDown() {
     try {
         const [bookingsReq, locationsReq] = await Promise.all([
-            sb.from('bookings').select('id, business_name, owner_name, email, phone, location_id').in('status', ['Confirmed']).in('instance_prefix', ['ESF26-FOOD-', 'ESF26-NONFOOD-', 'ESF26-MISC-']),
+            sb.from('bookings').select('id, business_name, owner_name, email, phone').in('status', ['Confirmed']).in('instance_prefix', ['ESF26-FOOD-', 'ESF26-NONFOOD-', 'ESF26-MISC-']),
             sb.from('locations')
                 .select('id')
                 .eq('dataset', 'LIVE')
@@ -83,7 +83,23 @@ async function syncDown() {
         if (bookingsReq.error) throw bookingsReq.error;
         if (locationsReq.error) throw locationsReq.error;
 
-        localData = bookingsReq.data;
+        const bookings = bookingsReq.data || [];
+        const bookingIds = bookings.map(b => b.id);
+        const joinReq = bookingIds.length
+            ? await sb.from('booking_locations').select('booking_id, location_id').in('booking_id', bookingIds)
+            : { data: [], error: null };
+        if (joinReq.error) throw joinReq.error;
+
+        // Cache the full set of assigned locations per booking so the "taken
+        // spots" check below sees every individual pitch — including ones on
+        // bookings with more than one location — not just a single opaque value.
+        const locsByBooking = new Map();
+        (joinReq.data || []).forEach(r => {
+            if (!locsByBooking.has(r.booking_id)) locsByBooking.set(r.booking_id, []);
+            locsByBooking.get(r.booking_id).push(r.location_id);
+        });
+
+        localData = bookings.map(b => ({ ...b, location_ids: locsByBooking.get(b.id) || [] }));
         localStorage.setItem(DB_KEY, JSON.stringify(localData));
 
         masterLocations = locationsReq.data;
@@ -119,8 +135,8 @@ function renderList(query) {
     matches.slice(0, 50).forEach(b => {
         const div = document.createElement('div');
         const safeBiz = escapeHtml(b.business_name || 'Unknown Business');
-        const safeLoc = escapeHtml(b.location_id || '---');
-        const hasLoc = !!b.location_id;
+        const safeLoc = escapeHtml((b.location_ids && b.location_ids.length) ? b.location_ids.join(', ') : '---');
+        const hasLoc = !!(b.location_ids && b.location_ids.length);
 
         div.className = "bg-white p-5 rounded-2xl shadow-sm border border-gray-100 touch-card flex justify-between items-center mb-3";
         div.innerHTML = `
@@ -153,8 +169,8 @@ function openEdit(id) {
 
     const takenSpots = new Set(
         localData
-            .filter(item => item.id !== id && item.location_id)
-            .map(item => item.location_id)
+            .filter(item => item.id !== id)
+            .flatMap(item => item.location_ids || [])
     );
 
     const nullOpt = document.createElement('option');
@@ -178,7 +194,7 @@ function openEdit(id) {
             const opt = document.createElement('option');
             opt.value = locId;
             opt.text = locId;
-            if (b.location_id === locId) opt.selected = true;
+            if ((b.location_ids || []).includes(locId)) opt.selected = true;
             select.appendChild(opt);
         });
     }
@@ -201,10 +217,12 @@ async function saveLocation() {
     // 1. Snapshot for rollback
     const idx = localData.findIndex(b => b.id === bookingId);
     if (idx === -1) return;
-    const previousLoc = localData[idx].location_id;
+    const previousLocIds = localData[idx].location_ids || [];
 
-    // 2. Optimistic Update
-    localData[idx].location_id = newLoc;
+    // 2. Optimistic Update — steward always assigns/clears a single location,
+    // replacing whatever set of locations (if any) the booking had before.
+    const newLocIds = newLoc ? [newLoc] : [];
+    localData[idx].location_ids = newLocIds;
     localStorage.setItem(DB_KEY, JSON.stringify(localData));
     renderList(document.getElementById('searchInput').value);
     closeModal();
@@ -218,17 +236,16 @@ async function saveLocation() {
                 throw new Error("Session expired. Please log in again.");
             }
 
-            // Fix #4: Validate inputs before DB write
             const safeId = validateBookingId(bookingId);
-            const safeLoc = newLoc ? validateString(newLoc, MAX_FIELD_LENGTHS.locationId) : null;
 
-            const { error } = await sb.from('bookings')
-                .update({ location_id: safeLoc })
-                .eq('id', safeId);
+            const { error } = await sb.rpc('rpc_set_booking_locations', {
+                p_booking_id: safeId,
+                p_location_ids: newLocIds
+            });
 
             if (error) throw error;
 
-            await auditLog('steward_location_change', bookingId, { previous: previousLoc, new_location: newLoc });
+            await auditLog('steward_location_change', bookingId, { previous: previousLocIds, new_location: newLoc });
             showToast("Location saved!");
 
         } catch (err) {
@@ -244,7 +261,7 @@ async function saveLocation() {
             showToast("⚠️ Update Failed: " + safeError(err) + " (Changes reverted)");
 
             // 4. Revert Optimistic Update
-            localData[idx].location_id = previousLoc;
+            localData[idx].location_ids = previousLocIds;
             localStorage.setItem(DB_KEY, JSON.stringify(localData));
             renderList(document.getElementById('searchInput').value);
         }
@@ -286,13 +303,14 @@ async function processSyncQueue() {
                 break;
             }
 
-            // Validate item.id and item.location before sending to DB
+            // Validate item.id before sending to DB
             const safeId = validateBookingId(item.id);
-            const safeLoc = item.location ? validateString(item.location, MAX_FIELD_LENGTHS.locationId) : null;
+            const newLocIds = item.location ? [item.location] : [];
 
-            const { error } = await sb.from('bookings')
-                .update({ location_id: safeLoc })
-                .eq('id', safeId);
+            const { error } = await sb.rpc('rpc_set_booking_locations', {
+                p_booking_id: safeId,
+                p_location_ids: newLocIds
+            });
 
             if (error) throw error;
 
