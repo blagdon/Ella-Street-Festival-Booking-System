@@ -46,7 +46,9 @@ export const CONFIG = {
             DEV: null
         },
         STATUS_LIST: ['Pending', 'Confirmed', 'Rejected', 'Cancelled', 'On Hold', 'HCC Checks'],
-        ALLOWED_TYPES: ["Dev", "Food", "Non-Food", "Attraction", "Barrier", "Ramp", "First Aid", "Beach", "Music", "Green", "Police", "Fire Engine", "Toilet", "Spoken Word", "Ice Cream Van"],
+        // No hardcoded defaults — populated entirely from the settings table
+        // (allowed_stall_types) via loadStallCosts()/applySettingsToConfig().
+        ALLOWED_TYPES: [],
         STATUS_COLORS: {
             'Pending': 'bg-yellow-100 text-yellow-700',
             'Confirmed': 'bg-green-100 text-green-700',
@@ -135,6 +137,8 @@ export function applySettingsToConfig(data) {
             ESF_PUBLIC_CONFIG.BUCKET_NAME = val;
         } else if (item.key === 'hcc_council_email') {
             CONFIG.HCC_COUNCIL_EMAIL = val;
+        } else if (item.key === 'allowed_stall_types') {
+            CONFIG.UI.ALLOWED_TYPES = val.split(',').map(s => s.trim()).filter(Boolean);
         } else if (item.key === 'email_rate_limit') {
             const num = parseInt(val, 10);
             if (!isNaN(num)) CONFIG.EMAIL_RATE_LIMIT = num;
