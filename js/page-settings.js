@@ -3,13 +3,14 @@ import { showToast } from './ui.js';
 import { auditLog } from './api.js';
 import { CONFIG } from './config.js';
 import { ESF_PUBLIC_CONFIG } from '../supabase-public.js';
-import { parseEdgeFunctionError } from './utils.js';
+import { parseEdgeFunctionError, escapeHtml } from './utils.js';
 
 const sb = getSupabaseClient();
 
 function initSettings() {
     initToggles();
     initStallCosts();
+    initStallTypes();
     initSystemConstants();
     initZohoSettings();
     initSerpApiSettings();
@@ -166,6 +167,87 @@ async function initStallCosts() {
             btnSave.disabled = false;
             btnSave.textContent = "Save Costs";
         }
+    });
+}
+
+function initStallTypes() {
+    const listEl = document.getElementById('stall-types-list');
+    const inputEl = document.getElementById('new-stall-type');
+    const btnAdd = document.getElementById('btn-add-stall-type');
+
+    if (!listEl || !inputEl || !btnAdd) return;
+
+    function render() {
+        const types = CONFIG.UI.ALLOWED_TYPES || [];
+        listEl.innerHTML = types.length
+            ? types.map(type => `
+                <span class="inline-flex items-center gap-1 bg-blue-100 text-blue-800 text-xs font-bold px-2 py-1 rounded">
+                    ${escapeHtml(type)}
+                    <button data-type="${escapeHtml(type)}" class="remove-stall-type-btn text-blue-500 hover:text-blue-700 font-bold ml-0.5 text-sm leading-none focus:outline-none" title="Remove Type">×</button>
+                </span>
+            `).join('')
+            : '<span class="text-xs text-gray-400 italic">No stall types configured.</span>';
+    }
+
+    async function saveTypes(newList) {
+        const previous = [...CONFIG.UI.ALLOWED_TYPES];
+        CONFIG.UI.ALLOWED_TYPES = newList; // optimistic update
+        render();
+
+        try {
+            const { data: { session } } = await sb.auth.getSession();
+            const userEmail = session?.user?.email || 'admin';
+
+            const { error } = await sb.from('settings').upsert({
+                key: 'allowed_stall_types',
+                value: newList.join(','),
+                updated_at: new Date().toISOString(),
+                updated_by: userEmail
+            });
+            if (error) throw error;
+
+            if (typeof sessionStorage !== 'undefined') {
+                sessionStorage.removeItem('ESF_SETTINGS_CACHE');
+            }
+            await auditLog('update_stall_types', 'system', { types: newList });
+        } catch (err) {
+            CONFIG.UI.ALLOWED_TYPES = previous; // roll back on failure
+            render();
+            showToast(`Failed to save stall types: ${err.message}`, 'error');
+        }
+    }
+
+    render();
+
+    btnAdd.addEventListener('click', async () => {
+        const val = inputEl.value.trim();
+        if (!val) {
+            showToast("Enter a stall type name", "error");
+            return;
+        }
+        if (CONFIG.UI.ALLOWED_TYPES.some(t => t.toLowerCase() === val.toLowerCase())) {
+            showToast(`"${val}" already exists`, "error");
+            return;
+        }
+
+        inputEl.value = '';
+        await saveTypes([...CONFIG.UI.ALLOWED_TYPES, val]);
+        showToast(`Added "${val}"`);
+    });
+
+    inputEl.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            btnAdd.click();
+        }
+    });
+
+    listEl.addEventListener('click', async (e) => {
+        const btn = e.target.closest('.remove-stall-type-btn');
+        if (!btn) return;
+        const type = btn.dataset.type;
+        await saveTypes(CONFIG.UI.ALLOWED_TYPES.filter(t => t !== type));
+        showToast(`Removed "${type}"`);
     });
 }
 

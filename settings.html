@@ -126,6 +126,30 @@
                 </div>
             </div>
 
+            <!-- Stall Types Manager Card -->
+            <div class="bg-white p-6 rounded-xl border border-gray-200 shadow-sm hover-card col-span-1 md:col-span-2">
+                <div class="flex items-start justify-between mb-4">
+                    <div class="icon-box bg-gray-100 text-gray-600 p-3 rounded-lg">
+                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z">
+                            </path>
+                        </svg>
+                    </div>
+                </div>
+                <h3 class="text-lg font-bold text-gray-800 mb-1">Stall Types</h3>
+                <p class="text-xs text-gray-400 mb-4">Manage the list of stall/category types used on the booking details editor and the Add Misc Entry page. Changes take effect immediately.</p>
+
+                <div id="stall-types-list" class="flex flex-wrap gap-2 mb-4"></div>
+
+                <div class="flex gap-2">
+                    <input type="text" id="new-stall-type" placeholder="e.g. Craft Stall" class="flex-1 p-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:outline-none text-sm">
+                    <button id="btn-add-stall-type" class="bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2 rounded transition text-xs tracking-wider uppercase cursor-pointer shadow-sm shrink-0">
+                        Add
+                    </button>
+                </div>
+            </div>
+
             <!-- System Constants Card -->
             <div class="bg-white p-6 rounded-xl border border-gray-200 shadow-sm hover-card col-span-1 md:col-span-2">
                 <div class="flex items-start justify-between mb-4">
