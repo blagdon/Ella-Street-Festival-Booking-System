@@ -1,5 +1,5 @@
 import { initAdminPage } from './supabase.js';
-import { initLocations, setFilter, loadData, sendBulkEmails, closeLocationSheet, assignMobileLocation, sendEmail, openLocationSheet, assignLocation, getBookingById } from './locations.js';
+import { initLocations, setFilter, loadData, sendBulkEmails, closeLocationSheet, assignMobileLocation, sendEmail, openLocationSheet, assignLocation, getBookingById, downloadLocationsForMyMaps } from './locations.js';
 
 async function init() {
     await initLocations();
@@ -19,6 +19,9 @@ async function init() {
 
     const btnSendBulkEmails = document.getElementById('btn-send-bulk-emails');
     if (btnSendBulkEmails) btnSendBulkEmails.addEventListener('click', sendBulkEmails);
+
+    const btnDownloadMyMaps = document.getElementById('btn-download-mymaps');
+    if (btnDownloadMyMaps) btnDownloadMyMaps.addEventListener('click', downloadLocationsForMyMaps);
 
     const locationSheetBackdrop = document.getElementById('locationSheetBackdrop');
     if (locationSheetBackdrop) locationSheetBackdrop.addEventListener('click', closeLocationSheet);

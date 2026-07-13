@@ -243,6 +243,62 @@ export async function sendBulkEmails() {
     );
 }
 
+/**
+ * Downloads a CSV of all locations (with GPS coordinates and their current
+ * assignment, if any) formatted for import into Google My Maps — "Latitude"
+ * and "Longitude" column names are auto-detected by My Maps' import wizard.
+ */
+export function downloadLocationsForMyMaps() {
+    const withCoords = allLocations.filter(l => l.lat != null && l.lng != null);
+    const skipped = allLocations.length - withCoords.length;
+
+    if (withCoords.length === 0) {
+        showToast("No locations with GPS coordinates to export.", 'warning');
+        return;
+    }
+
+    // Map each location id to whichever booking currently occupies it.
+    const bookingByLocation = new Map();
+    allBookings.forEach(b => {
+        (b.location_ids || []).forEach(locId => bookingByLocation.set(locId, b));
+    });
+
+    const escape = (val) => {
+        if (val === null || val === undefined) return '';
+        const str = String(val);
+        return str.includes(',') || str.includes('"') || str.includes('\n')
+            ? `"${str.replace(/"/g, '""')}"` : str;
+    };
+
+    const headers = ['Name', 'Latitude', 'Longitude', 'Business', 'Stall Type', 'Power', 'Status'];
+    const rows = withCoords.map(loc => {
+        const booking = bookingByLocation.get(loc.id);
+        return [
+            loc.id,
+            loc.lat,
+            loc.lng,
+            booking ? (booking.business || booking.business_name) : '',
+            booking ? booking.stall_type : '',
+            loc.has_power ? 'Yes' : 'No',
+            booking ? 'Assigned' : 'Unassigned'
+        ].map(escape).join(',');
+    });
+
+    const csv = [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const instance = localStorage.getItem('ESF_INSTANCE') || 'DEV';
+    a.href = url;
+    a.download = `ESF26_Locations_MyMaps_${instance}_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+
+    showToast(skipped > 0
+        ? `Exported ${withCoords.length} locations (${skipped} skipped — missing coordinates).`
+        : `Exported ${withCoords.length} locations.`);
+}
+
 export function setFilter(type) {
     currentFilter = type;
     ['all', 'unassigned', 'assigned'].forEach(t => {
