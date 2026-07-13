@@ -270,7 +270,7 @@ export function downloadLocationsForMyMaps() {
             ? `"${str.replace(/"/g, '""')}"` : str;
     };
 
-    const headers = ['Name', 'Latitude', 'Longitude', 'Business', 'Stall Type', 'Power', 'Status'];
+    const headers = ['Name', 'Latitude', 'Longitude', 'Business', 'Stall Type', 'Description'];
     const rows = withCoords.map(loc => {
         const booking = bookingByLocation.get(loc.id);
         return [
@@ -279,8 +279,7 @@ export function downloadLocationsForMyMaps() {
             loc.lng,
             booking ? (booking.business || booking.business_name) : '',
             booking ? booking.stall_type : '',
-            loc.has_power ? 'Yes' : 'No',
-            booking ? 'Assigned' : 'Unassigned'
+            booking ? booking.description : ''
         ].map(escape).join(',');
     });
 
