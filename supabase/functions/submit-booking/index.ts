@@ -6,6 +6,71 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
 }
 
+/**
+ * Sends the "received" auto-responder for a newly submitted booking, and
+ * logs the attempt to email_queue (mirrors js/api.js's sendEmailDirect()
+ * client-side pattern, minus the resend-specific bits). Throws on failure
+ * so the caller can decide how to log/ignore it — this function never
+ * touches the bookings row itself, so a failure here can't corrupt data.
+ */
+async function sendReceivedEmail(supabaseAdmin: ReturnType<typeof createClient>, booking: Record<string, any>) {
+  const [{ data: templateData, error: templateErr }, { data: settingRows }] = await Promise.all([
+    supabaseAdmin.from('email_templates').select('subject, body_html').eq('id', 'received').single(),
+    supabaseAdmin.from('settings').select('key, value').eq('key', 'cancel_url')
+  ])
+
+  if (templateErr || !templateData) {
+    throw new Error('Could not load "received" email template: ' + (templateErr?.message || 'not found'))
+  }
+
+  const cancelUrl = settingRows?.[0]?.value || ''
+  const cancelLink = (cancelUrl && booking.cancel_token)
+    ? `${cancelUrl}?token=${encodeURIComponent(booking.cancel_token)}`
+    : cancelUrl
+
+  const replaceVars = (str: string) =>
+    (str || '')
+      .replace(/\{\{owner_name\}\}/g, booking.owner_name || 'Trader')
+      .replace(/\{\{business_name\}\}/g, booking.business_name || 'your business')
+      .replace(/\{\{booking_id\}\}/g, booking.id || '')
+      .replace(/\{\{cancel_link\}\}/g, cancelLink)
+      // Not relevant at submission time (no cost/location assigned yet) —
+      // blank rather than leaking a raw {{placeholder}} into the email.
+      .replace(/\{\{cost\}\}/g, '')
+      .replace(/\{\{bank_details\}\}/g, '')
+      .replace(/\{\{location_id\}\}/g, '')
+      .replace(/\{\{reason\}\}/g, '')
+
+  const subject = replaceVars(templateData.subject)
+  const body = replaceVars(templateData.body_html)
+
+  let status = 'Sent'
+  let errorMessage: string | null = null
+
+  try {
+    const { data: sendData, error: sendErr } = await supabaseAdmin.functions.invoke('send-email', {
+      body: { recipient: booking.email, subject, body }
+    })
+    if (sendErr) throw new Error(sendErr.message)
+    if (sendData && sendData.error) throw new Error(sendData.error)
+  } catch (e: any) {
+    status = 'Error'
+    errorMessage = e.message
+  }
+
+  const { error: logErr } = await supabaseAdmin.from('email_queue').insert({
+    recipient: booking.email,
+    subject,
+    body,
+    status,
+    error_message: errorMessage,
+    instance_prefix: booking.instance_prefix || null
+  })
+  if (logErr) console.warn('Failed to write to email_queue log:', logErr.message)
+
+  if (status === 'Error') throw new Error(errorMessage || 'Failed to send email')
+}
+
 Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -104,6 +169,17 @@ Deno.serve(async (req) => {
     // 5. Insert booking into database
     const { data, error } = await supabaseAdmin.from('bookings').insert([bookingData]).select()
     if (error) throw error
+
+    // 6. Send the "received" auto-responder. Best-effort: a failure here must
+    // never fail the booking submission itself (the booking already exists).
+    const newBooking = data?.[0]
+    if (newBooking?.email) {
+      try {
+        await sendReceivedEmail(supabaseAdmin, newBooking)
+      } catch (emailErr: any) {
+        console.warn('Failed to send "received" auto-responder:', emailErr.message)
+      }
+    }
 
     return new Response(JSON.stringify({ success: true, data }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

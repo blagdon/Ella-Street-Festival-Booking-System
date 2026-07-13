@@ -18,7 +18,9 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    // Verify user authentication
+    // Verify caller: either a trusted server-to-server call (another Edge
+    // Function presenting the service role key, e.g. submit-booking sending
+    // the "received" auto-responder) or an authenticated admin user.
     const authHeader = req.headers.get('Authorization')
     if (!authHeader) {
       return new Response(JSON.stringify({ error: 'Missing Authorization header' }), {
@@ -27,26 +29,31 @@ Deno.serve(async (req) => {
       })
     }
     const token = authHeader.replace('Bearer ', '')
-    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token)
-    if (authError || !user) {
-      return new Response(JSON.stringify({ error: 'Unauthorized: ' + authError?.message }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      })
-    }
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    const isTrustedServiceCall = !!serviceRoleKey && token === serviceRoleKey
 
-    // Verify user has admin role in database
-    const { data: roleData, error: roleError } = await supabaseClient
-      .from('user_roles')
-      .select('role')
-      .eq('id', user.id)
-      .single()
+    if (!isTrustedServiceCall) {
+      const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token)
+      if (authError || !user) {
+        return new Response(JSON.stringify({ error: 'Unauthorized: ' + authError?.message }), {
+          status: 401,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        })
+      }
 
-    if (roleError || !roleData || roleData.role !== 'admin') {
-      return new Response(JSON.stringify({ error: 'Forbidden: Admin role required' }), {
-        status: 403,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      })
+      // Verify user has admin role in database
+      const { data: roleData, error: roleError } = await supabaseClient
+        .from('user_roles')
+        .select('role')
+        .eq('id', user.id)
+        .single()
+
+      if (roleError || !roleData || roleData.role !== 'admin') {
+        return new Response(JSON.stringify({ error: 'Forbidden: Admin role required' }), {
+          status: 403,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        })
+      }
     }
 
     // Parse request body
