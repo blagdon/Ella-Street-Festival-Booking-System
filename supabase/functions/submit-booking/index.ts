@@ -15,7 +15,7 @@ const corsHeaders = {
  */
 async function sendReceivedEmail(supabaseAdmin: ReturnType<typeof createClient>, booking: Record<string, any>) {
   const [{ data: templateData, error: templateErr }, { data: settingRows }] = await Promise.all([
-    supabaseAdmin.from('email_templates').select('subject, body_html').eq('id', 'received').single(),
+    supabaseAdmin.from('email_templates').select('subject, body_html').eq('id', 'application_received').single(),
     supabaseAdmin.from('settings').select('key, value').eq('key', 'cancel_url')
   ])
 
