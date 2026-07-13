@@ -1,5 +1,5 @@
 import { initAdminPage } from './supabase.js';
-import { initLocations, setFilter, loadData, sendBulkEmails, closeLocationSheet, assignMobileLocation, sendEmail, openLocationSheet, assignLocation } from './locations.js';
+import { initLocations, setFilter, loadData, sendBulkEmails, closeLocationSheet, assignMobileLocation, sendEmail, openLocationSheet, assignLocation, getBookingById } from './locations.js';
 
 async function init() {
     await initLocations();
@@ -36,11 +36,14 @@ async function init() {
             const select = e.target;
             const bookingId = select.dataset.bookingId;
             const newLoc = select.value;
-            
+
             if (newLoc && newLoc !== '__cancel__') {
-                const cell = select.closest('td');
-                const buttons = cell.querySelectorAll('button[data-location-id]');
-                const currentLocs = Array.from(buttons).map(btn => btn.dataset.locationId);
+                // Read current locations from the in-memory data model, not the DOM,
+                // so this works correctly even after a table re-render.
+                const booking = getBookingById(bookingId);
+                const currentLocs = booking && booking.location_id
+                    ? booking.location_id.split(',').map(s => s.trim()).filter(s => s !== '')
+                    : [];
                 if (!currentLocs.includes(newLoc)) {
                     currentLocs.push(newLoc);
                 }
@@ -48,7 +51,7 @@ async function init() {
             } else {
                 // Reset UI
                 const container = select.closest('div');
-                const addBtn = container.querySelector('button[data-action="show-add-select"]');
+                const addBtn = container ? container.querySelector('button[data-action="show-add-select"]') : null;
                 if (addBtn) addBtn.classList.remove('hidden');
                 select.classList.add('hidden');
             }
@@ -87,12 +90,11 @@ async function init() {
         if (removeBtn) {
             const bookingId = removeBtn.dataset.bookingId;
             const locToRemove = removeBtn.dataset.locationId;
-            const cell = removeBtn.closest('td');
-            const buttons = cell.querySelectorAll('button[data-location-id]');
-            const currentLocs = Array.from(buttons)
-                .map(btn => btn.dataset.locationId)
-                .filter(loc => loc !== locToRemove);
-            
+            // Read current locations from the in-memory data model, not the DOM.
+            const booking = getBookingById(bookingId);
+            const currentLocs = booking && booking.location_id
+                ? booking.location_id.split(',').map(s => s.trim()).filter(s => s !== '' && s !== locToRemove)
+                : [];
             assignLocation(bookingId, currentLocs.join(', '));
             e.stopPropagation();
             return;

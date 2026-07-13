@@ -161,6 +161,15 @@ export async function assignLocation(id, newLocId) {
     }
 }
 
+/**
+ * Returns a booking object from the in-memory list by ID.
+ * Used by page-location-admin.js to read current locations without relying on DOM state.
+ */
+export function getBookingById(id) {
+    return allBookings.find(b => b.id === id) || null;
+}
+
+
 export async function sendEmail(id) {
     showConfirm(
         "Send Email",
