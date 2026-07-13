@@ -9,6 +9,16 @@ let globalOccupiedIds = [];
 let currentFilter = 'all';
 let currentMobileBookingId = null;
 
+/**
+ * Parses a comma-separated location_id string into a clean array of trimmed,
+ * non-empty location IDs.
+ */
+export function parseLocationIds(locationIdString) {
+    return locationIdString
+        ? locationIdString.split(',').map(s => s.trim()).filter(s => s !== '')
+        : [];
+}
+
 export async function initLocations() {
     renderInstanceBadge('instanceBadge');
     await loadData();
@@ -68,9 +78,7 @@ function renderTable() {
         const row = document.createElement('tr');
         row.className = 'hover-row group';
 
-        const assignedLocs = b.location_id 
-            ? b.location_id.split(',').map(s => s.trim()).filter(s => s !== "")
-            : [];
+        const assignedLocs = parseLocationIds(b.location_id);
         const isAssigned = assignedLocs.length > 0;
 
         // Render badges
@@ -124,7 +132,26 @@ function renderTable() {
     });
 }
 
+// Rebuild globalOccupiedIds based on the active local model
+function rebuildOccupiedIds() {
+    globalOccupiedIds = [];
+    allBookings.forEach(x => {
+        parseLocationIds(x.location_id).forEach(loc => globalOccupiedIds.push(loc));
+    });
+}
+
 export async function assignLocation(id, newLocId) {
+    const b = allBookings.find(x => x.id === id);
+    const previousLocId = b ? b.location_id : undefined;
+
+    // Optimistically update the local model *before* the network round-trip so
+    // that any read of the model (e.g. getBookingById) during a rapid follow-up
+    // action already reflects this change, instead of racing on stale data.
+    if (b) b.location_id = newLocId;
+    rebuildOccupiedIds();
+    renderTable();
+    renderMobileCards();
+
     try {
         const statusEl = document.getElementById('statusMsg');
         if (statusEl) {
@@ -133,27 +160,14 @@ export async function assignLocation(id, newLocId) {
         }
 
         await updateLocation(id, newLocId);
-
-        // Update local model
-        const b = allBookings.find(x => x.id === id);
-        if (b) b.location_id = newLocId;
-
-        // Rebuild globalOccupiedIds based on active local model
-        globalOccupiedIds = [];
-        allBookings.forEach(x => {
-            if (x.location_id) {
-                x.location_id.split(',').forEach(part => {
-                    const trimmed = part.trim();
-                    if (trimmed) globalOccupiedIds.push(trimmed);
-                });
-            }
-        });
-
-        renderTable();
-        renderMobileCards();
         showToast("Location Saved");
 
     } catch (err) {
+        // Roll back the optimistic update on failure
+        if (b) b.location_id = previousLocId;
+        rebuildOccupiedIds();
+        renderTable();
+        renderMobileCards();
         showToast("Save Failed: " + (err.message || err), 'error');
     } finally {
         const statusEl = document.getElementById('statusMsg');
@@ -162,11 +176,13 @@ export async function assignLocation(id, newLocId) {
 }
 
 /**
- * Returns a booking object from the in-memory list by ID.
+ * Returns a shallow copy of a booking from the in-memory list by ID, so callers
+ * can't mutate module state directly (changes must go through assignLocation).
  * Used by page-location-admin.js to read current locations without relying on DOM state.
  */
 export function getBookingById(id) {
-    return allBookings.find(b => b.id === id) || null;
+    const b = allBookings.find(x => x.id === id);
+    return b ? { ...b } : null;
 }
 
 
@@ -299,9 +315,7 @@ function renderMobileCards() {
 
     filtered.forEach(booking => {
         const card = document.createElement('div');
-        const assignedLocs = booking.location_id 
-            ? booking.location_id.split(',').map(s => s.trim()).filter(s => s !== "")
-            : [];
+        const assignedLocs = parseLocationIds(booking.location_id);
         const isAssigned = assignedLocs.length > 0;
         card.className = `location-card ${isAssigned ? 'assigned' : 'unassigned'}`;
 
@@ -389,9 +403,7 @@ export function openLocationSheet(bookingId) {
         }
     });
 
-    const assignedLocs = booking.location_id 
-        ? booking.location_id.split(',').map(s => s.trim()).filter(s => s !== "")
-        : [];
+    const assignedLocs = parseLocationIds(booking.location_id);
 
     const sortedLocs = [...allLocations].sort((a, b) =>
         a.id.toString().localeCompare(b.id.toString(), undefined, { numeric: true })
