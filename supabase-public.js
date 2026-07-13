@@ -20,7 +20,10 @@ export const ESF_PUBLIC_CONFIG = {
     BASE_URL: "https://stallbookingstailwinds.vercel.app",
     CANCEL_URL: "https://stallbookingstailwinds.vercel.app/cancel_booking.html",
     PORTAL_URL: "https://www.ellastreet.co.uk/fest26/portal",
-    BOOKING_PREFIX: "ESF26"
+    BOOKING_PREFIX: "ESF26",
+    MAP_CENTER_LAT: 53.760672928799394,
+    MAP_CENTER_LNG: -0.362403011338408,
+    MAP_DEFAULT_ZOOM: 18
 };
 
 if (typeof window !== 'undefined') {
@@ -67,6 +70,15 @@ export function applyPublicSettings(data) {
             ESF_PUBLIC_CONFIG.BUCKET_NAME = val;
         } else if (item.key === 'booking_prefix') {
             ESF_PUBLIC_CONFIG.BOOKING_PREFIX = val;
+        } else if (item.key === 'map_center_lat') {
+            const num = parseFloat(val);
+            if (!isNaN(num)) ESF_PUBLIC_CONFIG.MAP_CENTER_LAT = num;
+        } else if (item.key === 'map_center_lng') {
+            const num = parseFloat(val);
+            if (!isNaN(num)) ESF_PUBLIC_CONFIG.MAP_CENTER_LNG = num;
+        } else if (item.key === 'map_default_zoom') {
+            const num = parseInt(val, 10);
+            if (!isNaN(num)) ESF_PUBLIC_CONFIG.MAP_DEFAULT_ZOOM = num;
         }
     });
 }

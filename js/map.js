@@ -1,5 +1,6 @@
 import { fetchMapData } from './api.js';
 import { escapeHtml } from './utils.js';
+import { ESF_PUBLIC_CONFIG } from '../supabase-public.js';
 
 // ===================================================================
 // === TOAST NOTIFICATION SYSTEM (Map Specific) ===
@@ -103,7 +104,10 @@ let lastSearchNoResultsTerm = null;
 export function initMap() {
     try {
         if (!L) throw new Error("Leaflet not loaded");
-        map = L.map('map', { zoomControl: false }).setView([53.760672928799394, -0.362403011338408], 18);
+        map = L.map('map', { zoomControl: false }).setView(
+            [ESF_PUBLIC_CONFIG.MAP_CENTER_LAT, ESF_PUBLIC_CONFIG.MAP_CENTER_LNG],
+            ESF_PUBLIC_CONFIG.MAP_DEFAULT_ZOOM
+        );
         L.control.zoom({ position: 'topright' }).addTo(map);
 
         L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {

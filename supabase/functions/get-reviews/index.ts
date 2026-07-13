@@ -28,15 +28,16 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    // 2. Fetch SerpApi key from env or settings table
+    // 2. Fetch SerpApi key and map center from env/settings table (single query)
+    const { data: settingsRows } = await supabaseClient
+      .from('settings')
+      .select('key, value')
+      .in('key', ['serpapi_api_key', 'map_center_lat', 'map_center_lng'])
+    const settingsMap = new Map((settingsRows ?? []).map((r: { key: string; value: string }) => [r.key, r.value]))
+
     let apiKey = Deno.env.get('SERPAPI_API_KEY')
     if (!apiKey) {
-      const { data: settingData } = await supabaseClient
-        .from('settings')
-        .select('value')
-        .eq('key', 'serpapi_api_key')
-        .single()
-      apiKey = settingData?.value
+      apiKey = settingsMap.get('serpapi_api_key')
     }
 
     if (!apiKey) {
@@ -46,6 +47,12 @@ Deno.serve(async (req) => {
       })
     }
 
+    // Festival site GPS center, sourced from settings (map_center_lat/lng) so
+    // it stays in sync with the same values the visitor map uses — falls back
+    // to a Hull, UK city-level default if the settings rows are missing.
+    const siteLat = parseFloat(settingsMap.get('map_center_lat') ?? '') || 53.7676
+    const siteLon = parseFloat(settingsMap.get('map_center_lng') ?? '') || -0.3274
+
     // Append 'Hull' to scope search locally
     const searchQuery = `${business_name} Hull`
 
@@ -53,7 +60,7 @@ Deno.serve(async (req) => {
     //    via the `ll` (latitude,longitude,zoom) parameter — without this, a
     //    bare "Hull" keyword can match Hull, Georgia (USA) just as easily as
     //    Hull, UK, since Maps search has no country/region context otherwise.
-    const HULL_UK_LL = '@53.7676,-0.3274,13z'
+    const HULL_UK_LL = `@${siteLat},${siteLon},13z`
     // NOTE: ll is sent unencoded — every SerpApi doc example does this
     // (e.g. ll=@40.7455096,-74.0083012,14z directly in the URL). Wrapping it
     // in encodeURIComponent turns "@"/"," into %40/%2C, which may not parse
@@ -134,8 +141,6 @@ Deno.serve(async (req) => {
     // mobile caterers/trailers (e.g. a horsebox bar) often have no `address`
     // field at all — only `gps_coordinates` — which an address-text check
     // would wrongly treat as "not UK" and reject.
-    const HULL_UK_LAT = 53.7676
-    const HULL_UK_LON = -0.3274
     const MAX_DISTANCE_KM = 80 // generous radius to cover East Yorkshire mobile caterers
 
     const distanceKm = (lat1: number, lon1: number, lat2: number, lon2: number) => {
@@ -149,7 +154,7 @@ Deno.serve(async (req) => {
 
     const coords = firstResult.gps_coordinates
     const isNearHull = coords
-      ? distanceKm(HULL_UK_LAT, HULL_UK_LON, coords.latitude, coords.longitude) <= MAX_DISTANCE_KM
+      ? distanceKm(siteLat, siteLon, coords.latitude, coords.longitude) <= MAX_DISTANCE_KM
       : false
 
     if (!isNearHull) {

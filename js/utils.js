@@ -33,8 +33,6 @@ export const MAX_FIELD_LENGTHS = {
     editor: 32, subject: 200, body: 10000
 };
 
-const VALID_STATUSES = ['Pending', 'Confirmed', 'Rejected', 'Cancelled', 'On Hold', 'HCC Checks'];
-
 export function validateString(val, maxLen) {
     if (val === null || val === undefined) return '';
     const s = String(val);
@@ -57,7 +55,7 @@ export function validateBookingId(id) {
 }
 
 export function validateStatus(s) {
-    if (!VALID_STATUSES.includes(s)) throw new Error(`Invalid status: ${s}`);
+    if (!CONFIG.UI.STATUS_LIST.includes(s)) throw new Error(`Invalid status: ${s}`);
     return s;
 }
 

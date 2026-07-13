@@ -68,7 +68,18 @@ Deno.serve(async (req) => {
 
     // 4. Move files from temporary location to final folder in Storage
     if (tempUuid && fileNames && Array.isArray(fileNames) && fileNames.length > 0) {
-      const bucketName = Deno.env.get('BUCKET_NAME') || 'esf-documents'
+      // Env var takes priority if set, otherwise fall back to the same
+      // settings-table value the admin Settings page manages, so changing
+      // the bucket there actually takes effect here too.
+      let bucketName = Deno.env.get('BUCKET_NAME')
+      if (!bucketName) {
+        const { data: bucketSetting } = await supabaseAdmin
+          .from('settings')
+          .select('value')
+          .eq('key', 'bucket_name')
+          .single()
+        bucketName = bucketSetting?.value || 'esf-documents'
+      }
       const movedUrls = []
 
       for (const fileName of fileNames) {

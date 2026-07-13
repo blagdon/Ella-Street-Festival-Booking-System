@@ -1,4 +1,5 @@
 import { initMap, handleSearch, clearSearch, locateUser, applyFilter } from './map.js';
+import { loadPublicSettings } from '../supabase-public.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
     try {
@@ -8,6 +9,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.getElementById('filter-select')?.addEventListener('change', (e) => applyFilter(e.target.value));
         document.getElementById('btn-locate-user')?.addEventListener('click', locateUser);
 
+        await loadPublicSettings(); // ensure DB-configured map center/zoom is applied before the map renders
         initMap();
     } catch (e) {
         console.error(e);
