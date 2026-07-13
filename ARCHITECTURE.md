@@ -412,7 +412,6 @@ CONFIG.SUPABASE.URL / KEY      ← Supabase project credentials
 CONFIG.URLS.BASE               ← Vercel deployment URL
 CONFIG.URLS.CANCEL_URL         ← Direct link to cancel_booking.html
 CONFIG.BANK_DETAILS            ← Bank account info printed in emails
-CONFIG.UI.STALL_COST           ← Default costs per booking type
 CONFIG.UI.STATUS_LIST          ← Valid status values
 CONFIG.INSTANCE_MAP            ← Maps instance keys to DB prefixes
 ```
@@ -436,7 +435,7 @@ This file contains hardcoded email template strings as a fallback. The primary t
 Update `CONFIG.BANK_DETAILS` in `js/config.js`. This is automatically used in all email templates via the `{{bank_details}}` placeholder.
 
 ### Changing stall prices
-Update `CONFIG.UI.STALL_COST` in `js/config.js`. Prices are picked up automatically by `getStallCost()` when confirming bookings.
+Update the Stall Costs section on `settings.html` (writes `stall_cost_food`/`stall_cost_general`/`stall_cost_dev` to the `settings` table). There are no hardcoded defaults in code — `getStallCost()` reads entirely from the settings table (falling back to 0 with a console warning if a value hasn't loaded).
 
 ### Adding a new admin user
 1. The user must first create a Supabase Auth account (or be invited via Supabase dashboard)

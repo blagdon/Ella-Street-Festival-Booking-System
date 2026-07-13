@@ -37,10 +37,13 @@ export const CONFIG = {
 
     // UI Configuration
     UI: {
+        // No hardcoded defaults — populated entirely from the settings table
+        // (stall_cost_food/general/dev) via loadStallCosts(). getStallCost()
+        // below falls back to 0 if a value hasn't loaded yet.
         STALL_COST: {
-            FOOD: 50.00,
-            GENERAL: 25.00,
-            DEV: 90.00
+            FOOD: null,
+            GENERAL: null,
+            DEV: null
         },
         STATUS_LIST: ['Pending', 'Confirmed', 'Rejected', 'Cancelled', 'On Hold', 'HCC Checks'],
         ALLOWED_TYPES: ["Dev", "Food", "Non-Food", "Attraction", "Barrier", "Ramp", "First Aid", "Beach", "Music", "Green", "Police", "Fire Engine", "Toilet", "Spoken Word", "Ice Cream Van"],
@@ -84,13 +87,21 @@ export function getStallCost(prefixOrKey) {
     const costs = CONFIG.UI.STALL_COST;
     const current = getCurrentInstance();
 
+    let cost;
     if (prefixOrKey) {
         const p = prefixOrKey.toUpperCase();
-        if (p.includes('FOOD') && !p.includes('NONFOOD')) return costs.FOOD;
-        if (p.includes('NONFOOD') || p === 'GENERAL') return costs.GENERAL;
-        if (p.includes('DEV')) return costs.DEV;
+        if (p.includes('FOOD') && !p.includes('NONFOOD')) cost = costs.FOOD;
+        else if (p.includes('NONFOOD') || p === 'GENERAL') cost = costs.GENERAL;
+        else if (p.includes('DEV')) cost = costs.DEV;
     }
-    return costs[current] || costs.FOOD;
+    if (cost === undefined || cost === null) cost = costs[current];
+    if (cost === undefined || cost === null) cost = costs.FOOD;
+
+    if (cost === undefined || cost === null || isNaN(cost)) {
+        console.warn('getStallCost(): stall cost not yet loaded from the settings table, defaulting to 0.');
+        return 0;
+    }
+    return cost;
 }
 
 export function applySettingsToConfig(data) {

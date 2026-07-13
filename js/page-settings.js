@@ -117,10 +117,11 @@ async function initStallCosts() {
 
     if (!txtFood || !txtGeneral || !txtDev || !btnSave) return;
 
-    // Load active settings from CONFIG (already loaded from DB in requireAuth)
-    txtFood.value = CONFIG.UI.STALL_COST.FOOD.toFixed(2);
-    txtGeneral.value = CONFIG.UI.STALL_COST.GENERAL.toFixed(2);
-    txtDev.value = CONFIG.UI.STALL_COST.DEV.toFixed(2);
+    // Load active settings from CONFIG (already loaded from DB in requireAuth).
+    // Falls back to 0 if a value hasn't loaded (e.g. settings fetch failed).
+    txtFood.value = (CONFIG.UI.STALL_COST.FOOD ?? 0).toFixed(2);
+    txtGeneral.value = (CONFIG.UI.STALL_COST.GENERAL ?? 0).toFixed(2);
+    txtDev.value = (CONFIG.UI.STALL_COST.DEV ?? 0).toFixed(2);
 
     btnSave.addEventListener('click', async () => {
         const valFood = parseFloat(txtFood.value);
