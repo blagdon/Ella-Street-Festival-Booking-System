@@ -244,58 +244,89 @@ export async function sendBulkEmails() {
 }
 
 /**
- * Downloads a CSV of all locations (with GPS coordinates and their current
- * assignment, if any) formatted for import into Google My Maps — "Latitude"
- * and "Longitude" column names are auto-detected by My Maps' import wizard.
+ * Downloads a CSV of every currently-assigned location across all three
+ * "live" instances (Food, General, Misc — they all share the same real
+ * location dataset; Dev uses a separate test dataset and is excluded),
+ * formatted for import into Google My Maps — "Latitude" and "Longitude"
+ * column names are auto-detected by My Maps' import wizard.
  */
-export function downloadLocationsForMyMaps() {
-    const withCoords = allLocations.filter(l => l.lat != null && l.lng != null);
-    const skipped = allLocations.length - withCoords.length;
-
-    if (withCoords.length === 0) {
-        showToast("No locations with GPS coordinates to export.", 'warning');
-        return;
+export async function downloadLocationsForMyMaps() {
+    const btn = document.getElementById('btn-download-mymaps');
+    const originalContent = btn ? btn.innerHTML : '';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<svg class="animate-spin -ml-1 mr-2 h-4 w-4 inline-block align-text-bottom" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Loading...`;
     }
 
-    // Map each location id to whichever booking currently occupies it.
-    const bookingByLocation = new Map();
-    allBookings.forEach(b => {
-        (b.location_ids || []).forEach(locId => bookingByLocation.set(locId, b));
-    });
+    try {
+        const [foodData, generalData, miscData] = await Promise.all([
+            fetchLocationData('FOOD'),
+            fetchLocationData('GENERAL'),
+            fetchLocationData('MISC')
+        ]);
 
-    const escape = (val) => {
-        if (val === null || val === undefined) return '';
-        const str = String(val);
-        return str.includes(',') || str.includes('"') || str.includes('\n')
-            ? `"${str.replace(/"/g, '""')}"` : str;
-    };
+        const combinedBookings = [
+            ...(foodData.bookings || []),
+            ...(generalData.bookings || []),
+            ...(miscData.bookings || [])
+        ];
+        // Food/General/Misc all share the same live locations dataset, so
+        // any one of the three responses already has the full list.
+        const combinedLocations = foodData.locations || [];
 
-    const headers = ['Name', 'Latitude', 'Longitude', 'Business', 'Stall Type', 'Description'];
-    const rows = withCoords.map(loc => {
-        const booking = bookingByLocation.get(loc.id);
-        return [
-            loc.id,
-            loc.lat,
-            loc.lng,
-            booking ? (booking.business || booking.business_name) : '',
-            booking ? booking.stall_type : '',
-            booking ? booking.description : ''
-        ].map(escape).join(',');
-    });
+        // Map each location id to whichever booking currently occupies it.
+        const bookingByLocation = new Map();
+        combinedBookings.forEach(b => {
+            (b.location_ids || []).forEach(locId => bookingByLocation.set(locId, b));
+        });
 
-    const csv = [headers.join(','), ...rows].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    const instance = localStorage.getItem('ESF_INSTANCE') || 'DEV';
-    a.href = url;
-    a.download = `ESF26_Locations_MyMaps_${instance}_${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+        const assignedLocs = combinedLocations.filter(loc =>
+            loc.lat != null && loc.lng != null && bookingByLocation.has(loc.id)
+        );
 
-    showToast(skipped > 0
-        ? `Exported ${withCoords.length} locations (${skipped} skipped — missing coordinates).`
-        : `Exported ${withCoords.length} locations.`);
+        if (assignedLocs.length === 0) {
+            showToast("No assigned locations with GPS coordinates to export.", 'warning');
+            return;
+        }
+
+        const escape = (val) => {
+            if (val === null || val === undefined) return '';
+            const str = String(val);
+            return str.includes(',') || str.includes('"') || str.includes('\n')
+                ? `"${str.replace(/"/g, '""')}"` : str;
+        };
+
+        const headers = ['Name', 'Latitude', 'Longitude', 'Business', 'Stall Type', 'Description'];
+        const rows = assignedLocs.map(loc => {
+            const booking = bookingByLocation.get(loc.id);
+            return [
+                loc.id,
+                loc.lat,
+                loc.lng,
+                booking.business || booking.business_name,
+                booking.stall_type,
+                booking.description
+            ].map(escape).join(',');
+        });
+
+        const csv = [headers.join(','), ...rows].join('\n');
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `ESF26_Locations_MyMaps_AllInstances_${new Date().toISOString().slice(0, 10)}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+
+        showToast(`Exported ${assignedLocs.length} assigned locations across all instances.`);
+    } catch (err) {
+        showToast("Error exporting locations: " + (err.message || err), 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = originalContent;
+        }
+    }
 }
 
 export function setFilter(type) {
