@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { getBucketName } from '../_shared/bucket.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -237,19 +238,8 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Env var takes priority if set, otherwise fall back to the same
-      // settings-table value the admin Settings page manages, so changing
-      // the bucket there actually takes effect here too.
-      let bucketName = Deno.env.get('BUCKET_NAME')
-      if (!bucketName) {
-        const { data: bucketSetting } = await supabaseAdmin
-          .from('settings')
-          .select('value')
-          .eq('key', 'bucket_name')
-          .single()
-        bucketName = bucketSetting?.value || 'esf-documents'
-      }
-      const movedUrls = []
+      const bucketName = await getBucketName(supabaseAdmin)
+      const movedPaths = []
 
       for (const fileName of fileNames) {
         const fromPath = `temp/${tempUuid}/${fileName}`
@@ -262,12 +252,13 @@ Deno.serve(async (req) => {
           // Fallback: If move fails, try using the original temp URL if available
         }
 
-        // Get final public URL
-        const { data: urlData } = supabaseAdmin.storage.from(bucketName).getPublicUrl(toPath)
-        movedUrls.push(urlData.publicUrl)
+        // Store the storage path, not a public URL — esf-documents is a
+        // private bucket; admin views resolve this to a signed URL on
+        // demand via the get-booking-documents Edge Function.
+        movedPaths.push(toPath)
       }
 
-      safeBookingData.documents = movedUrls
+      safeBookingData.documents = movedPaths
     }
 
     // 6. Insert booking into database

@@ -596,6 +596,23 @@ export async function queueBulkEmail(bookingIds, subject, body) {
 }
 
 /**
+ * Resolves a booking's stored document storage paths to time-limited
+ * signed URLs via the get-booking-documents Edge Function (esf-documents
+ * is a private bucket, so paths aren't directly resolvable without this).
+ * @param {string} bookingId
+ * @returns {Promise<(string|null)[]>} signed URLs in the same order as bookings.documents
+ */
+export async function getSignedBookingDocuments(bookingId) {
+    const sb = getSupabaseClient();
+    const { data, error } = await sb.functions.invoke('get-booking-documents', {
+        body: { bookingId }
+    });
+    if (error) throw new Error(error.message);
+    if (data && data.error) throw new Error(data.error);
+    return data.documents || [];
+}
+
+/**
  * Automatically generates the next available ESF26-MISC-XXXX ID
  * @param {object} sb - Supabase client
  * @returns {Promise<string>}

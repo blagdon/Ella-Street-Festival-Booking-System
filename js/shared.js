@@ -1,5 +1,5 @@
 import { getSupabaseClient } from './supabase.js';
-import { updateBookingStatus, finalizeConfirmation, sendEmail, auditLog } from './api.js';
+import { updateBookingStatus, finalizeConfirmation, sendEmail, auditLog, getSignedBookingDocuments } from './api.js';
 import { showToast } from './ui.js';
 import { escapeHtml } from './utils.js';
 import { getStallCost, CONFIG } from './config.js';
@@ -240,6 +240,44 @@ export async function sharedUpdateStatus(id, status, allBookings, options = {}) 
 }
 
 /**
+ * Resolves a booking's documents to clickable links and renders them into
+ * docsEl. Entries already stored as full URLs (bookings submitted before
+ * esf-documents became a private bucket) are used directly; bare storage
+ * paths (current format) are resolved to signed URLs via a single
+ * get-booking-documents call.
+ */
+async function renderDocumentLinks(docsEl, bookingId, docArray) {
+    const isLegacyUrls = docArray.every((part) => {
+        try { new URL(part); return true; } catch (e) { return false; }
+    });
+
+    let urls = docArray;
+    if (!isLegacyUrls) {
+        try {
+            urls = await getSignedBookingDocuments(bookingId);
+        } catch (err) {
+            console.warn('Failed to load signed document URLs:', err.message);
+            urls = [];
+        }
+    }
+
+    let html = '';
+    docArray.forEach((part, index) => {
+        const safeUrl = urls[index] || null;
+
+        if (safeUrl) {
+            html += `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer" class="flex items-center text-blue-600 hover:text-blue-800 hover:underline mb-1 font-medium bg-blue-50 p-2 rounded border border-blue-100">
+                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+                Open Document ${docArray.length > 1 ? index + 1 : ''}
+            </a>`;
+        } else {
+            html += `<div class="mb-1 text-gray-600 text-xs bg-gray-50 p-1 rounded break-words">${escapeHtml(part)}</div>`;
+        }
+    });
+    docsEl.innerHTML = html;
+}
+
+/**
  * Populates the detail pane with booking data.
  */
 export function populateDetailPane(item) {
@@ -353,22 +391,8 @@ export function populateDetailPane(item) {
             if (docArray.length === 0) {
                 docsEl.innerText = "None";
             } else {
-                let html = '';
-                docArray.forEach((part, index) => {
-                    // Simple URL check
-                    let safeUrl = null;
-                    try { safeUrl = new URL(part).href; } catch (e) { }
-
-                    if (safeUrl) {
-                        html += `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer" class="flex items-center text-blue-600 hover:text-blue-800 hover:underline mb-1 font-medium bg-blue-50 p-2 rounded border border-blue-100">
-                            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
-                            Open Document ${docArray.length > 1 ? index + 1 : ''}
-                        </a>`;
-                    } else {
-                        html += `<div class="mb-1 text-gray-600 text-xs bg-gray-50 p-1 rounded break-words">${escapeHtml(part)}</div>`;
-                    }
-                });
-                docsEl.innerHTML = html;
+                docsEl.innerText = "Loading documents...";
+                renderDocumentLinks(docsEl, item.id, docArray);
             }
         }
     }
