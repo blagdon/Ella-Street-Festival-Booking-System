@@ -215,20 +215,61 @@ Deno.serve(async (req) => {
     const bookingPrefix = prefixSetting?.value || 'ESF26'
 
     const safeBookingData = sanitizeBookingInput(bookingData, bookingPrefix)
-
-    // 4. Atomically generate the next sequential ID
-    const { data: newBookingId, error: rpcErr } = await supabaseAdmin.rpc('get_next_booking_id', {
-      p_prefix: safeBookingData.instance_prefix
-    })
-
-    if (rpcErr || !newBookingId) {
-      throw new Error('Failed to generate Booking ID: ' + (rpcErr?.message || 'Empty ID returned.'))
-    }
-
-    safeBookingData.id = newBookingId
     safeBookingData.status = 'Pending'
 
-    // 5. Move files from temporary location to final folder in Storage
+    // 4. Atomically generate the next sequential ID and insert the row.
+    // get_next_booking_id()'s table lock only covers that single RPC call —
+    // it's released before this insert runs, so two concurrent submissions
+    // to the same instance_prefix can still compute the same "next" id
+    // before either has inserted. Confirmed live via a real concurrency
+    // integration test (two simultaneous submissions, one got a raw
+    // "duplicate key value violates unique constraint bookings_pkey" 500).
+    // Rather than trying to fully close that race with a wider lock (which
+    // would need to span this insert too, awkward across a separate RPC
+    // call), retry with a freshly generated id on conflict — a successful
+    // insert is the actual proof of a claimed id.
+    const MAX_ID_RETRIES = 5
+    let newBooking: any = null
+    let lastInsertErr: any = null
+
+    for (let attempt = 0; attempt < MAX_ID_RETRIES; attempt++) {
+      const { data: newBookingId, error: rpcErr } = await supabaseAdmin.rpc('get_next_booking_id', {
+        p_prefix: safeBookingData.instance_prefix
+      })
+      if (rpcErr || !newBookingId) {
+        throw new Error('Failed to generate Booking ID: ' + (rpcErr?.message || 'Empty ID returned.'))
+      }
+
+      const { data: inserted, error: insertErr } = await supabaseAdmin
+        .from('bookings')
+        .insert([{ ...safeBookingData, id: newBookingId }])
+        .select()
+
+      if (!insertErr) {
+        newBooking = inserted[0]
+        break
+      }
+
+      // 23505 = unique_violation — another concurrent submission claimed
+      // this id first. Retry with a freshly generated one.
+      if (insertErr.code === '23505') {
+        lastInsertErr = insertErr
+        continue
+      }
+      throw insertErr
+    }
+
+    if (!newBooking) {
+      throw new Error(
+        'Failed to create booking after retrying a booking-ID conflict ' +
+        MAX_ID_RETRIES + ' times: ' + (lastInsertErr?.message || 'unknown error')
+      )
+    }
+
+    // 5. Move files from temporary location into the now-confirmed
+    // booking's folder, then record their storage paths on the row. Done
+    // after the insert (not before) since the booking's real id isn't
+    // settled until the insert above actually succeeds.
     if (tempUuid && fileNames && Array.isArray(fileNames) && fileNames.length > 0) {
       if (!SAFE_TEMP_UUID_PATTERN.test(tempUuid)) {
         throw new Error('Invalid upload session identifier.')
@@ -244,7 +285,7 @@ Deno.serve(async (req) => {
 
       for (const fileName of fileNames) {
         const fromPath = `temp/${tempUuid}/${fileName}`
-        const toPath = `${newBookingId}/${fileName}`
+        const toPath = `${newBooking.id}/${fileName}`
 
         // Move the file
         const { error: moveErr } = await supabaseAdmin.storage.from(bucketName).move(fromPath, toPath)
@@ -259,16 +300,18 @@ Deno.serve(async (req) => {
         movedPaths.push(toPath)
       }
 
-      safeBookingData.documents = movedPaths
+      const { error: updateErr } = await supabaseAdmin
+        .from('bookings')
+        .update({ documents: movedPaths })
+        .eq('id', newBooking.id)
+      if (updateErr) console.warn('Failed to record document paths:', updateErr.message)
+      newBooking.documents = movedPaths
     }
 
-    // 6. Insert booking into database
-    const { data, error } = await supabaseAdmin.from('bookings').insert([safeBookingData]).select()
-    if (error) throw error
+    const data = [newBooking]
 
-    // 7. Send the "received" auto-responder. Best-effort: a failure here must
+    // 6. Send the "received" auto-responder. Best-effort: a failure here must
     // never fail the booking submission itself (the booking already exists).
-    const newBooking = data?.[0]
     if (newBooking?.email) {
       try {
         await sendReceivedEmail(supabaseAdmin, newBooking)

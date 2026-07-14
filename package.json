@@ -7,13 +7,16 @@
     "build:css": "npx @tailwindcss/cli -i ./css/input.css -o ./css/output.css",
     "watch:css": "npx @tailwindcss/cli -i ./css/input.css -o ./css/output.css --watch",
     "postinstall": "git config core.hooksPath .githooks || true",
-    "check:rls-grants": "bash scripts/check-rls-grants-snapshot.sh"
+    "check:rls-grants": "bash scripts/check-rls-grants-snapshot.sh",
+    "test:setup": "node scripts/seed-test-project.mjs",
+    "test:integration": "node --test tests/"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "devDependencies": {
+    "@supabase/supabase-js": "^2.110.5",
     "autoprefixer": "^10.4.24",
     "postcss": "^8.5.6",
     "tailwindcss": "^4.2.0"

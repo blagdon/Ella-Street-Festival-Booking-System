@@ -394,13 +394,14 @@ Functions → *name* → Logs tab instead.
    `'steward'` — via `manage_users.html` or directly in SQL.
 
 ### Testing
-No automated test suite exists. Verification is manual: run locally, log in with real
-admin/steward credentials against the live project, exercise the actual flow in a
-browser, and (for anything DB-related) check the affected table's state directly in the
-Supabase Table Editor or SQL Editor afterward.
+No unit test suite exists for the frontend. Verification of anything not covered by
+the integration suite below is manual: run locally, log in with real admin/steward
+credentials against the live project, exercise the actual flow in a browser, and
+check the affected table's state directly in the Supabase Table Editor or SQL Editor
+afterward.
 
-**Two automated guards exist so far** (steps 1–2 of the
-grep-guard → RLS-snapshot-test → real-integration-tests plan; step 3 hasn't started):
+**All three steps of the grep-guard → RLS-snapshot-test → real-integration-tests plan
+are done** as of 2026-07-14:
 - A git pre-commit hook (`.githooks/pre-commit`, wired up via `core.hooksPath` —
   auto-configured by `npm install`'s `postinstall` script) blocks any commit
   containing `functions.invoke(` inside `supabase/functions/`. That exact
@@ -413,6 +414,42 @@ grep-guard → RLS-snapshot-test → real-integration-tests plan; step 3 hasn't 
   live schema dump. A diff means something changed — review it, then
   `npm run check:rls-grants -- --update` and commit the refreshed snapshot if
   the change is expected.
+- `npm run test:integration` (`tests/integration.test.mjs`, Node's built-in
+  `node:test`) runs real integration tests against the deployed
+  `submit-booking`, `cancel-booking`, and `queue-bulk-email` Edge Functions plus
+  the `get_next_booking_id`/`booking_locations_check_conflict`/
+  `claim_pending_emails` database logic — this is where the retry-on-conflict
+  fix for the booking-ID race (see [Next Steps](#8-next-steps) item 18) came
+  from, caught by an actual concurrent-submission test, not code review.
+
+  **Runs only against the disposable "test backup" project
+  (`qeplpcnrkgpaawfyliap`), never the real one** — every test file/script
+  hard-refuses to run if the configured URL doesn't contain that project ref.
+  One-time setup before it'll work:
+  1. `supabase link --project-ref qeplpcnrkgpaawfyliap`, then deploy the three
+     functions there too: `supabase functions deploy submit-booking
+     --no-verify-jwt`, same for `cancel-booking`, and
+     `supabase functions deploy queue-bulk-email` (no flag).
+  2. `supabase secrets set TURNSTILE_SECRET_KEY=1x0000000000000000000000000000000AA
+     --project-ref qeplpcnrkgpaawfyliap` — Cloudflare's official
+     [always-passes Turnstile test secret](https://developers.cloudflare.com/turnstile/troubleshooting/testing/),
+     not a real key and not a CAPTCHA bypass — it's Cloudflare's own sanctioned
+     mechanism for testing Turnstile-gated flows.
+  3. Create `.env.test` (gitignored, never commit it) with
+     `TEST_SUPABASE_URL`, `TEST_SUPABASE_ANON_KEY`, `TEST_SUPABASE_SERVICE_ROLE_KEY`
+     (from `supabase projects api-keys --project-ref qeplpcnrkgpaawfyliap`), and
+     `TEST_ADMIN_EMAIL`/`TEST_ADMIN_PASSWORD` (anything — the seed script
+     creates this user).
+  4. `npm run test:setup` (`scripts/seed-test-project.mjs`) — idempotent, creates
+     the test admin auth user + `user_roles` row, and the minimum
+     `settings`/`email_templates` rows the functions need to run at all.
+  5. `npm run test:integration`.
+
+  **Deliberately no `zoho_*` settings are seeded** — every email-send attempt
+  during tests is expected to fail and get logged as `email_queue.status='Error'`,
+  which is itself a real, valuable path to test (the exact shape of bug fixed
+  three times earlier this session) — and it means test runs never have the
+  side effect of sending a real email to anyone.
 
 ---
 
@@ -586,8 +623,25 @@ tested live, and deployed. In order, what was just finished:
     `supabase migration new` + `supabase db push` instead of a new root-level fix file;
     storage bucket/policy changes still use the old convention until that gap is
     closed (not started).
-
-**Explicitly deferred, not started:** Slack/Discord/Sentry-style alerting for Edge
+18. Step 3 of the automated-tests plan: a real integration test suite
+    (`tests/integration.test.mjs`, Node's built-in `node:test`, run via
+    `npm run test:integration`) against the deployed `submit-booking`,
+    `cancel-booking`, and `queue-bulk-email` Edge Functions, plus the
+    `get_next_booking_id`/`booking_locations_check_conflict`/`claim_pending_emails`
+    database logic. **Found a real, previously-unknown concurrency bug** in the
+    process: two simultaneous submissions to the same `instance_prefix` could get
+    the same "next" booking ID and race to insert it, since
+    `get_next_booking_id()`'s table lock only covers that single RPC call — it's
+    released before `submit-booking`'s separate `INSERT` runs. One of the two
+    concurrent submitters got a raw `duplicate key value violates unique
+    constraint "bookings_pkey"` 500 instead of a successful submission. Fixed by
+    retrying the generate-ID-then-insert cycle (up to 5 attempts) on a `23505`
+    conflict, with file-uploads moved to storage *after* the insert succeeds
+    (rather than before) since the booking's real id isn't settled until then.
+    Verified against the disposable test project (10/10 tests green across 4
+    consecutive runs, including the concurrency test) before deploying the same
+    fix to the live project. See [Testing](#testing) in section 6 for how to run
+    this suite and what setup it needs. Slack/Discord/Sentry-style alerting for Edge
 Function errors — the project owner said "I'll do it later," don't assume it's wanted
 now without asking.
 
@@ -642,6 +696,21 @@ stay in the separate `ellafestperformersadmin.vercel.app` codebase.
   reported by a user again, grep for `functions.invoke('send-email'` across
   `supabase/functions/` first** — at three-for-three so far, any remaining direct
   HTTP call to `send-email` from another function is a live bug, not a hypothetical.
+
+- **`submit-booking`'s booking-ID generation retries on conflict — don't "simplify"
+  that away.** `get_next_booking_id()`'s `LOCK TABLE ... IN SHARE ROW EXCLUSIVE MODE`
+  only holds for that single RPC call; it's released before `submit-booking`'s
+  separate `INSERT` runs, so two concurrent submissions to the same
+  `instance_prefix` can compute the same "next" id before either has inserted.
+  Confirmed live via a real concurrency integration test (`tests/integration.test.mjs`)
+  before it was fixed — one of two simultaneous submissions got a raw
+  `duplicate key value violates unique constraint "bookings_pkey"` 500. Fixed by
+  retrying the generate-ID-then-insert cycle (up to 5 attempts) on a Postgres
+  `23505` (unique_violation), with file uploads moved to storage *after* the
+  insert succeeds rather than before (the booking's real id isn't settled until
+  then). If this code ever gets refactored back to a single generate-then-insert
+  attempt with no retry, the race reopens — re-run
+  `tests/integration.test.mjs`'s `get_next_booking_id concurrency` test to check.
 
 - **`send-email` has a "trusted service call" bypass**: a request presenting the raw
   `SUPABASE_SERVICE_ROLE_KEY` as its Bearer token skips the admin-JWT check entirely.
