@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { getBucketName } from '../_shared/bucket.ts'
+import { sendViaZoho } from '../_shared/zoho.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -97,6 +98,10 @@ function sanitizeBookingInput(raw: Record<string, any>, bookingPrefix: string): 
  * client-side pattern, minus the resend-specific bits). Throws on failure
  * so the caller can decide how to log/ignore it — this function never
  * touches the bookings row itself, so a failure here can't corrupt data.
+ * Calls sendViaZoho() directly (in-process) rather than invoking send-email
+ * as a separate Edge Function over HTTP, for the same reason
+ * queue-bulk-email and cancel-booking do — see _shared/zoho.ts's docstring
+ * for the sibling-function HTTP failure mode this avoids.
  */
 async function sendReceivedEmail(supabaseAdmin: ReturnType<typeof createClient>, booking: Record<string, any>) {
   const [{ data: templateData, error: templateErr }, { data: settingRows }] = await Promise.all([
@@ -133,11 +138,7 @@ async function sendReceivedEmail(supabaseAdmin: ReturnType<typeof createClient>,
   let errorMessage: string | null = null
 
   try {
-    const { data: sendData, error: sendErr } = await supabaseAdmin.functions.invoke('send-email', {
-      body: { recipient: booking.email, subject, body }
-    })
-    if (sendErr) throw new Error(sendErr.message)
-    if (sendData && sendData.error) throw new Error(sendData.error)
+    await sendViaZoho(supabaseAdmin, { recipient: booking.email, subject, body })
   } catch (e: any) {
     status = 'Error'
     errorMessage = e.message
