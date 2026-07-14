@@ -96,6 +96,7 @@ client via a CDN `<script>` tag (not npm); admin pages use native ES module impo
 ├── api/ping.js                  ← Vercel serverless fn — Supabase keep-alive cron
 ├── supabase/
 │   ├── config.toml              ← Local Supabase dev config (Postgres 17)
+│   ├── migrations/              ← Supabase CLI migrations (public schema only, since 2026-07-14)
 │   └── functions/
 │       ├── _shared/zoho.ts      ← Shared Zoho OAuth+send logic
 │       ├── _shared/bucket.ts    ← Shared document-bucket-name resolver
@@ -173,13 +174,36 @@ Postgres RPC function instead of a direct table write:
 - `claim_pending_emails(p_batch_size)` — atomically claims a batch of `Pending`
   `email_queue` rows (`FOR UPDATE SKIP LOCKED`) so concurrent drain runs can't double-send.
 
-### No migrations framework
-There is no Prisma/Knex/Supabase-migrations setup. Every schema change is a standalone
-`.sql` file at the repo root (`fix_*.sql`, `add_*.sql`, `drop_*.sql`), each with a header
-comment explaining what/why, the actual DDL, and a `-- VERIFY:` query at the bottom. The
-established workflow: **draft the file → a human runs it in the Supabase SQL Editor →
-they confirm it applied and that the affected feature still works → commit it as a
-permanent record.** No agent should execute SQL directly against the live database.
+### Migrations (Supabase CLI)
+As of 2026-07-14, `supabase/migrations/20260714132316_baseline_schema.sql` captures the
+full `public` schema (tables, types, functions, triggers, policies, grants) as a single
+baseline, generated via `supabase db dump --schema public --linked` against the live
+project and verified to apply cleanly to an empty schema (tested against a throwaway
+project — see [Gotchas](#9-gotchas) for the one real issue that surfaced: never include
+the `storage` schema in a dump meant to be replayed, it captures Supabase-internal
+system objects like `storage.buckettype` that a migration has no permission to
+recreate). This closes the gap flagged earlier in this document's history: before this,
+the base schema wasn't reproducible from anything in this repo at all.
+
+**New workflow going forward**: `supabase migration new <descriptive_name>` to scaffold
+a timestamped file under `supabase/migrations/`, write the DDL there, then a human runs
+`supabase db push` (reviews the diff first) to apply it to the live project — same
+human-in-the-loop principle as before, just via the CLI instead of pasting into the SQL
+Editor. **No agent should run `supabase db push` against the live project directly** —
+same rule as the old convention, just a different mechanism for a human to trigger it.
+
+**Known gap**: the baseline only covers `public`. The `storage.objects` RLS policies for
+`esf-documents`/`documents`/`performer-documents` (written this session as root-level
+fix files) aren't yet captured as a migration — would need to be extracted separately,
+filtered to exclude Supabase's own internal storage schema setup. Not done yet.
+
+**The ~30 existing root-level `fix_*.sql`/`add_*.sql`/`drop_*.sql` files are left in
+place as historical record**, not retroactively converted into migrations — the baseline
+already captures their combined end-state, and their header comments have real "why"
+context worth keeping. They predate this workflow; don't add new ones going forward for
+schema changes covered by the `public` schema — use a migration instead. Storage
+bucket/policy changes (until the known gap above is closed) still follow the old
+convention: a root-level fix file, run manually in the SQL Editor.
 
 ---
 
@@ -236,21 +260,12 @@ permanent record.** No agent should execute SQL directly against the live databa
      location-conflict trigger logic (Deno's test runner against a live/DEV
      Supabase instance, or `pgTAP` for the trigger) — the biggest lift, no
      existing harness to build on.
-- **No formal migrations tool, and — more than just "no rollback" — the base
-  schema itself was never committed anywhere.** Every root-level `.sql` file is a
-  patch (`fix_*`/`add_*`/`drop_*`) that assumes the tables it touches already
-  exist; no file in this repo contains the original `CREATE TABLE bookings`,
-  `user_roles`, etc. Confirmed repeatedly this session — every time the actual
-  schema needed checking, it required a live `supabase db dump`, not a read of
-  committed files. Practical implication: if the live Supabase project were ever
-  lost, or a second environment (staging, a fresh dev seed) were ever wanted, this
-  repo alone cannot reproduce the schema — it would have to be reverse-engineered
-  from a live dump first. Explicitly deferred by the project owner for now — don't
-  start building migration infra unprompted. If revisited, the lightest-weight
-  option is the tool already in daily use here: the Supabase CLI's built-in
-  migrations (`supabase migration new`, `supabase db diff`, `supabase db push`),
-  seeded with a one-time baseline migration generated from the current live
-  schema, rather than adopting a new framework.
+- ~~No formal migrations tool, base schema never committed anywhere~~ — **resolved
+  2026-07-14**, see [Migrations](#migrations-supabase-cli) in section 3. A baseline
+  migration now exists and was verified to actually reproduce the schema (tested
+  against a real, throwaway Supabase project after local Docker validation proved
+  blocked by an environment issue — see Gotchas). Remaining gap: the `storage` schema
+  (bucket policies) isn't covered by the baseline yet — still root-level fix files.
 
 ---
 
@@ -402,11 +417,16 @@ message/PR body before the fix was confirmed live (e.g. "tightened database acce
 policies" rather than describing the specific hole) — kept generic even after, as a
 habit.
 
-### SQL fix files
-Root-level, named `verb_target.sql` (`fix_bookings_rls_exposure.sql`,
-`add_schedules_location_fk.sql`, `drop_unused_admin_functions.sql`). Structure: header
-comment block (what/why), the DDL, a `-- VERIFY:` query. Never run automatically —
-always handed to a human to paste into the SQL Editor, confirmed working, then committed.
+### SQL fix files (historical) / migrations (current)
+Root-level `.sql` files named `verb_target.sql` (`fix_bookings_rls_exposure.sql`,
+`add_schedules_location_fk.sql`, `drop_unused_admin_functions.sql`) are the pre-2026-07-14
+convention: header comment block (what/why), the DDL, a `-- VERIFY:` query, handed to a
+human to paste into the SQL Editor, confirmed working, then committed. These still exist
+as historical record and the storage bucket/policy fixes still follow this pattern (see
+[Migrations](#migrations-supabase-cli) for why). **For anything touching the `public`
+schema**, the current convention is `supabase migration new <name>` under
+`supabase/migrations/`, applied via a human running `supabase db push` — same
+draft/review/confirm/commit shape, different mechanism.
 
 ### No inline event handlers
 CSP (`index.html` and every other page's `<meta http-equiv="Content-Security-Policy">`)
@@ -538,6 +558,14 @@ tested live, and deployed. In order, what was just finished:
     this CLI version). Fixed to call `sendViaZoho()` directly, deployed, and
     confirmed no `functions.invoke('send-email'` calls remain anywhere in
     `supabase/functions/`.
+17. Adopted Supabase CLI migrations for the `public` schema — see
+    [Migrations](#migrations-supabase-cli) in section 3 for the full writeup.
+    `supabase/migrations/20260714132316_baseline_schema.sql` is committed and verified
+    (against a real, disposable Supabase project, not local Docker — see the Gotcha
+    below about why). Going forward, `public`-schema changes use
+    `supabase migration new` + `supabase db push` instead of a new root-level fix file;
+    storage bucket/policy changes still use the old convention until that gap is
+    closed (not started).
 
 **Explicitly deferred, not started:** Slack/Discord/Sentry-style alerting for Edge
 Function errors — the project owner said "I'll do it later," don't assume it's wanted
@@ -647,10 +675,31 @@ stay in the separate `ellafestperformersadmin.vercel.app` codebase.
   is also genuinely used (`js/api.js`'s `fetchMapData()`, backing `visitor_map.html`),
   not dead — don't revoke it outright.
 
-- **No formal migrations tool.** Every `.sql` file at repo root is a one-shot script,
-  run once manually by a human via the Supabase SQL Editor, never by an agent directly.
-  There's no rollback mechanism — changes need to be reviewed carefully before running,
-  and are expected to be additive/backward-compatible where possible.
+- **`public` schema now has a real baseline migration (2026-07-14) — but `storage`
+  schema migrations are a trap, don't include it in a dump meant to be replayed.**
+  `supabase/migrations/20260714132316_baseline_schema.sql` was scoped to `public` only
+  after an earlier attempt that included `storage` failed with `permission denied for
+  schema storage` on `CREATE TYPE "storage"."buckettype"` — a Supabase-internal system
+  type that every project already has, not something this project created. If you ever
+  regenerate or extend the baseline, scope dumps to `public` explicitly
+  (`supabase db dump --schema public`) and handle bucket/`storage.objects` policies
+  separately, filtered to exclude Supabase's own internal storage schema setup. Old
+  root-level `.sql` fix files still exist as historical record and remain the
+  convention for storage bucket/policy changes until that gap is closed — no rollback
+  mechanism either way, changes need review before running.
+
+- **`supabase start` (local Docker stack) failed 3/3 times on this machine (Windows,
+  Docker Desktop) with a host↔container networking error** — Postgres itself reaches
+  "ready to accept connections" per its own container logs, but the CLI's own
+  connection check from the host to `127.0.0.1:54322` fails immediately after with
+  either a dial timeout or an unexpected EOF, tearing everything down before any
+  migration is ever applied. Confirmed reproducible, not flaky — same failure point
+  every time, including with `--debug`. This blocked local migration testing entirely;
+  validation was done instead against a real (throwaway) hosted Supabase project via
+  `supabase link --project-ref <other-project>` + `supabase db push`. If local Docker
+  is needed again, this needs actual troubleshooting first (restart Docker Desktop
+  itself, check Windows Firewall / WSL2 vEthernet adapter) — don't assume it'll work,
+  and don't burn time retrying blindly more than once or twice.
 
 - **File uploads**: 12MB limit, bucket `esf-documents`. `submit-booking` validates the
   temp-upload UUID and filenames server-side against strict patterns
