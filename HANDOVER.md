@@ -90,6 +90,7 @@ client via a CDN `<script>` tag (not npm); admin pages use native ES module impo
 ### Repository layout
 ```
 /
+├── .github/workflows/ci.yml     ← CI: grep guard, RLS check, integration tests
 ├── *.html                       ← One file per page, repo root = deploy root
 ├── js/                          ← Admin JS modules (ES modules)
 ├── css/input.css, output.css    ← Tailwind source / compiled output
@@ -243,33 +244,12 @@ convention: a root-level fix file, run manually in the SQL Editor.
   `email_templates`, despite `ARCHITECTURE.md` claiming otherwise.
 - No error/alerting integration (Slack/Discord/Sentry) for Edge Function failures —
   explicitly deferred by the project owner ("I'll do it later").
-- **No real automated test suite** — `package.json` has only `tailwindcss`/`postcss`
-  build scripts, no `.github/` CI. Nothing exercises the Edge Functions, RLS
-  policies, or booking-ID/location-conflict logic — exactly the kind of stateful
-  business logic that regresses silently (this session found three real bugs in
-  that category: `queue-bulk-email`, `cancel-booking`, and `submit-booking` all
-  independently hit the same sibling-function-HTTP-call failure, one of them live
-  in production on a real submission). The 3-step plan discussed, cheapest first:
-  1. **Done (2026-07-14)**: a git pre-commit hook (`.githooks/pre-commit`, wired up
-     via `core.hooksPath`, auto-configured by `npm install`'s `postinstall`) blocks
-     any commit containing `functions.invoke(` inside `supabase/functions/` — the
-     exact pattern behind all three bugs above. Tested live: confirmed it blocks a
-     deliberately-reintroduced bad call, and passes cleanly against the current
-     codebase.
-  2. **Done (2026-07-14)**: `npm run check:rls-grants`
-     (`scripts/check-rls-grants-snapshot.sh`) dumps every `CREATE POLICY` and
-     `GRANT`/`REVOKE` statement across `public`/`storage` from the live project
-     and diffs it against the checked-in `rls_grants_snapshot.txt`. Run manually
-     (hits the live project over the network, not wired into pre-commit). A
-     clean run exits 0; a diff means RLS/grants changed since the snapshot was
-     last committed — review it, then `npm run check:rls-grants -- --update`
-     and commit the refreshed snapshot if the change is expected. Tested live:
-     confirmed it creates the baseline, and reports a clean match on a
-     no-change re-run.
-  3. **Not started.** Real integration tests for Edge Functions and the booking-ID/
-     location-conflict trigger logic (Deno's test runner against a live/DEV
-     Supabase instance, or `pgTAP` for the trigger) — the biggest lift, no
-     existing harness to build on.
+- ~~No real automated test suite~~ — **resolved 2026-07-14**. All three steps of
+  the original plan (grep guard → RLS snapshot test → real integration tests)
+  are done, and CI runs all of them on every push — see
+  [Testing](#testing) in section 6 for what each covers, and Next Steps items
+  16–17, 21, and 22 for the full history (including a real booking-ID
+  concurrency bug the integration tests found and fixed along the way).
 - ~~No formal migrations tool, base schema never committed anywhere~~ — **resolved
   2026-07-14**, see [Migrations](#migrations-supabase-cli) in section 3. A baseline
   migration now exists and was verified to actually reproduce the schema (tested
@@ -406,7 +386,10 @@ check the affected table's state directly in the Supabase Table Editor or SQL Ed
 afterward.
 
 **All three steps of the grep-guard → RLS-snapshot-test → real-integration-tests plan
-are done** as of 2026-07-14:
+are done** as of 2026-07-14, and **all three run automatically in CI on every push**
+(`.github/workflows/ci.yml` — `grep-guard`, `rls-grants-check`, `integration-tests`
+jobs; needs the six repo secrets described under `test:integration` below). Verified
+with a real run via `gh run watch` — all three green.
 - A git pre-commit hook (`.githooks/pre-commit`, wired up via `core.hooksPath` —
   auto-configured by `npm install`'s `postinstall` script) blocks any commit
   containing `functions.invoke(` inside `supabase/functions/`. That exact
@@ -736,6 +719,20 @@ tested live, and deployed. In order, what was just finished:
     adding error checks to every fixture insert so a future silent failure
     like this surfaces immediately instead of masquerading as a passing
     assertion. All 27 tests green across 2 consecutive runs.
+22. Added CI: `.github/workflows/ci.yml` runs three jobs on every push/PR
+    (and on demand via `gh workflow run ci.yml` / the Actions UI, since
+    `workflow_dispatch` is enabled) — the sibling-function grep guard (same
+    check as `.githooks/pre-commit`, enforced here too since a local hook can
+    be bypassed or just not installed on a fresh clone), the RLS/grants
+    snapshot check against the live project, and the full `tests/` suite
+    against the disposable test project. Needs six repo secrets:
+    `SUPABASE_ACCESS_TOKEN` (a dedicated personal access token, generated
+    specifically for this — not one of the auto-generated `cli_*` tokens
+    from a local `supabase login` session) plus the five
+    `TEST_SUPABASE_URL`/`TEST_SUPABASE_ANON_KEY`/
+    `TEST_SUPABASE_SERVICE_ROLE_KEY`/`TEST_ADMIN_EMAIL`/`TEST_ADMIN_PASSWORD`
+    values already used locally in `.env.test`. All set, verified with a real
+    run (`gh run watch`) — all three jobs green.
 
 **Explicitly deferred, not started:** Slack/Discord/Sentry-style alerting for Edge
 Function errors — the project owner said "I'll do it later," don't assume it's wanted
