@@ -3,6 +3,7 @@ name: CI
 on:
   push:
   pull_request:
+  workflow_dispatch:
 
 jobs:
   # Same check as .githooks/pre-commit, run here too since a local git hook
