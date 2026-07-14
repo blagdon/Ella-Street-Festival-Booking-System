@@ -674,6 +674,25 @@ tested live, and deployed. In order, what was just finished:
     schema is ever rebuilt from scratch on a fresh project, the baseline
     migration works as intended — this repair step is only needed because it
     was being retrofitted onto a project that already had the schema live.**
+20. Fixed `locations`' duplicate/unscoped anon SELECT policy (`"Public view
+    locations"` and `"anon_select_locations"`, both `USING (true)`) — scoped
+    the surviving policy to `dataset = 'LIVE'` so `DEV` pitch rows stop being
+    publicly queryable; the actual public-map use case (`LIVE`) is untouched.
+    Tested directly against the live REST API with the anon key: an
+    unfiltered query and an explicit `dataset=eq.LIVE` query both return
+    exactly 140/140 rows, and an explicit `dataset=eq.DEV` query returns `[]`.
+    **Process miss, corrected**: this is a `public`-schema RLS change and item
+    17's own convention says exactly this category should be a migration, not
+    a new root-level fix file — it was done as a fix file
+    (`fix_locations_redundant_anon_policy.sql`) anyway, and wasn't logged here
+    either, both caught after the fact. Retroactively added
+    `supabase/migrations/20260714152302_locations_scope_public_view_to_live.sql`
+    with the same DDL, verified against the disposable test project. Unlike
+    the baseline's `CREATE TYPE` issue, this DDL (`DROP POLICY IF EXISTS` +
+    `CREATE POLICY`) is genuinely idempotent, so no `migration repair`
+    shortcut is needed — a human just needs to run a normal `supabase db push`
+    while linked to the main project to record it there too (not yet done as
+    of this note).
 
 **Explicitly deferred, not started:** Slack/Discord/Sentry-style alerting for Edge
 Function errors — the project owner said "I'll do it later," don't assume it's wanted
