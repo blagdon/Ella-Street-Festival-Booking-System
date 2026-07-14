@@ -463,6 +463,35 @@ tested live, and deployed. In order, what was just finished:
         an existing booking, check whether its `documents` entries actually got
         backfilled to paths, and whether `get-booking-documents` returns a
         non-null signed URL for them.
+13. `fix_documents_bucket_object_policies.sql` — the bucket-privacy pass above (item
+    12) set `documents`' `public` flag to `false`, but that alone didn't stop `anon`
+    reaching it: two `storage.objects` RLS policies (`"Give anon users access to JPG
+    images in folder flreew_0"`, `"Performer insurance downloads flreew_0"`) still let
+    any anon/authenticated caller upload arbitrary files (no type restriction despite
+    the name) into `documents/performer-insurance/` and list/download everything
+    there — RLS on `storage.objects` applies regardless of the bucket's public flag.
+    Confirmed dead before dropping: `documents/performer-insurance/` had no upload
+    since 2026-02-16, while the sibling `performer-documents` bucket (which has a
+    proper `allowed_mime_types` restriction) has uploads as recent as 2026-06-21 — the
+    live performer-application app moved to it months ago. These were the *only*
+    `storage.objects` policies referencing the `documents` bucket at all. Run and
+    verified live.
+14. Found and fixed a bug in `get-booking-documents` (introduced by item 12):
+    `createSignedUrls()` already returns a full absolute URL internally (it builds it
+    as `` `${this.url}${signedURL}` `` inside the SDK), but the function additionally
+    prefixed `supabaseUrl` on top, producing a malformed URL like
+    `https://project.supabase.cohttps://project.supabase.co/storage/...` that failed
+    to open. Found live when the project owner clicked "Open Document" in Kanban and
+    got a browser DNS error; confirmed the exact cause against the `storage-js`
+    source, fixed, redeployed, and the owner confirmed the link opens correctly now.
+15. `drop_queue_confirmation_email_function.sql` — a fifth orphaned "queue the
+    application-received email" trigger function (`queue_confirmation_email()`),
+    missed by both the item-5 cleanup (which dropped four siblings doing the exact
+    same superseded job) and `fix_function_search_path.sql` (which only pinned
+    `search_path` on functions still actually in use — this one should have been
+    dropped, not patched). Confirmed via a full `pg_trigger` dump that nothing calls
+    it; the real "received" auto-email is `submit-booking`'s `sendReceivedEmail()`.
+    Run and verified live.
 
 **Explicitly deferred, not started:** Slack/Discord/Sentry-style alerting for Edge
 Function errors — the project owner said "I'll do it later," don't assume it's wanted
@@ -579,3 +608,18 @@ stay in the separate `ellafestperformersadmin.vercel.app` codebase.
   writes directly to this same project's `performers` table from a **separate**
   codebase/deployment. If you change `performers`' schema or RLS, that other app is a
   real, live consumer you won't see by grepping this repo.
+
+- **`performers`/`schedules` are NOT dead/orphaned — they're a live feature with an
+  admin UI in a different repo.** "Nothing in this repo's JS references them" (true)
+  is not the same as "nobody uses them." A third-party review once suggested
+  dropping the tables or revoking all anon/authenticated grants on the basis that
+  they looked orphaned. Checked directly against the live data before doing
+  anything: `performers` had 11 real applicant rows, most recently created
+  **2026-06-21** (weeks before this check, not months), and `performer-documents`
+  (the storage bucket the same app uploads insurance docs to) has uploads from the
+  same date — this is an actively-used feature, just one this repo doesn't have a UI
+  for. Dropping the tables would delete real people's live applications and break
+  that other app's submission flow outright. Before ever touching `performers`/
+  `schedules` schema, RLS, or grants, check actual row recency
+  (`SELECT max(created_at) FROM performers`) — don't infer "dead" from an
+  in-repo grep alone.
