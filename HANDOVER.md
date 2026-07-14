@@ -655,12 +655,25 @@ tested live, and deployed. In order, what was just finished:
     platform-managed-schema reason. Verified against the disposable test
     project, including the realistic case of the project's older
     `esf-documents` bucket (still `public=true`, no size/type limits) being
-    correctly brought in line by the migration's upsert. **Not yet pushed to
-    the live project** — run by a human via `supabase db push` while linked
-    to `rsnxhuhibglieofikkpo` (per the no-agent-runs-db-push-on-live
-    convention); the live project's actual bucket/policy state already
-    matches what this migration produces (it was the source), so this is
-    about recording it in the migration history, not changing anything live.
+    correctly brought in line by the migration's upsert. **Pushed to the live
+    project and verified (2026-07-14)** — the initial `db push` attempt
+    failed on the *other* migration (`20260714132316_baseline_schema.sql`,
+    `ERROR: type "performance_type" already exists`): unlike the storage
+    migration, the baseline contains raw `CREATE TYPE ... AS ENUM`, which has
+    no `IF NOT EXISTS` form in Postgres, so it can never be re-applied as real
+    DDL against the same live project it was dumped from — it only works
+    against a genuinely empty schema (which is why it validated cleanly
+    against the reset test project earlier, but not here). Fixed by marking it
+    applied without re-running it (`supabase migration repair --status
+    applied 20260714132316`, since the live schema already reflects its
+    content), then re-running `db push`, which correctly skipped the baseline
+    and applied the storage migration for real. `supabase migration list`
+    and a fresh bucket dump both confirm: both migrations show applied, and
+    all three buckets are unchanged (original `created_at` preserved,
+    confirming a clean upsert `UPDATE`, not a fresh insert). **If this repo's
+    schema is ever rebuilt from scratch on a fresh project, the baseline
+    migration works as intended — this repair step is only needed because it
+    was being retrofitted onto a project that already had the schema live.**
 
 **Explicitly deferred, not started:** Slack/Discord/Sentry-style alerting for Edge
 Function errors — the project owner said "I'll do it later," don't assume it's wanted
@@ -785,18 +798,33 @@ stay in the separate `ellafestperformersadmin.vercel.app` codebase.
   is also genuinely used (`js/api.js`'s `fetchMapData()`, backing `visitor_map.html`),
   not dead — don't revoke it outright.
 
-- **`public` schema now has a real baseline migration (2026-07-14) — but `storage`
-  schema migrations are a trap, don't include it in a dump meant to be replayed.**
-  `supabase/migrations/20260714132316_baseline_schema.sql` was scoped to `public` only
-  after an earlier attempt that included `storage` failed with `permission denied for
-  schema storage` on `CREATE TYPE "storage"."buckettype"` — a Supabase-internal system
-  type that every project already has, not something this project created. If you ever
-  regenerate or extend the baseline, scope dumps to `public` explicitly
-  (`supabase db dump --schema public`) and handle bucket/`storage.objects` policies
-  separately, filtered to exclude Supabase's own internal storage schema setup. Old
-  root-level `.sql` fix files still exist as historical record and remain the
-  convention for storage bucket/policy changes until that gap is closed — no rollback
-  mechanism either way, changes need review before running.
+- **`public` schema has a real baseline migration (2026-07-14), and the `storage`
+  gap is closed too (`20260714144652_storage_buckets_and_policies.sql`) — but
+  `storage` schema migrations are a trap, don't include the full schema in a dump
+  meant to be replayed.** The baseline was scoped to `public` only after an
+  earlier attempt that included `storage` failed with `permission denied for
+  schema storage` on `CREATE TYPE "storage"."buckettype"` — a Supabase-internal
+  system type that every project already has, not something this project
+  created. If you ever regenerate or extend either migration, scope dumps
+  explicitly (`supabase db dump --schema public` / `--schema storage`, never
+  both at once for a migration) and for storage, hand-extract only the bucket
+  rows and `storage.objects` policies that are actually ours — never the
+  schema/type/table-creation noise Supabase itself owns.
+
+- **Neither baseline migration can be re-applied as real DDL against the same
+  live project it was dumped from — `CREATE TYPE ... AS ENUM` has no
+  `IF NOT EXISTS` form in Postgres.** Confirmed live: pushing
+  `20260714132316_baseline_schema.sql` to the actual main project (after it had
+  only ever been validated against a reset disposable project) failed with
+  `ERROR: type "performance_type" already exists`, since the live project
+  obviously already has every type/table the baseline defines. Fixed by marking
+  it applied without re-running it: `supabase migration repair --status applied
+  20260714132316` (safe specifically because the live schema already reflects
+  that file's content), then a normal `supabase db push` picked up and applied
+  the still-pending storage migration correctly. This `repair` step is only
+  needed when retrofitting a baseline onto a project that already has the
+  schema live — building a genuinely fresh project from these migrations
+  needs no such workaround.
 
 - **`supabase start` (local Docker stack) failed 3/3 times on this machine (Windows,
   Docker Desktop) with a host↔container networking error** — Postgres itself reaches
