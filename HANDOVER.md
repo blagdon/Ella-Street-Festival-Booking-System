@@ -238,25 +238,26 @@ convention: a root-level fix file, run manually in the SQL Editor.
   `email_templates`, despite `ARCHITECTURE.md` claiming otherwise.
 - No error/alerting integration (Slack/Discord/Sentry) for Edge Function failures —
   explicitly deferred by the project owner ("I'll do it later").
-- **No automated tests at all** — `package.json` has only `tailwindcss`/`postcss`
+- **No real automated test suite** — `package.json` has only `tailwindcss`/`postcss`
   build scripts, no `.github/` CI. Nothing exercises the Edge Functions, RLS
   policies, or booking-ID/location-conflict logic — exactly the kind of stateful
   business logic that regresses silently (this session found three real bugs in
   that category: `queue-bulk-email`, `cancel-booking`, and `submit-booking` all
   independently hit the same sibling-function-HTTP-call failure, one of them live
-  in production on a real submission). Explicitly deferred by the project owner
-  ("let's do it later") — don't start building test infra unprompted. If asked to
-  revisit, the discussed starting point, cheapest-to-most-expensive:
-  1. A static grep guard (CI or pre-commit) failing if any
-     `supabase/functions/**/*.ts` contains `functions.invoke(` — would have caught
-     all three bugs above before they shipped, no test framework needed.
-  2. An RLS/grants snapshot test — query `pg_policies` +
+  in production on a real submission). The 3-step plan discussed, cheapest first:
+  1. **Done (2026-07-14)**: a git pre-commit hook (`.githooks/pre-commit`, wired up
+     via `core.hooksPath`, auto-configured by `npm install`'s `postinstall`) blocks
+     any commit containing `functions.invoke(` inside `supabase/functions/` — the
+     exact pattern behind all three bugs above. Tested live: confirmed it blocks a
+     deliberately-reintroduced bad call, and passes cleanly against the current
+     codebase.
+  2. **Not started.** An RLS/grants snapshot test — query `pg_policies` +
      `information_schema.column_privileges`, diff against a checked-in expected
      baseline. Nearly every third-party review comment this session was either
      confirming or *incorrectly* flagging an RLS/grant issue (see the
      `bookings`/`performers` column-grant gotcha above) — this would resolve that
      class of question in seconds instead of a live schema dump each time.
-  3. Real integration tests for Edge Functions and the booking-ID/
+  3. **Not started.** Real integration tests for Edge Functions and the booking-ID/
      location-conflict trigger logic (Deno's test runner against a live/DEV
      Supabase instance, or `pgTAP` for the trigger) — the biggest lift, no
      existing harness to build on.
@@ -389,10 +390,19 @@ Functions → *name* → Logs tab instead.
    `'steward'` — via `manage_users.html` or directly in SQL.
 
 ### Testing
-No automated tests exist. Verification is manual: run locally, log in with real
+No automated test suite exists. Verification is manual: run locally, log in with real
 admin/steward credentials against the live project, exercise the actual flow in a
 browser, and (for anything DB-related) check the affected table's state directly in the
 Supabase Table Editor or SQL Editor afterward.
+
+**One automated guard does exist**: a git pre-commit hook
+(`.githooks/pre-commit`, wired up via `core.hooksPath` — auto-configured by
+`npm install`'s `postinstall` script) blocks any commit containing
+`functions.invoke(` inside `supabase/functions/`. That exact pattern (calling a
+sibling Edge Function over HTTP instead of shared in-process logic) caused three
+real bugs in one session — see the Gotcha below. This is step 1 of the
+grep-guard → RLS-snapshot-test → real-integration-tests plan; the other two
+haven't been started.
 
 ---
 

@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# Guards against calling a sibling Supabase Edge Function over HTTP
+# (supabaseAdmin.functions.invoke('other-function', ...)) instead of calling
+# shared logic in-process via supabase/functions/_shared/.
+#
+# That exact pattern caused three real bugs in one session: queue-bulk-email's
+# background drain loop, cancel-booking's confirmation email, and
+# submit-booking's "received" auto-email all independently hit intermittent
+# failures ("Failed to send a request to the Edge Function" / non-2xx status)
+# firing functions.invoke() at a sibling function — one of them failed live in
+# production on a real submission. See HANDOVER.md's
+# EdgeRuntime.waitUntil()/sibling-function-HTTP-calls Gotcha for the full story.
+#
+# Fix for any match: extract the shared logic into supabase/functions/_shared/
+# and call it directly, the way _shared/zoho.ts and _shared/bucket.ts do.
+
+matches=$(grep -rn "functions\.invoke(" supabase/functions --include="*.ts" 2>/dev/null || true)
+
+if [ -n "$matches" ]; then
+  echo "pre-commit: found a sibling-Edge-Function HTTP call — this exact pattern"
+  echo "caused three real bugs this session (see HANDOVER.md Gotchas):"
+  echo ""
+  echo "$matches"
+  echo ""
+  echo "Extract the shared logic into supabase/functions/_shared/ and call it"
+  echo "in-process instead, rather than invoking another Edge Function over HTTP."
+  exit 1
+fi
+
+exit 0
