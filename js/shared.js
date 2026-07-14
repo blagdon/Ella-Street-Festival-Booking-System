@@ -1,7 +1,7 @@
 import { getSupabaseClient } from './supabase.js';
 import { updateBookingStatus, finalizeConfirmation, sendEmail, auditLog, getSignedBookingDocuments } from './api.js';
 import { showToast } from './ui.js';
-import { escapeHtml } from './utils.js';
+import { escapeHtml, sanitizeUrl } from './utils.js';
 import { getStallCost, CONFIG } from './config.js';
 
 /**
@@ -263,7 +263,7 @@ async function renderDocumentLinks(docsEl, bookingId, docArray) {
 
     let html = '';
     docArray.forEach((part, index) => {
-        const safeUrl = urls[index] || null;
+        const safeUrl = sanitizeUrl(urls[index] || '');
 
         if (safeUrl) {
             html += `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer" class="flex items-center text-blue-600 hover:text-blue-800 hover:underline mb-1 font-medium bg-blue-50 p-2 rounded border border-blue-100">
