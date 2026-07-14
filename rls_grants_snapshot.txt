@@ -19,13 +19,12 @@ CREATE POLICY "Public can view scheduled" ON "public"."performers" FOR SELECT TO
 CREATE POLICY "Public row-level access for schedules" ON "public"."schedules" FOR SELECT TO "anon" USING (true);
 CREATE POLICY "Public row-level access for views" ON "public"."performers" FOR SELECT TO "anon" USING ((("status" = ANY (ARRAY['Scheduled'::"public"."performer_status", 'Paid'::"public"."performer_status"])) AND ("deleted_at" IS NULL)));
 CREATE POLICY "Public see confirmed" ON "public"."bookings" FOR SELECT TO "anon" USING (("status" = 'Confirmed'::"text"));
-CREATE POLICY "Public view locations" ON "public"."locations" FOR SELECT USING (true);
+CREATE POLICY "Public view locations" ON "public"."locations" FOR SELECT USING (("dataset" = 'LIVE'::"text"));
 CREATE POLICY "Public view power" ON "public"."location_power" FOR SELECT TO "authenticated", "anon" USING (true);
 CREATE POLICY "Steward access" ON "public"."bookings" FOR SELECT USING ("public"."check_user_role"('steward'::"public"."user_role"));
 CREATE POLICY "Steward update" ON "public"."bookings" FOR UPDATE USING ("public"."check_user_role"('steward'::"public"."user_role"));
 CREATE POLICY "Strict Public Uploads" ON "storage"."objects" FOR INSERT WITH CHECK ((("bucket_id" = 'esf-documents'::"text") AND (("storage"."extension"("name") = 'pdf'::"text") OR ("storage"."extension"("name") = 'jpg'::"text") OR ("storage"."extension"("name") = 'jpeg'::"text") OR ("storage"."extension"("name") = 'png'::"text")) AND
 CREATE POLICY "Users can read own role" ON "public"."user_roles" FOR SELECT TO "authenticated" USING (("id" = "auth"."uid"()));
-CREATE POLICY "anon_select_locations" ON "public"."locations" FOR SELECT USING (true);
 CREATE POLICY "auth_insert_audit" ON "public"."audit_logs" FOR INSERT TO "authenticated" WITH CHECK (true);
 CREATE POLICY "performer_admin_access" ON "public"."performers" TO "authenticated" USING ((EXISTS ( SELECT 1
 CREATE POLICY "policy_allow_all_admin" ON "public"."user_roles" TO "authenticated" USING ("public"."get_is_admin"()) WITH CHECK ("public"."get_is_admin"());
