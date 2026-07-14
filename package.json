@@ -6,7 +6,8 @@
   "scripts": {
     "build:css": "npx @tailwindcss/cli -i ./css/input.css -o ./css/output.css",
     "watch:css": "npx @tailwindcss/cli -i ./css/input.css -o ./css/output.css --watch",
-    "postinstall": "git config core.hooksPath .githooks || true"
+    "postinstall": "git config core.hooksPath .githooks || true",
+    "check:rls-grants": "bash scripts/check-rls-grants-snapshot.sh"
   },
   "keywords": [],
   "author": "",

@@ -251,12 +251,16 @@ convention: a root-level fix file, run manually in the SQL Editor.
      exact pattern behind all three bugs above. Tested live: confirmed it blocks a
      deliberately-reintroduced bad call, and passes cleanly against the current
      codebase.
-  2. **Not started.** An RLS/grants snapshot test — query `pg_policies` +
-     `information_schema.column_privileges`, diff against a checked-in expected
-     baseline. Nearly every third-party review comment this session was either
-     confirming or *incorrectly* flagging an RLS/grant issue (see the
-     `bookings`/`performers` column-grant gotcha above) — this would resolve that
-     class of question in seconds instead of a live schema dump each time.
+  2. **Done (2026-07-14)**: `npm run check:rls-grants`
+     (`scripts/check-rls-grants-snapshot.sh`) dumps every `CREATE POLICY` and
+     `GRANT`/`REVOKE` statement across `public`/`storage` from the live project
+     and diffs it against the checked-in `rls_grants_snapshot.txt`. Run manually
+     (hits the live project over the network, not wired into pre-commit). A
+     clean run exits 0; a diff means RLS/grants changed since the snapshot was
+     last committed — review it, then `npm run check:rls-grants -- --update`
+     and commit the refreshed snapshot if the change is expected. Tested live:
+     confirmed it creates the baseline, and reports a clean match on a
+     no-change re-run.
   3. **Not started.** Real integration tests for Edge Functions and the booking-ID/
      location-conflict trigger logic (Deno's test runner against a live/DEV
      Supabase instance, or `pgTAP` for the trigger) — the biggest lift, no
@@ -395,14 +399,20 @@ admin/steward credentials against the live project, exercise the actual flow in 
 browser, and (for anything DB-related) check the affected table's state directly in the
 Supabase Table Editor or SQL Editor afterward.
 
-**One automated guard does exist**: a git pre-commit hook
-(`.githooks/pre-commit`, wired up via `core.hooksPath` — auto-configured by
-`npm install`'s `postinstall` script) blocks any commit containing
-`functions.invoke(` inside `supabase/functions/`. That exact pattern (calling a
-sibling Edge Function over HTTP instead of shared in-process logic) caused three
-real bugs in one session — see the Gotcha below. This is step 1 of the
-grep-guard → RLS-snapshot-test → real-integration-tests plan; the other two
-haven't been started.
+**Two automated guards exist so far** (steps 1–2 of the
+grep-guard → RLS-snapshot-test → real-integration-tests plan; step 3 hasn't started):
+- A git pre-commit hook (`.githooks/pre-commit`, wired up via `core.hooksPath` —
+  auto-configured by `npm install`'s `postinstall` script) blocks any commit
+  containing `functions.invoke(` inside `supabase/functions/`. That exact
+  pattern (calling a sibling Edge Function over HTTP instead of shared
+  in-process logic) caused three real bugs in one session — see the Gotcha below.
+- `npm run check:rls-grants` (`scripts/check-rls-grants-snapshot.sh`) diffs the
+  live project's RLS policies + grants against the checked-in
+  `rls_grants_snapshot.txt`. Run manually (hits the network) whenever you want
+  to check "did our access-control posture actually change" without a fresh
+  live schema dump. A diff means something changed — review it, then
+  `npm run check:rls-grants -- --update` and commit the refreshed snapshot if
+  the change is expected.
 
 ---
 
