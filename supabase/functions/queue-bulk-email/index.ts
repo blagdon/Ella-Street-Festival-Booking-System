@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { sendViaZoho } from '../_shared/zoho.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -21,6 +22,37 @@ const MAX_DRAIN_BATCHES = 50
  * after the response has already been sent, so it can keep running for
  * as long as the function's execution budget allows.
  */
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+// Calls sendViaZoho() directly (in-process) rather than invoking send-email
+// as a separate Edge Function over HTTP. The HTTP-hop version of this
+// intermittently failed with "Failed to send a request to the Edge
+// Function" (a raw fetch-level failure, no response at all) even after
+// retries, when firing 50+ sequential same-target function invocations in
+// a row — calling the shared Zoho logic directly removes that entire class
+// of failure since there's no sibling-function HTTP call to fail. A small
+// retry remains for genuine Zoho-side transient errors (e.g. a timeout
+// talking to Zoho itself), which is a different, much rarer failure mode.
+async function sendOneEmail(
+  supabaseAdmin: ReturnType<typeof createClient>,
+  row: { recipient: string; subject: string; body: string }
+): Promise<{ status: string; errorMessage: string | null }> {
+  const MAX_ATTEMPTS = 2
+  let lastErrorMessage = 'Unknown error'
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      await sendViaZoho(supabaseAdmin, { recipient: row.recipient, subject: row.subject, body: row.body })
+      return { status: 'Sent', errorMessage: null }
+    } catch (e: any) {
+      lastErrorMessage = e.message
+      if (attempt < MAX_ATTEMPTS) await sleep(300)
+    }
+  }
+
+  return { status: 'Error', errorMessage: lastErrorMessage + ` (after ${MAX_ATTEMPTS} attempts)` }
+}
+
 async function drainPendingEmails(supabaseAdmin: ReturnType<typeof createClient>) {
   for (let i = 0; i < MAX_DRAIN_BATCHES; i++) {
     const { data: batch, error: claimErr } = await supabaseAdmin.rpc('claim_pending_emails', { p_batch_size: 50 })
@@ -31,24 +63,17 @@ async function drainPendingEmails(supabaseAdmin: ReturnType<typeof createClient>
     if (!batch || batch.length === 0) return
 
     for (const row of batch) {
-      let status = 'Sent'
-      let errorMessage: string | null = null
-      try {
-        const { data: sendData, error: sendErr } = await supabaseAdmin.functions.invoke('send-email', {
-          body: { recipient: row.recipient, subject: row.subject, body: row.body }
-        })
-        if (sendErr) throw new Error(sendErr.message)
-        if (sendData && sendData.error) throw new Error(sendData.error)
-      } catch (e: any) {
-        status = 'Error'
-        errorMessage = e.message
-      }
+      const { status, errorMessage } = await sendOneEmail(supabaseAdmin, row)
 
       const { error: updateErr } = await supabaseAdmin
         .from('email_queue')
         .update({ status, error_message: errorMessage })
         .eq('id', row.id)
       if (updateErr) console.warn(`Failed to update email_queue row ${row.id}:`, updateErr.message)
+
+      // Small pacing delay between sequential Zoho sends, courteous to
+      // Zoho's own API rate limits.
+      await sleep(100)
     }
   }
 }
