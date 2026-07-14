@@ -411,6 +411,14 @@ tested live, and deployed. In order, what was just finished:
     `sendCancellationEmail()` — now calls `sendViaZoho()` in-process instead of
     `functions.invoke('send-email', ...)`, matching `queue-bulk-email`
 
+11. `fix_anon_dormant_table_grants.sql` — revoked leftover `DELETE`/`TRUNCATE`/
+    `MAINTAIN` table-level grants to `anon` on `bookings` and `performers` (dormant,
+    no RLS policy grants anon a DELETE command on either table, but the same "future
+    policy change silently inherits it" risk already fixed for INSERT/UPDATE
+    elsewhere). Run by the project owner in the SQL Editor and confirmed live via a
+    fresh schema dump — anon's grants on both tables now show only column-scoped
+    SELECT/INSERT plus table-level `TRIGGER`.
+
 **Explicitly deferred, not started:** Slack/Discord/Sentry-style alerting for Edge
 Function errors — the project owner said "I'll do it later," don't assume it's wanted
 now without asking.
@@ -483,6 +491,24 @@ stay in the separate `ellafestperformersadmin.vercel.app` codebase.
   - Says Email Admin "browses the email queue" → it only manages `email_templates`.
   - Lists `email_queue.status` as only `Sent`/`Error` → `Pending` and `Processing` also
     exist now (added for the bulk-email queue-and-drain mechanism).
+
+- **RLS policies on `bookings`/`performers` look more permissive than they are —
+  check column-level `GRANT`s before flagging anon exposure.** `anon`'s SELECT
+  policies on both tables (`"Public see confirmed"` on `bookings`, `"Public row-level
+  access for views"`/`"Public can view scheduled"` on `performers`) are row-scoped
+  only, as RLS always is — but each table also has a column-restricted `GRANT SELECT`
+  for anon (`bookings`: `id, business_name, description, stall_type, category,
+  instance_prefix`; `performers`: `id, name, description, performance_type,
+  performance_type_other, status`) that independently blocks reading `email`, `phone`,
+  `address`, `owner_name`, `admin_notes`, etc., regardless of the RLS policy. A
+  reviewer reading only `pg_policies` (not `information_schema.column_privileges`)
+  will see full-row access and wrongly conclude PII is exposed — this happened once
+  already this session (a third-party review flagged it as Critical; verified against
+  the live schema and it was already fixed, see `fix_bookings_rls_exposure.sql` and
+  `fix_performer_schedule_column_grants.sql`). Always check the actual column grants
+  before acting on this class of report. The anon column-SELECT access on `bookings`
+  is also genuinely used (`js/api.js`'s `fetchMapData()`, backing `visitor_map.html`),
+  not dead — don't revoke it outright.
 
 - **No formal migrations tool.** Every `.sql` file at repo root is a one-shot script,
   run once manually by a human via the Supabase SQL Editor, never by an agent directly.
