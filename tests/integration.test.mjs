@@ -38,7 +38,12 @@ before(async () => {
 
   // Clean slate: wipe anything left over from a previous run.
   await service.from('booking_locations').delete().neq('id', -1);
-  await service.from('bookings').delete().or('id.like.ESF26-TEST%,id.like.ESF26-DEV-%');
+  // Scoped to this file's own fixture prefixes only - test files share one
+  // remote database, so a broad wildcard here would delete another test
+  // file's fixtures out from under it (confirmed live: this collided with
+  // security.test.mjs/workflow.test.mjs before test:integration was pinned
+  // to --test-concurrency=1).
+  await service.from('bookings').delete().or('id.like.ESF26-TESTCONFLICT-%,id.like.ESF26-TESTDATASET-%,id.like.ESF26-DEV-%');
   await service.from('email_queue').delete().neq('id', -1);
   await service.from('locations').delete().like('id', 'TESTLOC%');
 });

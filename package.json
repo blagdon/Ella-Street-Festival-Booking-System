@@ -9,7 +9,7 @@
     "postinstall": "git config core.hooksPath .githooks || true",
     "check:rls-grants": "bash scripts/check-rls-grants-snapshot.sh",
     "test:setup": "node scripts/seed-test-project.mjs",
-    "test:integration": "node --test tests/"
+    "test:integration": "node --test --test-concurrency=1"
   },
   "keywords": [],
   "author": "",

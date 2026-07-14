@@ -419,13 +419,38 @@ are done** as of 2026-07-14:
   live schema dump. A diff means something changed — review it, then
   `npm run check:rls-grants -- --update` and commit the refreshed snapshot if
   the change is expected.
-- `npm run test:integration` (`tests/integration.test.mjs`, Node's built-in
-  `node:test`) runs real integration tests against the deployed
-  `submit-booking`, `cancel-booking`, and `queue-bulk-email` Edge Functions plus
-  the `get_next_booking_id`/`booking_locations_check_conflict`/
-  `claim_pending_emails` database logic — this is where the retry-on-conflict
-  fix for the booking-ID race (see [Next Steps](#8-next-steps) item 18) came
-  from, caught by an actual concurrent-submission test, not code review.
+- `npm run test:integration` (`node --test --test-concurrency=1`, Node's
+  built-in `node:test`) runs three test files:
+  - `tests/integration.test.mjs` — the deployed `submit-booking`,
+    `cancel-booking`, and `queue-bulk-email` Edge Functions, plus the
+    `get_next_booking_id`/`booking_locations_check_conflict`/
+    `claim_pending_emails` database logic. This is where the retry-on-conflict
+    fix for the booking-ID race (see [Next Steps](#8-next-steps) item 18) came
+    from, caught by an actual concurrent-submission test, not code review.
+  - `tests/workflow.test.mjs` — the full admin lifecycle (create → confirm →
+    assign a location → move to a different one → record payment → move to
+    HCC Checks → cancel), calling the same table/RPC operations `js/api.js`
+    does, through a real signed-in admin session.
+  - `tests/security.test.mjs` — behavioral RLS/column-grant checks against
+    the real REST API as an actual anon caller: `bookings`/`performers` are
+    visible only through their permitted columns (selecting a
+    disallowed column like `email` is rejected outright, not silently
+    dropped — column-grant-restricted tables error on `select('*')` rather
+    than omitting columns, learn this the hard way once and it explains a
+    few early test failures below), non-`Confirmed`/non-`Scheduled` rows are
+    invisible, `locations`' `DEV` rows never appear, and `user_roles`/
+    `email_queue` reject anon entirely (zero table grants, not just
+    RLS-filtered). This is the permanent version of the ad-hoc curl checks
+    used to verify the `locations` DEV/LIVE fix earlier this session.
+
+  **`--test-concurrency=1` is required, not optional** — Node's test runner
+  runs separate test *files* concurrently by default, but all three files
+  share one remote disposable database. Found live: `integration.test.mjs`'s
+  cleanup wildcard deleted `security.test.mjs`'s and `workflow.test.mjs`'s
+  fixture rows mid-run when they happened to share the `ESF26-TEST%` prefix,
+  producing confusing failures that had nothing to do with the app. Any new
+  test file added here needs either a unique-enough ID prefix or to just rely
+  on concurrency staying pinned to 1.
 
   **Runs only against the disposable "test backup" project
   (`qeplpcnrkgpaawfyliap`), never the real one** — every test file/script
@@ -690,9 +715,27 @@ tested live, and deployed. In order, what was just finished:
     with the same DDL, verified against the disposable test project. Unlike
     the baseline's `CREATE TYPE` issue, this DDL (`DROP POLICY IF EXISTS` +
     `CREATE POLICY`) is genuinely idempotent, so no `migration repair`
-    shortcut is needed — a human just needs to run a normal `supabase db push`
-    while linked to the main project to record it there too (not yet done as
-    of this note).
+    shortcut was needed. **Pushed to the main project and verified** —
+    `supabase migration list` shows all three migrations applied there, and a
+    fresh dump confirms the policy state is unchanged/correct.
+21. Expanded the integration test suite with two new files:
+    `tests/workflow.test.mjs` (full admin lifecycle: create → confirm →
+    assign → move location → record payment → HCC check → cancel) and
+    `tests/security.test.mjs` (behavioral anon-access checks against the real
+    REST API — see [Testing](#testing) in section 6 for exactly what each
+    covers). Found and fixed two bugs in the test suite itself along the way,
+    neither an app problem: (1) Node's test runner runs separate test files
+    concurrently by default, and `integration.test.mjs`'s cleanup wildcard
+    was broad enough to delete the new files' fixtures mid-run once their ID
+    prefixes overlapped — fixed by pinning `test:integration` to
+    `--test-concurrency=1` and narrowing that wildcard; (2) a `performers`
+    fixture insert was silently failing on an unchecked `NOT NULL` violation
+    (missing `description`/`performance_type`/`cost_per_30min`), producing a
+    false-positive pass on the "not visible" test since the row never
+    existed to begin with — fixed by providing the required columns and
+    adding error checks to every fixture insert so a future silent failure
+    like this surfaces immediately instead of masquerading as a passing
+    assertion. All 27 tests green across 2 consecutive runs.
 
 **Explicitly deferred, not started:** Slack/Discord/Sentry-style alerting for Edge
 Function errors — the project owner said "I'll do it later," don't assume it's wanted
