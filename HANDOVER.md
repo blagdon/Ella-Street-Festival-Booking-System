@@ -236,6 +236,21 @@ permanent record.** No agent should execute SQL directly against the live databa
      location-conflict trigger logic (Deno's test runner against a live/DEV
      Supabase instance, or `pgTAP` for the trigger) — the biggest lift, no
      existing harness to build on.
+- **No formal migrations tool, and — more than just "no rollback" — the base
+  schema itself was never committed anywhere.** Every root-level `.sql` file is a
+  patch (`fix_*`/`add_*`/`drop_*`) that assumes the tables it touches already
+  exist; no file in this repo contains the original `CREATE TABLE bookings`,
+  `user_roles`, etc. Confirmed repeatedly this session — every time the actual
+  schema needed checking, it required a live `supabase db dump`, not a read of
+  committed files. Practical implication: if the live Supabase project were ever
+  lost, or a second environment (staging, a fresh dev seed) were ever wanted, this
+  repo alone cannot reproduce the schema — it would have to be reverse-engineered
+  from a live dump first. Explicitly deferred by the project owner for now — don't
+  start building migration infra unprompted. If revisited, the lightest-weight
+  option is the tool already in daily use here: the Supabase CLI's built-in
+  migrations (`supabase migration new`, `supabase db diff`, `supabase db push`),
+  seeded with a one-time baseline migration generated from the current live
+  schema, rather than adopting a new framework.
 
 ---
 
