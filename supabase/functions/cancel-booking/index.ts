@@ -6,6 +6,91 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
 }
 
+// Mirrors js/utils.js's escapeHtml() exactly.
+function escapeHtml(str: unknown): string {
+  if (str === null || str === undefined) return ''
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;')
+}
+
+/**
+ * Sends the cancellation-confirmation email and logs the attempt to
+ * email_queue (same send-then-log pattern as submit-booking's
+ * sendReceivedEmail()). This used to be a DB trigger (handle_cancel_email)
+ * that only ever inserted an email_queue row with status='Pending' — since
+ * nothing in this app polls that table for pending rows, cancellation
+ * emails were silently never sent. Moved here so it's actually dispatched.
+ * Best-effort: throws are caught by the caller so a failure here can't
+ * undo an already-successful cancellation.
+ */
+async function sendCancellationEmail(supabaseAdmin: ReturnType<typeof createClient>, bookingId: string) {
+  const { data: booking, error: bookingErr } = await supabaseAdmin
+    .from('bookings')
+    .select('email, owner_name, business_name, instance_prefix, rejection_reason')
+    .eq('id', bookingId)
+    .single()
+
+  if (bookingErr || !booking?.email) {
+    throw new Error('Could not load booking for cancellation email: ' + (bookingErr?.message || 'not found'))
+  }
+
+  const { data: templateData, error: templateErr } = await supabaseAdmin
+    .from('email_templates')
+    .select('subject, body_html')
+    .eq('id', 'cancellation_confirmed')
+    .single()
+
+  if (templateErr || !templateData) {
+    throw new Error('Could not load "cancellation_confirmed" email template: ' + (templateErr?.message || 'not found'))
+  }
+
+  const replaceVars = (str: string) =>
+    (str || '')
+      .replace(/\{\{owner_name\}\}/g, escapeHtml(booking.owner_name || 'Trader'))
+      .replace(/\{\{business_name\}\}/g, escapeHtml(booking.business_name || 'your business'))
+      .replace(/\{\{booking_id\}\}/g, bookingId || '')
+      .replace(/\{\{reason\}\}/g, escapeHtml(booking.rejection_reason || ''))
+      // Not relevant to a cancellation confirmation — blank rather than
+      // leaking a raw {{placeholder}} into the email.
+      .replace(/\{\{cancel_link\}\}/g, '')
+      .replace(/\{\{cost\}\}/g, '')
+      .replace(/\{\{bank_details\}\}/g, '')
+      .replace(/\{\{location_id\}\}/g, '')
+
+  const subject = replaceVars(templateData.subject)
+  const body = replaceVars(templateData.body_html)
+
+  let status = 'Sent'
+  let errorMessage: string | null = null
+
+  try {
+    const { data: sendData, error: sendErr } = await supabaseAdmin.functions.invoke('send-email', {
+      body: { recipient: booking.email, subject, body }
+    })
+    if (sendErr) throw new Error(sendErr.message)
+    if (sendData && sendData.error) throw new Error(sendData.error)
+  } catch (e: any) {
+    status = 'Error'
+    errorMessage = e.message
+  }
+
+  const { error: logErr } = await supabaseAdmin.from('email_queue').insert({
+    recipient: booking.email,
+    subject,
+    body,
+    status,
+    error_message: errorMessage,
+    instance_prefix: booking.instance_prefix || null
+  })
+  if (logErr) console.warn('Failed to write to email_queue log:', logErr.message)
+
+  if (status === 'Error') throw new Error(errorMessage || 'Failed to send email')
+}
+
 Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -71,6 +156,14 @@ Deno.serve(async (req) => {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
+    }
+
+    if (data?.booking_id) {
+      try {
+        await sendCancellationEmail(supabaseClient, data.booking_id)
+      } catch (emailErr: any) {
+        console.warn('Failed to send cancellation confirmation email:', emailErr.message)
+      }
     }
 
     return new Response(JSON.stringify({ success: true, data }), {

@@ -1,4 +1,4 @@
-import { fetchKanbanData, updateBookingStatus, addNote, sendEmail, emailAllConfirmedBookings } from './api.js';
+import { fetchKanbanData, updateBookingStatus, addNote, sendEmail, queueBulkEmail } from './api.js';
 import { CONFIG, getStallCost } from './config.js';
 import { safeError, escapeHtml, sortBookings } from './utils.js';
 import { sharedUpdateStatus, populateDetailPane } from './shared.js';
@@ -392,15 +392,11 @@ export async function sendBulkEmail(btn) {
     btn.disabled = true;
 
     try {
-        const { success, failed } = await emailAllConfirmedBookings(confirmed, async () => ({ subject, body }));
+        const { queued } = await queueBulkEmail(confirmed.map(b => b.id), subject, body);
         window.closeModal('bulkEmailModal');
-        if (failed === 0) {
-            showToast(`${success} email${success !== 1 ? 's' : ''} queued successfully.`);
-        } else {
-            showToast(`${success} queued, ${failed} failed. Check console for details.`, 'error');
-        }
+        showToast(`${queued} email${queued !== 1 ? 's' : ''} queued and sending.`);
     } catch (e) {
-        showToast('Failed to send emails: ' + e.message, 'error');
+        showToast('Failed to queue emails: ' + e.message, 'error');
     } finally {
         btn.innerHTML = originalContent;
         btn.disabled = false;

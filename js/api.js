@@ -575,27 +575,24 @@ export async function auditLog(action, targetId, details = {}) {
 }
 
 /**
- * Bulk-queues HTML confirmation emails for an array of confirmed bookings.
- * @param {Array} bookings - Array of confirmed booking objects (must have `id`).
- * @param {Function} getEmailContent - Async fn(booking) => { subject, body } returning HTML email content.
- * @returns {Promise<{success: number, failed: number}>}
+ * Queues a bulk HTML email to a set of confirmed bookings via the
+ * queue-bulk-email Edge Function. The function inserts every recipient
+ * into email_queue as 'Pending' in one atomic server-side write and then
+ * drains it in the background (EdgeRuntime.waitUntil) — independent of
+ * this browser tab staying open, unlike the old client-driven send loop.
+ * @param {string[]} bookingIds
+ * @param {string} subject
+ * @param {string} body
+ * @returns {Promise<{queued: number}>}
  */
-export async function emailAllConfirmedBookings(bookings, getEmailContent) {
-    let success = 0;
-    let failed = 0;
-
-    for (const booking of bookings) {
-        try {
-            const { subject, body } = await getEmailContent(booking);
-            await sendEmail(booking.id, subject, body);
-            success++;
-        } catch (e) {
-            console.warn(`Failed to queue email for ${booking.id}:`, e.message);
-            failed++;
-        }
-    }
-
-    return { success, failed };
+export async function queueBulkEmail(bookingIds, subject, body) {
+    const sb = getSupabaseClient();
+    const { data, error } = await sb.functions.invoke('queue-bulk-email', {
+        body: { bookingIds, subject, body }
+    });
+    if (error) throw new Error(error.message);
+    if (data && data.error) throw new Error(data.error);
+    return data;
 }
 
 /**
