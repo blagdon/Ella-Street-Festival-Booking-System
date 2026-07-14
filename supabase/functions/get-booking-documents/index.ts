@@ -94,13 +94,15 @@ Deno.serve(async (req) => {
     }
 
     // Preserve input order; a per-file signing failure yields null rather
-    // than failing the whole request.
+    // than failing the whole request. createSignedUrls() already returns a
+    // full absolute URL (it builds it internally as `${this.url}${signedURL}`),
+    // not a relative path — don't re-prefix it with supabaseUrl.
     const documents = (signedData || []).map((entry) => {
       if (entry.error || !entry.signedUrl) {
         console.warn('Failed to sign document path:', entry.path, entry.error)
         return null
       }
-      return `${supabaseUrl}${entry.signedUrl}`
+      return entry.signedUrl
     })
 
     return new Response(JSON.stringify({ documents }), {
