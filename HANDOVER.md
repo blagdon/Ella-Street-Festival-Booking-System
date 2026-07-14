@@ -156,7 +156,7 @@ hardcoded default at all** — they're `null`/`[]` until the settings table load
 | `send-email` | Admin JWT **or** the raw `SUPABASE_SERVICE_ROLE_KEY` as Bearer token ("trusted service call") | The only function that actually talks to Zoho. Delegates to `_shared/zoho.ts`. |
 | `queue-bulk-email` | Admin JWT only | Atomically inserts N `email_queue` rows as `Pending`, responds immediately, then drains them **in-process** (calls `sendViaZoho()` directly, not over HTTP) via `EdgeRuntime.waitUntil()` in the background. |
 | `get-reviews` | Admin JWT or trusted service call | SerpApi Google Maps review lookup for a business name, used by the performer-review-check feature. |
-| `get-booking-documents` | Admin JWT only | Resolves a booking's `documents` storage paths to time-limited (1hr) signed URLs via `createSignedUrls()`, since `esf-documents` is now (or will be — see below) a private bucket. Called from `js/shared.js`'s `populateDetailPane()` when rendering the Kanban/Summary detail pane. |
+| `get-booking-documents` | Admin JWT only | Resolves a booking's `documents` storage paths to time-limited (1hr) signed URLs via `createSignedUrls()` — `esf-documents` is a private bucket. Called from `js/shared.js`'s `populateDetailPane()` when rendering the Kanban/Summary detail pane. |
 | `_shared/zoho.ts` | n/a (imported, not deployed) | Zoho OAuth2 token refresh/cache + send logic, shared by `send-email` and `queue-bulk-email`. |
 | `_shared/bucket.ts` | n/a (imported, not deployed) | Resolves the document bucket name (env var, else `settings.bucket_name`, else `'esf-documents'`), shared by `submit-booking` and `get-booking-documents`. |
 
@@ -225,9 +225,9 @@ One row per application, all types share this table, distinguished by `instance_
 PK, e.g. `ESF26-FOOD-0042`), `status` (`Pending`/`Confirmed`/`Rejected`/`Cancelled`/
 `On Hold`/`HCC Checks`), `business_name`, `owner_name`, `email`, `stall_cost`,
 `cancel_token`, `rejection_reason`. **`bookings.location_id` still exists as a column
-but is deprecated** — see below. `documents` (`text[]`) stores **storage paths**, not
-public URLs — see the `esf-documents` privacy migration below; older rows may still
-hold full public URLs until `backfill_booking_document_paths.sql` is run.
+but is deprecated** — see below. `documents` (`text[]`) stores **storage paths into
+the (private) `esf-documents` bucket**, not public URLs — resolved to a signed URL on
+demand by the `get-booking-documents` Edge Function.
 
 ### `booking_locations` — replaces the old CSV location column
 Join table: `(booking_id, location_id)`. Superseded `bookings.location_id` (which used
@@ -448,22 +448,21 @@ tested live, and deployed. In order, what was just finished:
       - `js/shared.js`'s `populateDetailPane()` now calls that function for
         path-shaped `documents` entries, while still rendering old full-URL entries
         directly (backward-compatible with pre-migration bookings).
-      - **Both Edge Functions are deployed and live.** Two SQL files are drafted but
-        **not yet run**, and must be run in this order:
-        1. `backfill_booking_document_paths.sql` — converts existing bookings'
-           stored public URLs to bare paths.
-        2. `fix_esf_documents_bucket_private.sql` — sets `esf-documents` private.
-           **Do not run this before the backfill or without verifying document links
-           still open correctly in `kanban_m.html`/`summary.html` first** — running it
-           out of order or without live verification will break existing document
-           links (they'd still be full URLs pointing at a bucket that now 400s).
-      - **Not yet verified against a real logged-in admin session** — I don't have
-        admin credentials to test the browser flow myself. Confirmed only that
-        `get-booking-documents` correctly rejects unauthenticated requests (401) and
-        that both functions deployed without bundler errors. Before running the two
-        SQL files above, log in as admin and open a booking with existing documents
-        in `kanban_m.html` to confirm links still resolve via the legacy-URL fallback
-        path, then re-check after each SQL file runs.
+      - **Both SQL files run; database/storage state verified live.**
+        `backfill_booking_document_paths.sql` ran first — confirmed via a live
+        schema dump that no `bookings.documents` entry contains the old
+        `/storage/v1/object/public/esf-documents/` URL prefix anymore (e.g.
+        `ESF26-FOOD-0005` now holds bare
+        `ESF26-FOOD-0005/1777627505556_Event_Set_Up_2.jpg`). Then
+        `fix_esf_documents_bucket_private.sql` ran — `esf-documents` now shows
+        `public = false` in `storage.buckets`, same as `documents` and
+        `performer-documents`. All three buckets are private.
+      - **Not independently verified in the browser** — I confirmed the DB/storage
+        state directly (schema dumps), not the live `kanban_m.html`/`summary.html`
+        UI myself (no admin credentials). If document links ever appear broken for
+        an existing booking, check whether its `documents` entries actually got
+        backfilled to paths, and whether `get-booking-documents` returns a
+        non-null signed URL for them.
 
 **Explicitly deferred, not started:** Slack/Discord/Sentry-style alerting for Edge
 Function errors — the project owner said "I'll do it later," don't assume it's wanted
@@ -519,18 +518,14 @@ stay in the separate `ellafestperformersadmin.vercel.app` codebase.
   allowed to trigger real email sends. Don't remove this without providing another way
   for those two functions to send email.
 
-- **`esf-documents` bucket privacy migration is mid-flight — check `storage.buckets.public`
-  before assuming either state.** The bucket is still `public = true` as of this
-  writing; the code (paths not URLs, `get-booking-documents` signed-URL resolution)
-  is already deployed and ready for it to go private, but the two SQL files that
-  actually flip it (`backfill_booking_document_paths.sql`,
-  `fix_esf_documents_bucket_private.sql`) haven't been run yet — see
-  [Next Steps](#8-next-steps) for the required order. Until they're run,
-  `bookings.documents` for existing rows still holds full public URLs (which
-  `populateDetailPane()` renders directly, unchanged) while new rows from
-  `submit-booking` already hold bare storage paths (which get signed on demand). Both
-  shapes coexist correctly by design during this transition — don't "fix" one
-  assuming it's a bug.
+- **All three storage buckets (`documents`, `performer-documents`, `esf-documents`)
+  are private as of this session** — don't assume `getPublicUrl()`/raw public URLs
+  work for any of them. `esf-documents` document links go through the
+  `get-booking-documents` Edge Function (admin-JWT-gated, returns 1-hour signed
+  URLs); `js/shared.js`'s `populateDetailPane()` still has a fallback path that
+  renders an entry directly if it happens to already be an absolute URL (harmless
+  leftover from the migration — every row was backfilled to bare paths, but the
+  fallback costs nothing to keep and protects against any row that somehow wasn't).
 
 - **HCC council notification is manual by design — do not automate it.** An earlier,
   since-deleted `trigger_hcc_workflow()` DB trigger auto-emailed the real council on

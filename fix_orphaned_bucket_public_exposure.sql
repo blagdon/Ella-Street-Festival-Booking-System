@@ -1,0 +1,35 @@
+-- ===================================================================
+-- FIX: make orphaned storage buckets private
+-- Run this script in the Supabase SQL Editor (https://supabase.com)
+--
+-- `documents` and `performer-documents` are both public=true storage
+-- buckets. Neither is referenced anywhere in this repo's code — the
+-- performer application feature (which uploads to them) lives entirely
+-- in a separate codebase/deployment (ellafestperformersadmin.vercel.app)
+-- and there is no performer-management admin UI in this repo to view
+-- them either. `documents` already holds 17 real applicant-uploaded
+-- insurance PDFs (confirmed via a live storage.objects check), publicly
+-- readable by anyone with (or able to guess/enumerate) the URL, no auth
+-- required.
+--
+-- Since nothing in this repo depends on public read access to either
+-- bucket, and no admin UI anywhere currently needs to display their
+-- contents, setting them private has no known functional impact here.
+-- If the separate performer-admin app turns out to rely on public URLs
+-- for these buckets, that's a real, live external consumer this repo
+-- can't see (see HANDOVER.md's performer-feature gotcha) — confirm with
+-- whoever owns that app if anything breaks.
+--
+-- `esf-documents` (this repo's own bucket, actively used by the public
+-- booking forms + admin document links) is deliberately NOT touched by
+-- this script — it needs an application-code migration to signed URLs
+-- first, tracked separately, before it can be made private.
+-- ===================================================================
+
+UPDATE storage.buckets SET public = false WHERE id IN ('documents', 'performer-documents');
+
+-- ===================================================================
+-- VERIFY:
+--   SELECT id, public FROM storage.buckets WHERE id IN ('documents', 'performer-documents');
+--   -- both rows should show public = false.
+-- ===================================================================
