@@ -1,0 +1,32 @@
+-- ===================================================================
+-- FIX: drop the orphaned queue_confirmation_email() trigger function
+-- Run this script in the Supabase SQL Editor (https://supabase.com)
+--
+-- queue_confirmation_email() is a SECURITY DEFINER trigger function that
+-- inserts a hardcoded "Application Received" email into email_queue.
+-- It was missed by both drop_orphaned_email_trigger_functions.sql (which
+-- dropped four sibling functions doing the exact same superseded job:
+-- handle_new_booking_email, queue_booking_receipt_email,
+-- trigger_auto_response, trigger_hcc_workflow) and
+-- fix_function_search_path.sql (which pinned search_path on the
+-- SECURITY DEFINER functions that are actually still in use).
+--
+-- Confirmed via a full, unfiltered pg_trigger dump: no trigger anywhere
+-- calls this function today. The real, current implementation of the
+-- "received" auto-email is submit-booking's sendReceivedEmail(), which
+-- sends it synchronously at submission time. Like its four siblings,
+-- this is dead code that would silently start firing (queuing a
+-- duplicate, never-actually-sent "Pending" email_queue row — or if a
+-- future bulk-email drain ever swept it up, actually double-sending)
+-- if anyone ever re-attached a trigger to it. Dropping it removes that
+-- landmine rather than hardening it in place.
+-- ===================================================================
+
+DROP FUNCTION IF EXISTS public.queue_confirmation_email();
+
+-- ===================================================================
+-- VERIFY:
+--   SELECT proname FROM pg_proc
+--   WHERE pronamespace = 'public'::regnamespace AND proname = 'queue_confirmation_email';
+--   -- should return 0 rows.
+-- ===================================================================
