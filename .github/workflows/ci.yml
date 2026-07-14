@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  # Same check as .githooks/pre-commit, run here too since a local git hook
+  # can be bypassed (--no-verify, a fresh clone that never ran `npm install`,
+  # etc.) - this is the one guard that must never be skippable. See
+  # HANDOVER.md's sibling-function-HTTP-call Gotcha: this exact pattern
+  # caused three real production bugs in one session.
+  grep-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: No sibling Edge Function HTTP calls
+        run: bash .githooks/pre-commit
+
+  # Read-only schema dump against the LIVE project, diffed against the
+  # checked-in rls_grants_snapshot.txt. Never writes anything - same
+  # operation done manually via `supabase db dump` throughout this repo's
+  # history, just automated. Needs SUPABASE_ACCESS_TOKEN (a personal access
+  # token, not a project-specific key) as a repo secret.
+  rls-grants-check:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Link to the live project
+        run: supabase link --project-ref rsnxhuhibglieofikkpo
+      - name: Check RLS policies/grants match the committed snapshot
+        run: bash scripts/check-rls-grants-snapshot.sh
+
+  # tests/integration.test.mjs, tests/workflow.test.mjs, tests/security.test.mjs -
+  # all run only against the disposable "test backup" Supabase project
+  # (qeplpcnrkgpaawfyliap), every file hard-refuses to run against anything
+  # else. Needs that project's URL/anon/service-role keys and the seeded
+  # test admin's email/password as repo secrets (see HANDOVER.md's Testing
+  # section for the one-time project-side setup: deploying the three Edge
+  # Functions there and setting the Turnstile test secret - this workflow
+  # assumes that's already done, it doesn't redo it on every run).
+  integration-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm install
+      - name: Write .env.test
+        run: |
+          cat <<EOF > .env.test
+          TEST_SUPABASE_URL=${{ secrets.TEST_SUPABASE_URL }}
+          TEST_SUPABASE_ANON_KEY=${{ secrets.TEST_SUPABASE_ANON_KEY }}
+          TEST_SUPABASE_SERVICE_ROLE_KEY=${{ secrets.TEST_SUPABASE_SERVICE_ROLE_KEY }}
+          TEST_ADMIN_EMAIL=${{ secrets.TEST_ADMIN_EMAIL }}
+          TEST_ADMIN_PASSWORD=${{ secrets.TEST_ADMIN_PASSWORD }}
+          EOF
+      - name: Ensure test fixtures (idempotent)
+        run: npm run test:setup
+      - name: Run integration/workflow/security tests
+        run: npm run test:integration
