@@ -96,7 +96,7 @@ client via a CDN `<script>` tag (not npm); admin pages use native ES module impo
 ├── api/ping.js                  ← Vercel serverless fn — Supabase keep-alive cron
 ├── supabase/
 │   ├── config.toml              ← Local Supabase dev config (Postgres 17)
-│   ├── migrations/              ← Supabase CLI migrations (public schema only, since 2026-07-14)
+│   ├── migrations/              ← Supabase CLI migrations (public schema + storage buckets/policies, since 2026-07-14)
 │   └── functions/
 │       ├── _shared/zoho.ts      ← Shared Zoho OAuth+send logic
 │       ├── _shared/bucket.ts    ← Shared document-bucket-name resolver
@@ -192,10 +192,15 @@ human-in-the-loop principle as before, just via the CLI instead of pasting into 
 Editor. **No agent should run `supabase db push` against the live project directly** —
 same rule as the old convention, just a different mechanism for a human to trigger it.
 
-**Known gap**: the baseline only covers `public`. The `storage.objects` RLS policies for
-`esf-documents`/`documents`/`performer-documents` (written this session as root-level
-fix files) aren't yet captured as a migration — would need to be extracted separately,
-filtered to exclude Supabase's own internal storage schema setup. Not done yet.
+**Resolved (2026-07-14)**: `supabase/migrations/20260714144652_storage_buckets_and_policies.sql`
+covers the storage side — the three bucket definitions (`documents`,
+`performer-documents`, `esf-documents`, all `public=false`) and the one RLS
+policy on `storage.objects` (`"Strict Public Uploads"`), kept in a separate
+file from the `public` baseline for the same reason: the `storage` schema
+itself is platform-managed, and a migration can't touch its internal setup.
+Verified against the disposable test project — including the realistic case
+of an older backup whose `esf-documents` bucket was still `public=true` with
+no size/type limits, correctly brought in line by the migration's upsert.
 
 **The ~30 existing root-level `fix_*.sql`/`add_*.sql`/`drop_*.sql` files are left in
 place as historical record**, not retroactively converted into migrations — the baseline
@@ -479,11 +484,13 @@ Root-level `.sql` files named `verb_target.sql` (`fix_bookings_rls_exposure.sql`
 `add_schedules_location_fk.sql`, `drop_unused_admin_functions.sql`) are the pre-2026-07-14
 convention: header comment block (what/why), the DDL, a `-- VERIFY:` query, handed to a
 human to paste into the SQL Editor, confirmed working, then committed. These still exist
-as historical record and the storage bucket/policy fixes still follow this pattern (see
-[Migrations](#migrations-supabase-cli) for why). **For anything touching the `public`
-schema**, the current convention is `supabase migration new <name>` under
+as historical record. **The current convention for anything touching the `public` schema
+or storage buckets/`storage.objects` policies** is `supabase migration new <name>` under
 `supabase/migrations/`, applied via a human running `supabase db push` — same
-draft/review/confirm/commit shape, different mechanism.
+draft/review/confirm/commit shape, different mechanism. Keep `storage` and `public`
+changes in separate migration files (see [Migrations](#migrations-supabase-cli) for why) —
+never dump the full `storage` schema into one, only the bucket rows and `storage.objects`
+policies that are actually ours.
 
 ### No inline event handlers
 CSP (`index.html` and every other page's `<meta http-equiv="Content-Security-Policy">`)
@@ -641,7 +648,21 @@ tested live, and deployed. In order, what was just finished:
     Verified against the disposable test project (10/10 tests green across 4
     consecutive runs, including the concurrency test) before deploying the same
     fix to the live project. See [Testing](#testing) in section 6 for how to run
-    this suite and what setup it needs. Slack/Discord/Sentry-style alerting for Edge
+    this suite and what setup it needs.
+19. Closed the storage-schema migration gap: `supabase/migrations/20260714144652_storage_buckets_and_policies.sql`
+    covers the three bucket definitions and the one `storage.objects` RLS
+    policy, kept separate from the `public` baseline for the same
+    platform-managed-schema reason. Verified against the disposable test
+    project, including the realistic case of the project's older
+    `esf-documents` bucket (still `public=true`, no size/type limits) being
+    correctly brought in line by the migration's upsert. **Not yet pushed to
+    the live project** — run by a human via `supabase db push` while linked
+    to `rsnxhuhibglieofikkpo` (per the no-agent-runs-db-push-on-live
+    convention); the live project's actual bucket/policy state already
+    matches what this migration produces (it was the source), so this is
+    about recording it in the migration history, not changing anything live.
+
+**Explicitly deferred, not started:** Slack/Discord/Sentry-style alerting for Edge
 Function errors — the project owner said "I'll do it later," don't assume it's wanted
 now without asking.
 
