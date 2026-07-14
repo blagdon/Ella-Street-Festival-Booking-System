@@ -214,6 +214,28 @@ permanent record.** No agent should execute SQL directly against the live databa
   `email_templates`, despite `ARCHITECTURE.md` claiming otherwise.
 - No error/alerting integration (Slack/Discord/Sentry) for Edge Function failures —
   explicitly deferred by the project owner ("I'll do it later").
+- **No automated tests at all** — `package.json` has only `tailwindcss`/`postcss`
+  build scripts, no `.github/` CI. Nothing exercises the Edge Functions, RLS
+  policies, or booking-ID/location-conflict logic — exactly the kind of stateful
+  business logic that regresses silently (this session found three real bugs in
+  that category: `queue-bulk-email`, `cancel-booking`, and `submit-booking` all
+  independently hit the same sibling-function-HTTP-call failure, one of them live
+  in production on a real submission). Explicitly deferred by the project owner
+  ("let's do it later") — don't start building test infra unprompted. If asked to
+  revisit, the discussed starting point, cheapest-to-most-expensive:
+  1. A static grep guard (CI or pre-commit) failing if any
+     `supabase/functions/**/*.ts` contains `functions.invoke(` — would have caught
+     all three bugs above before they shipped, no test framework needed.
+  2. An RLS/grants snapshot test — query `pg_policies` +
+     `information_schema.column_privileges`, diff against a checked-in expected
+     baseline. Nearly every third-party review comment this session was either
+     confirming or *incorrectly* flagging an RLS/grant issue (see the
+     `bookings`/`performers` column-grant gotcha above) — this would resolve that
+     class of question in seconds instead of a live schema dump each time.
+  3. Real integration tests for Edge Functions and the booking-ID/
+     location-conflict trigger logic (Deno's test runner against a live/DEV
+     Supabase instance, or `pgTAP` for the trigger) — the biggest lift, no
+     existing harness to build on.
 
 ---
 
