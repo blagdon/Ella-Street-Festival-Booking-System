@@ -150,7 +150,7 @@ hardcoded default at all** — they're `null`/`[]` until the settings table load
 | Function | Auth | Purpose |
 |---|---|---|
 | `submit-booking` | None (`--no-verify-jwt`) | Only path for creating a public booking. Rebuilds the row from an explicit allow-list (`sanitizeBookingInput()`) rather than trusting the request body — mass-assignment protection. Sends the "received" auto-email itself (`sendReceivedEmail()`). |
-| `cancel-booking` | None (`--no-verify-jwt`), gated by Cloudflare Turnstile | Verifies the Turnstile token, calls `cancel_booking_secure()` RPC, then sends the cancellation-confirmation email itself (`sendCancellationEmail()`). |
+| `cancel-booking` | None (`--no-verify-jwt`), gated by Cloudflare Turnstile | Verifies the Turnstile token, calls `cancel_booking_secure()` RPC, then sends the cancellation-confirmation email itself (`sendCancellationEmail()`, calls `sendViaZoho()` in-process, same as `queue-bulk-email`). |
 | `send-email` | Admin JWT **or** the raw `SUPABASE_SERVICE_ROLE_KEY` as Bearer token ("trusted service call") | The only function that actually talks to Zoho. Delegates to `_shared/zoho.ts`. |
 | `queue-bulk-email` | Admin JWT only | Atomically inserts N `email_queue` rows as `Pending`, responds immediately, then drains them **in-process** (calls `sendViaZoho()` directly, not over HTTP) via `EdgeRuntime.waitUntil()` in the background. |
 | `get-reviews` | Admin JWT or trusted service call | SerpApi Google Maps review lookup for a business name, used by the performer-review-check feature. |
@@ -407,6 +407,9 @@ tested live, and deployed. In order, what was just finished:
 9. Made bulk email reliable: server-side atomic queue + background drain, fixed two
    real bugs found while implementing it (missing `Authorization` header in
    `EdgeRuntime.waitUntil()`, and unreliable rapid-fire sibling-function HTTP calls)
+10. Closed the same sibling-function HTTP gap in `cancel-booking`'s
+    `sendCancellationEmail()` — now calls `sendViaZoho()` in-process instead of
+    `functions.invoke('send-email', ...)`, matching `queue-bulk-email`
 
 **Explicitly deferred, not started:** Slack/Discord/Sentry-style alerting for Edge
 Function errors — the project owner said "I'll do it later," don't assume it's wanted
@@ -451,6 +454,10 @@ stay in the separate `ellafestperformersadmin.vercel.app` codebase.
   `supabase/functions/_shared/` and call it **in-process**, not over HTTP, from any
   background/bulk code path. Follow this pattern for anything similar in future rather
   than re-adding retries/pacing around repeated sibling-function HTTP calls.
+  `cancel-booking`'s `sendCancellationEmail()` was still doing the HTTP-hop
+  `functions.invoke('send-email', ...)` as of the start of this session — same failure
+  mode, just a single call instead of fifty, so much lower probability per invocation
+  but not zero. Fixed to call `sendViaZoho()` directly, same as `queue-bulk-email`.
 
 - **`send-email` has a "trusted service call" bypass**: a request presenting the raw
   `SUPABASE_SERVICE_ROLE_KEY` as its Bearer token skips the admin-JWT check entirely.
