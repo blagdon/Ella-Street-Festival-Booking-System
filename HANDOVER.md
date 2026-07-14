@@ -151,7 +151,7 @@ hardcoded default at all** — they're `null`/`[]` until the settings table load
 
 | Function | Auth | Purpose |
 |---|---|---|
-| `submit-booking` | None (`--no-verify-jwt`) | Only path for creating a public booking. Rebuilds the row from an explicit allow-list (`sanitizeBookingInput()`) rather than trusting the request body — mass-assignment protection. Sends the "received" auto-email itself (`sendReceivedEmail()`). Stores uploaded document **storage paths** in `bookings.documents`, not public URLs (see the `esf-documents` privacy migration below). |
+| `submit-booking` | None (`--no-verify-jwt`) | Only path for creating a public booking. Rebuilds the row from an explicit allow-list (`sanitizeBookingInput()`) rather than trusting the request body — mass-assignment protection. Sends the "received" auto-email itself (`sendReceivedEmail()`, calls `sendViaZoho()` in-process, same as `queue-bulk-email`/`cancel-booking`). Stores uploaded document **storage paths** in `bookings.documents`, not public URLs (see the `esf-documents` privacy migration below). |
 | `cancel-booking` | None (`--no-verify-jwt`), gated by Cloudflare Turnstile | Verifies the Turnstile token, calls `cancel_booking_secure()` RPC, then sends the cancellation-confirmation email itself (`sendCancellationEmail()`, calls `sendViaZoho()` in-process, same as `queue-bulk-email`). |
 | `send-email` | Admin JWT **or** the raw `SUPABASE_SERVICE_ROLE_KEY` as Bearer token ("trusted service call") | The only function that actually talks to Zoho. Delegates to `_shared/zoho.ts`. |
 | `queue-bulk-email` | Admin JWT only | Atomically inserts N `email_queue` rows as `Pending`, responds immediately, then drains them **in-process** (calls `sendViaZoho()` directly, not over HTTP) via `EdgeRuntime.waitUntil()` in the background. |
@@ -492,6 +492,15 @@ tested live, and deployed. In order, what was just finished:
     dropped, not patched). Confirmed via a full `pg_trigger` dump that nothing calls
     it; the real "received" auto-email is `submit-booking`'s `sendReceivedEmail()`.
     Run and verified live.
+16. Fixed `submit-booking`'s `sendReceivedEmail()` — same sibling-function HTTP call
+    pattern as items 10 and (originally) `queue-bulk-email`, and this one **actually
+    failed live**: a real food stall submission (`ESF26-FOOD-0028`) got
+    `email_queue.status='Error'`, `'Edge Function returned a non-2xx status code'` for
+    its "Application Received" email. Diagnosed by reading `email_queue` directly
+    (fastest path to the real error — `supabase functions logs` isn't supported by
+    this CLI version). Fixed to call `sendViaZoho()` directly, deployed, and
+    confirmed no `functions.invoke('send-email'` calls remain anywhere in
+    `supabase/functions/`.
 
 **Explicitly deferred, not started:** Slack/Discord/Sentry-style alerting for Edge
 Function errors — the project owner said "I'll do it later," don't assume it's wanted
@@ -540,6 +549,14 @@ stay in the separate `ellafestperformersadmin.vercel.app` codebase.
   `functions.invoke('send-email', ...)` as of the start of this session — same failure
   mode, just a single call instead of fifty, so much lower probability per invocation
   but not zero. Fixed to call `sendViaZoho()` directly, same as `queue-bulk-email`.
+  `submit-booking`'s `sendReceivedEmail()` had the exact same unfixed pattern and
+  **actually failed live** on a real food stall submission (`ESF26-FOOD-0028`,
+  2026-07-14): `email_queue` logged the "Application Received" send as
+  `status='Error'`, `error_message='Edge Function returned a non-2xx status code'`.
+  Fixed the same way. **If you ever see this exact error message in `email_queue` or
+  reported by a user again, grep for `functions.invoke('send-email'` across
+  `supabase/functions/` first** — at three-for-three so far, any remaining direct
+  HTTP call to `send-email` from another function is a live bug, not a hypothetical.
 
 - **`send-email` has a "trusted service call" bypass**: a request presenting the raw
   `SUPABASE_SERVICE_ROLE_KEY` as its Bearer token skips the admin-JWT check entirely.
