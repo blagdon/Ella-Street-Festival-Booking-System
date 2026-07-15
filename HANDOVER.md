@@ -935,6 +935,24 @@ tested live, and deployed. In order, what was just finished:
     vars, this only applies to Stripe-specific credentials. `scripts/seed-test-project.mjs`
     updated to seed the test-mode pair into the disposable test project's `settings`
     table instead of expecting `supabase secrets set` there.
+26. **Deployed and verified Stripe payment collection against the disposable test
+    project** — migration pushed, both new functions deployed, real Stripe Test-mode
+    Checkout Session created via `tests/stripe-payment.test.mjs` against a live Stripe
+    test account. All 45 tests green (`npm run test:integration`). Found and fixed a
+    real gap along the way: `20260715085816`'s `REVOKE ALL ... FROM PUBLIC` on the two
+    new RPCs, and relying on "RLS enabled + zero policies" alone for
+    `stripe_webhook_events`, did **not** actually block `anon` on this project —
+    confirmed live, `anon` could call both RPCs directly and `SELECT` the ledger table
+    with no error. Root cause: `REVOKE ... FROM PUBLIC` doesn't touch a role's own
+    direct grant if that role was separately granted access via this project's
+    schema-level `ALTER DEFAULT PRIVILEGES` at object-creation time — `anon`/
+    `authenticated` need to be revoked **by name**, not just via `PUBLIC`. Fixed in
+    `20260715123703_fix_stripe_anon_authenticated_grants.sql` (a new migration, not an
+    edit to the already-applied one). **Worth checking whether the same gap exists on
+    `claim_pending_emails`** (baseline migration, same `REVOKE ... FROM PUBLIC`-only
+    pattern) — it was never actually tested for anon-rejection, unlike the new RPCs
+    here; not fixed as part of this session since it's pre-existing code outside this
+    feature's scope, but flagged for whoever picks this up next.
 
 **Explicitly deferred, not started:** Slack/Discord/Sentry-style alerting for Edge
 Function errors — the project owner said "I'll do it later," don't assume it's wanted
@@ -977,6 +995,21 @@ stay in the separate `ellafestperformersadmin.vercel.app` codebase.
   stuck at `Paid`, that recovery action (`js/api.js`'s `recoverStuckPaidBooking()`) is
   the fix, not re-running `finalizeConfirmation()` (which would clobber the real
   Stripe-recorded `payments.paid=true` back to `false`).
+
+- **`REVOKE ALL ... FROM PUBLIC` alone does NOT lock `anon`/`authenticated` out of a new
+  table or function on this project.** Confirmed live while testing the Stripe RPCs:
+  `anon` could still call `mark_stripe_payment_received()`/`finalize_stripe_confirmation()`
+  and `SELECT` from `stripe_webhook_events` despite both being `REVOKE ... FROM PUBLIC`
+  (functions) or RLS-enabled-with-zero-policies (table, which just silently returns
+  empty rows for a role with its own SELECT grant, rather than erroring). Root cause:
+  this project's schema-level `ALTER DEFAULT PRIVILEGES` grants new objects directly to
+  `anon`/`authenticated` at creation time — revoking `PUBLIC`'s blanket grant doesn't
+  touch a role's own separate direct grant. **Any new table/function meant to be
+  service_role-only needs an explicit `REVOKE ALL ... FROM "anon", "authenticated"` by
+  name** (see `20260715123703_fix_stripe_anon_authenticated_grants.sql` for the fix, and
+  the pattern to copy). `REVOKE` is a safe no-op if the grant didn't exist. **Not yet
+  checked**: whether `claim_pending_emails()` (baseline migration, same `FROM PUBLIC`-only
+  pattern) has the identical gap — it was never actually tested for anon-rejection.
 
 - **The public Supabase anon key being visible in `supabase-public.js` is intentional**,
   not a leak to fix. All real protection is RLS + `SECURITY DEFINER` role-check functions.
