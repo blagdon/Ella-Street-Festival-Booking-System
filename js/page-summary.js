@@ -35,6 +35,15 @@ function init() {
     const btnConfirmRejection = document.getElementById('btn-confirm-rejection');
     if (btnConfirmRejection) btnConfirmRejection.addEventListener('click', window.confirmRejection);
 
+    const btnRequestPayment = document.getElementById('btn-request-payment');
+    if (btnRequestPayment) btnRequestPayment.addEventListener('click', () => window.requestPaymentAction());
+
+    const btnResendPaymentRequest = document.getElementById('btn-resend-payment-request');
+    if (btnResendPaymentRequest) btnResendPaymentRequest.addEventListener('click', () => window.resendPaymentRequestAction());
+
+    const btnRecoverPaid = document.getElementById('btn-recover-paid');
+    if (btnRecoverPaid) btnRecoverPaid.addEventListener('click', () => window.recoverStuckPaidBookingAction());
+
     const btnSendSystemEmail = document.getElementById('btn-send-system-email');
     if (btnSendSystemEmail) btnSendSystemEmail.addEventListener('click', function () { window.sendSystemEmail(this); });
 

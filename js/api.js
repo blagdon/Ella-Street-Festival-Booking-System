@@ -226,9 +226,27 @@ export async function sendEmail(id, subject, body) {
 }
 
 /**
+ * Moves a chargeable booking to Pre-Confirmed and saves the agreed cost,
+ * without touching payments or sending any email — those only happen once
+ * the admin explicitly clicks "Request Payment" (chargeable, via Stripe) or
+ * the booking turns out to be free/£0 (handled separately by
+ * finalizeConfirmation, unchanged).
+ * @param {string} id
+ * @param {number} cost
+ */
+export async function preConfirmBooking(id, cost) {
+    validateBookingId(id);
+    const sb = getSupabaseClient();
+    const { error } = await sb.from(TBL_BOOKINGS).update({ status: 'Pre-Confirmed', stall_cost: cost }).eq('id', id);
+    if (error) throw error;
+    await auditLog('pre_confirm_booking', id, { stall_cost: cost });
+    return { status: 'success' };
+}
+
+/**
  * Finalizes a confirmation (handles payments logic).
- * @param {string} id 
- * @param {boolean} isChargeable 
+ * @param {string} id
+ * @param {boolean} isChargeable
  * @param {object|null} providedSnapshot - Optional booking snapshot to avoid redundant DB call
  * @param {number|null} overrideCost - Optional admin-specified cost override
  */
@@ -313,8 +331,9 @@ export async function fetchPayments(currentInstance) {
 
     const payMap = new Map(payments.map(p => [p.booking_id, p]));
 
-    // Filter bookings to only those that HAVE a payment record (chargeable ones)
-    return bookings.filter(b => payMap.has(b.id)).map(b => {
+    // Bookings that already have a payments row (chargeable, resolved one
+    // way or another) — unchanged from the original behavior.
+    const withPaymentRow = bookings.filter(b => payMap.has(b.id)).map(b => {
         const p = payMap.get(b.id);
         return {
             ...b,
@@ -324,6 +343,24 @@ export async function fetchPayments(currentInstance) {
             editor: p.editor,
         };
     });
+
+    // Additive: bookings mid-Stripe-flow (Payment Requested / Paid) don't
+    // get a payments row until the webhook actually succeeds, so without
+    // this they'd be invisible here even though a payment is genuinely
+    // in flight. Shown with paid:false and awaitingPayment:true so the UI
+    // can render a distinct "Awaiting Payment" badge instead of "UNPAID".
+    const awaitingPayment = bookings
+        .filter(b => !payMap.has(b.id) && ['Payment Requested', 'Paid'].includes(b.status))
+        .map(b => ({
+            ...b,
+            paid: false,
+            date_paid: null,
+            bank_ref: null,
+            editor: null,
+            awaitingPayment: true
+        }));
+
+    return [...withPaymentRow, ...awaitingPayment];
 }
 
 /**
@@ -342,6 +379,62 @@ export async function updatePayment(payload) {
 
     if (error) throw error;
     await auditLog('update_payment', payload.booking_id, { paid: payload.paid, amount: payload.stall_cost, editor: payload.editor });
+    return { status: 'success' };
+}
+
+/**
+ * Creates a Stripe Checkout Session for a Pre-Confirmed booking and emails
+ * the stallholder a payment link (server-side, via the create-checkout-session
+ * Edge Function). Also used for "Resend Payment Request" — same function,
+ * called again from a Payment Requested booking, which just generates a
+ * fresh session (Stripe Checkout Sessions expire after 24h) and re-sends.
+ * @param {string} bookingId
+ */
+export async function requestPayment(bookingId) {
+    validateBookingId(bookingId);
+    const sb = getSupabaseClient();
+    const { data, error } = await sb.functions.invoke('create-checkout-session', {
+        body: { booking_id: bookingId }
+    });
+    if (error) {
+        const errMsg = await parseEdgeFunctionError(error, 'Failed to create payment request');
+        throw new Error(errMsg);
+    }
+    if (data && data.error) throw new Error(data.error);
+    await auditLog('request_payment', bookingId);
+    return data;
+}
+
+/**
+ * Alias for requestPayment — kept as a separate export so call sites read
+ * clearly ("Resend Payment Request" vs "Request Payment"), even though the
+ * underlying Edge Function call is identical.
+ * @param {string} bookingId
+ */
+export async function resendPaymentRequest(bookingId) {
+    const data = await requestPayment(bookingId);
+    await auditLog('resend_payment_request', bookingId);
+    return data;
+}
+
+/**
+ * Manual recovery action for a booking stuck at 'Paid' (the Stripe webhook
+ * completed mark_stripe_payment_received but died before
+ * finalize_stripe_confirmation). Deliberately a PLAIN status-only update —
+ * never calls finalizeConfirmation, which would re-upsert payments with
+ * paid:false and clobber the real Stripe payment that already succeeded.
+ * No-ops (via the WHERE clause) if the booking isn't actually still 'Paid'.
+ * @param {string} id
+ */
+export async function recoverStuckPaidBooking(id) {
+    validateBookingId(id);
+    const sb = getSupabaseClient();
+    const { error } = await sb.from(TBL_BOOKINGS)
+        .update({ status: 'Confirmed', date_confirmed: new Date().toISOString() })
+        .eq('id', id)
+        .eq('status', 'Paid');
+    if (error) throw error;
+    await auditLog('recover_stuck_paid_booking', id);
     return { status: 'success' };
 }
 

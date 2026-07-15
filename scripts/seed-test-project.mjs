@@ -1,10 +1,15 @@
 // One-time (idempotent) fixture setup for integration tests, run against the
 // disposable "test backup" Supabase project — never the real project. Creates
 // the admin test user + role, and the settings/email_templates rows the
-// deployed submit-booking/cancel-booking/queue-bulk-email functions need to
-// run at all. Deliberately does NOT set any zoho_* settings: email sends are
-// meant to fail predictably during tests (logged as email_queue Error), never
-// actually reach Zoho.
+// deployed submit-booking/cancel-booking/queue-bulk-email/create-checkout-session/
+// stripe-webhook functions need to run at all. Deliberately does NOT set any
+// zoho_* settings: email sends are meant to fail predictably during tests
+// (logged as email_queue Error), never actually reach Zoho — the template
+// rows still need to exist so that failure happens at the Zoho API call, not
+// at "template not found". Stripe credentials (like Zoho's) live in the
+// settings table, not Edge Function secrets — seeded here from
+// TEST_STRIPE_SECRET_KEY/TEST_STRIPE_WEBHOOK_SECRET (.env.test / CI repo
+// secrets), Test-mode only, never a live key.
 import { createClient } from '@supabase/supabase-js';
 
 process.loadEnvFile('.env.test');
@@ -54,6 +59,15 @@ async function ensureSettings() {
     { key: 'bucket_name', value: 'esf-documents' },
     { key: 'booking_prefix', value: 'ESF26' },
   ];
+
+  const testStripeKey = process.env.TEST_STRIPE_SECRET_KEY;
+  const testWebhookSecret = process.env.TEST_STRIPE_WEBHOOK_SECRET;
+  if (testStripeKey) rows.push({ key: 'stripe_secret_key_test', value: testStripeKey });
+  if (testWebhookSecret) rows.push({ key: 'stripe_webhook_secret_test', value: testWebhookSecret });
+  if (!testStripeKey || !testWebhookSecret) {
+    console.warn('TEST_STRIPE_SECRET_KEY/TEST_STRIPE_WEBHOOK_SECRET not set — stripe-payment.test.mjs\'s create-checkout-session success-path tests will fail until these are added to .env.test.');
+  }
+
   const { error } = await admin.from('settings').upsert(rows, { onConflict: 'key' });
   if (error) throw new Error(`Failed to upsert settings: ${error.message}`);
   console.log('Ensured settings rows:', rows.map((r) => r.key).join(', '));
@@ -70,6 +84,16 @@ async function ensureEmailTemplates() {
       id: 'cancellation_confirmed',
       subject: 'Cancellation Confirmed (Ref: {{booking_id}})',
       body_html: 'Dear {{owner_name}}, your booking {{booking_id}} for {{business_name}} has been cancelled.',
+    },
+    {
+      id: 'confirmed_chargeable',
+      subject: 'Booking Confirmed (Ref: {{booking_id}})',
+      body_html: 'Dear {{owner_name}}, your booking {{booking_id}} for {{business_name}} is confirmed. Cost: {{cost}}. Bank details: {{bank_details}}. Cancel: {{cancel_link}}',
+    },
+    {
+      id: 'payment_requested',
+      subject: 'Payment required (Ref: {{booking_id}})',
+      body_html: 'Dear {{owner_name}}, please pay {{cost}} for {{business_name}} ({{booking_id}}) using this link: {{payment_link}}',
     },
   ];
   const { error } = await admin.from('email_templates').upsert(rows, { onConflict: 'id' });

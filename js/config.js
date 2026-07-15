@@ -49,12 +49,15 @@ export const CONFIG = {
             GENERAL: null,
             DEV: null
         },
-        STATUS_LIST: ['Pending', 'Confirmed', 'Rejected', 'Cancelled', 'On Hold', 'HCC Checks'],
+        STATUS_LIST: ['Pending', 'Pre-Confirmed', 'Payment Requested', 'Paid', 'Confirmed', 'Rejected', 'Cancelled', 'On Hold', 'HCC Checks'],
         // No hardcoded defaults — populated entirely from the settings table
         // (allowed_stall_types) via loadStallCosts()/applySettingsToConfig().
         ALLOWED_TYPES: [],
         STATUS_COLORS: {
             'Pending': 'bg-yellow-100 text-yellow-700',
+            'Pre-Confirmed': 'bg-teal-100 text-teal-700',
+            'Payment Requested': 'bg-indigo-100 text-indigo-700',
+            'Paid': 'bg-cyan-100 text-cyan-700',
             'Confirmed': 'bg-green-100 text-green-700',
             'Rejected': 'bg-red-100 text-red-700',
             'Cancelled': 'bg-gray-100 text-gray-700',

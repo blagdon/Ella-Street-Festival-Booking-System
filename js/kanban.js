@@ -1,8 +1,30 @@
-import { fetchKanbanData, updateBookingStatus, addNote, sendEmail, queueBulkEmail } from './api.js';
+import { fetchKanbanData, updateBookingStatus, addNote, sendEmail, queueBulkEmail, requestPayment, resendPaymentRequest, recoverStuckPaidBooking } from './api.js';
 import { CONFIG, getStallCost } from './config.js';
 import { safeError, escapeHtml, sortBookings } from './utils.js';
 import { sharedUpdateStatus, populateDetailPane } from './shared.js';
 import { showToast, renderInstanceBadge, showConfirm } from './ui.js';
+
+// Single source of truth for which columns exist, per instance — HCC Checks
+// is Food-instance-only; the new payment-flow statuses apply everywhere.
+function getBoardStatuses() {
+    const instance = localStorage.getItem('ESF_INSTANCE') || 'DEV';
+    return instance === 'GENERAL'
+        ? ['Pending', 'On Hold', 'Pre-Confirmed', 'Payment Requested', 'Paid', 'Confirmed', 'Rejected', 'Cancelled']
+        : ['Pending', 'On Hold', 'HCC Checks', 'Pre-Confirmed', 'Payment Requested', 'Paid', 'Confirmed', 'Rejected', 'Cancelled'];
+}
+
+function cardBorderClass(status) {
+    switch (status) {
+        case 'Confirmed': return 'border-green-500';
+        case 'Rejected': return 'border-red-500';
+        case 'On Hold': return 'border-purple-500';
+        case 'HCC Checks': return 'border-orange-500';
+        case 'Pre-Confirmed': return 'border-teal-500';
+        case 'Payment Requested': return 'border-indigo-500';
+        case 'Paid': return 'border-cyan-500';
+        default: return 'border-yellow-400';
+    }
+}
 
 let drake;
 let allBookings = [];
@@ -39,10 +61,7 @@ function initInstanceBadge() {
 
 
 function renderBoard(data) {
-    const instance = localStorage.getItem('ESF_INSTANCE') || 'DEV';
-    const statuses = instance === 'GENERAL'
-        ? ['Pending', 'On Hold', 'Confirmed', 'Rejected', 'Cancelled']
-        : ['Pending', 'On Hold', 'HCC Checks', 'Confirmed', 'Rejected', 'Cancelled'];
+    const statuses = getBoardStatuses();
 
     statuses.forEach(status => {
         const col = document.getElementById(`col-${status}`);
@@ -72,11 +91,7 @@ function createCard(item) {
         openDetails(item.id);
     };
 
-    if (item.status === 'Confirmed') div.classList.add('border-green-500');
-    else if (item.status === 'Rejected') div.classList.add('border-red-500');
-    else if (item.status === 'On Hold') div.classList.add('border-purple-500');
-    else if (item.status === 'HCC Checks') div.classList.add('border-orange-500');
-    else div.classList.add('border-yellow-400');
+    div.classList.add(cardBorderClass(item.status));
 
     const powerIcon = (item.power_required && item.power_required !== 'No power') ? '<span class="text-yellow-600 ml-1" title="Power Required">\u26A1</span>' : '';
 
@@ -109,10 +124,16 @@ function initDragula() {
 
     const instance = localStorage.getItem('ESF_INSTANCE') || 'DEV';
 
+    // 'Payment Requested' and 'Paid' are deliberately NOT drag targets — they
+    // only ever change via "Request Payment"/the Stripe webhook, never a
+    // plain drag (which would fake a transition with no real Checkout
+    // Session or payment behind it). Cards can still leave those columns via
+    // the detail-pane buttons (Reject/On Hold/etc), just not by dragging.
     const containers = [
         document.getElementById('col-Pending'),
         document.getElementById('col-On Hold'),
         instance !== 'GENERAL' ? document.getElementById('col-HCC Checks') : null,
+        document.getElementById('col-Pre-Confirmed'),
         document.getElementById('col-Confirmed'),
         document.getElementById('col-Rejected'),
         document.getElementById('col-Cancelled')
@@ -139,8 +160,11 @@ function initDragula() {
                 return;
             }
 
-            // INTERCEPT: Confirmation (Chargeable check)
-            if (newStatus === 'Confirmed') {
+            // INTERCEPT: Confirmation (Chargeable check) — dropping onto
+            // either 'Pre-Confirmed' or 'Confirmed' opens the same modal;
+            // the admin's Free/Chargeable choice (and £0 override) decides
+            // the real destination status, same as clicking the button.
+            if (newStatus === 'Confirmed' || newStatus === 'Pre-Confirmed') {
                 showConfirmModalLocal(bookingId);
                 return;
             }
@@ -175,11 +199,7 @@ function updateStatus(id, status, reason = null, isChargeable = null, overrideCo
                     if (targetCol && card.parentNode !== targetCol) targetCol.appendChild(card);
                     // Update style
                     card.className = card.className.replace(/border-\w+-500/, '').replace('border-yellow-400', '');
-                    if (newStatus === 'Confirmed') card.classList.add('border-green-500');
-                    else if (newStatus === 'Rejected') card.classList.add('border-red-500');
-                    else if (newStatus === 'On Hold') card.classList.add('border-purple-500');
-                    else if (newStatus === 'HCC Checks') card.classList.add('border-orange-500');
-                    else card.classList.add('border-yellow-400');
+                    card.classList.add(cardBorderClass(newStatus));
                 }
             }
         },
@@ -203,10 +223,7 @@ export function cancelDrag() {
 }
 
 function updateCounts() {
-    const instance = localStorage.getItem('ESF_INSTANCE') || 'DEV';
-    const statuses = instance === 'GENERAL'
-        ? ['Pending', 'On Hold', 'Confirmed', 'Rejected', 'Cancelled']
-        : ['Pending', 'On Hold', 'HCC Checks', 'Confirmed', 'Rejected', 'Cancelled'];
+    const statuses = getBoardStatuses();
 
     let total = 0;
     statuses.forEach(status => {
@@ -235,7 +252,7 @@ export function setSort(field, direction) {
 // Global Exports for inline HTML handlers
 export function filterCards() {
     const term = document.getElementById('searchInput').value.toLowerCase();
-    ['Pending', 'Confirmed', 'Rejected', 'Cancelled', 'On Hold', 'HCC Checks'].forEach(status => {
+    getBoardStatuses().forEach(status => {
         const col = document.getElementById(`col-${status}`);
         if (!col) return;
         Array.from(col.children).forEach(card => {
@@ -495,11 +512,87 @@ function showConfirmModalLocal(id) {
 
 export function finalizeConfirm(isChargeable) {
     const id = document.getElementById('confirmBookingId').value;
-    // Read the (possibly edited) cost from the input
+    // Read the (possibly edited) cost from the input. Deliberately NOT
+    // `parseFloat(...) || null` — that would silently turn a genuine "0.00"
+    // entry into null (0 is falsy), which matters now: an explicit £0
+    // override must be treated as free, not fall through to a config
+    // default.
     const costInput = document.getElementById('confirmCostInput');
-    const overrideCost = costInput ? parseFloat(costInput.value) || null : null;
+    const rawCost = costInput ? costInput.value : '';
+    const parsedCost = parseFloat(rawCost);
+    const overrideCost = (rawCost !== '' && !isNaN(parsedCost)) ? parsedCost : null;
     closeModal('confirmTypeModal');
-    updateStatus(id, 'Confirmed', null, isChargeable, overrideCost);
+
+    // Free (admin's explicit choice) OR an explicit £0 cost both skip Stripe
+    // entirely and go straight to Confirmed, exactly as today. Otherwise,
+    // chargeable bookings now land on Pre-Confirmed — "Request Payment"
+    // (Stripe) is a separate, deliberate next step, not automatic.
+    const isFree = !isChargeable || overrideCost === 0;
+    if (isFree) {
+        updateStatus(id, 'Confirmed', null, false, overrideCost);
+    } else {
+        updateStatus(id, 'Pre-Confirmed', null, true, overrideCost);
+    }
+}
+
+/**
+ * "Request Payment" / "Resend Payment Request" — creates (or recreates) a
+ * Stripe Checkout Session server-side and emails the stallholder a payment
+ * link. The Edge Function itself writes the new status ('Payment
+ * Requested'), so this just refreshes the local cache/card position rather
+ * than going through sharedUpdateStatus.
+ */
+async function runPaymentAction(id, action, successMessage) {
+    try {
+        await action(id);
+        const idx = allBookings.findIndex(b => b.id === id);
+        if (idx > -1) allBookings[idx].status = 'Payment Requested';
+        moveCardToStatus(id, 'Payment Requested');
+        showToast(successMessage);
+        if (currentId === id) openDetails(id);
+    } catch (e) {
+        showToast('Failed: ' + e.message, 'error');
+    }
+}
+
+export function requestPaymentAction(id) {
+    const targetId = id || currentId;
+    return runPaymentAction(targetId, requestPayment, 'Payment request sent.');
+}
+
+export function resendPaymentRequestAction(id) {
+    const targetId = id || currentId;
+    return runPaymentAction(targetId, resendPaymentRequest, 'Payment request resent.');
+}
+
+/**
+ * Manual recovery for a booking stuck at 'Paid' (webhook completed the
+ * payment-recording step but died before the confirmation step). Plain
+ * status-only change server-side — see js/api.js's recoverStuckPaidBooking
+ * for why this must never re-run finalizeConfirmation.
+ */
+export async function recoverStuckPaidBookingAction(id) {
+    const targetId = id || currentId;
+    try {
+        await recoverStuckPaidBooking(targetId);
+        const idx = allBookings.findIndex(b => b.id === targetId);
+        if (idx > -1) allBookings[idx].status = 'Confirmed';
+        moveCardToStatus(targetId, 'Confirmed');
+        showToast('Booking marked as Confirmed.');
+        if (currentId === targetId) openDetails(targetId);
+    } catch (e) {
+        showToast('Failed: ' + e.message, 'error');
+    }
+}
+
+function moveCardToStatus(id, status) {
+    const card = document.getElementById(id);
+    if (!card) return;
+    const targetCol = document.getElementById(`col-${status}`);
+    if (targetCol && card.parentNode !== targetCol) targetCol.appendChild(card);
+    card.className = card.className.replace(/border-\w+-500/, '').replace('border-yellow-400', '');
+    card.classList.add(cardBorderClass(status));
+    updateCounts();
 }
 
 window.cancelDrag = cancelDrag; // expose

@@ -1,4 +1,4 @@
-import { fetchKanbanData, updateBookingStatus, addNote, sendEmail, queueBulkEmail } from './api.js';
+import { fetchKanbanData, updateBookingStatus, addNote, sendEmail, queueBulkEmail, requestPayment, resendPaymentRequest, recoverStuckPaidBooking } from './api.js';
 import { sharedUpdateStatus, populateDetailPane } from './shared.js';
 import { showToast, renderInstanceBadge, showConfirm } from './ui.js';
 import { escapeHtml, sortBookings } from './utils.js';
@@ -47,12 +47,8 @@ function renderTable(data) {
         tr.className = 'hover-row border-b border-gray-100 last:border-0';
         tr.onclick = () => openDetails(item.id);
 
-        let statusClass = "bg-gray-100 text-gray-800";
-        if (item.status === 'Confirmed') statusClass = "bg-green-100 text-green-800";
-        else if (item.status === 'Rejected') statusClass = "bg-red-100 text-red-800";
-        else if (item.status === 'Pending') statusClass = "bg-yellow-100 text-yellow-800";
-        else if (item.status === 'On Hold') statusClass = "bg-purple-100 text-purple-800";
-        else if (item.status === 'HCC Checks') statusClass = "bg-orange-100 text-orange-800";
+        const statusClass = (CONFIG.UI && CONFIG.UI.STATUS_COLORS && CONFIG.UI.STATUS_COLORS[item.status])
+            || "bg-gray-100 text-gray-800";
 
         tr.innerHTML = `
             <td class="px-6 py-4 whitespace-nowrap text-xs font-mono text-gray-400">${escapeHtml(item.id)}</td>
@@ -411,10 +407,57 @@ function showConfirmModalLocal(id) {
 
 window.finalizeConfirm = function (isChargeable) {
     const id = document.getElementById('confirmBookingId').value;
+    // Deliberately NOT `parseFloat(...) || null` — that would silently turn
+    // a genuine "0.00" entry into null (0 is falsy), and an explicit £0
+    // override must be treated as free, not fall through to a config default.
     const costInput = document.getElementById('confirmCostInput');
-    const overrideCost = costInput ? parseFloat(costInput.value) || null : null;
+    const rawCost = costInput ? costInput.value : '';
+    const parsedCost = parseFloat(rawCost);
+    const overrideCost = (rawCost !== '' && !isNaN(parsedCost)) ? parsedCost : null;
     window.closeModal('confirmTypeModal');
-    updateStatus(id, 'Confirmed', null, isChargeable, overrideCost);
+
+    // Free (admin's explicit choice) OR an explicit £0 cost both skip
+    // Stripe entirely and go straight to Confirmed, exactly as today.
+    // Otherwise, chargeable bookings land on Pre-Confirmed — "Request
+    // Payment" (Stripe) is a separate, deliberate next step.
+    const isFree = !isChargeable || overrideCost === 0;
+    if (isFree) {
+        updateStatus(id, 'Confirmed', null, false, overrideCost);
+    } else {
+        updateStatus(id, 'Pre-Confirmed', null, true, overrideCost);
+    }
+}
+
+/**
+ * "Request Payment" / "Resend Payment Request" / stuck-'Paid' recovery —
+ * mirrors js/kanban.js's equivalents. The Edge Function (or, for recovery,
+ * a plain conditional update) already writes the new status server-side,
+ * so these just refresh the local cache/table rather than going through
+ * sharedUpdateStatus.
+ */
+async function runPaymentAction(id, action, newStatus, successMessage) {
+    try {
+        await action(id);
+        const idx = allBookings.findIndex(b => b.id === id);
+        if (idx > -1) allBookings[idx].status = newStatus;
+        showToast(successMessage);
+        window.filterTable();
+        if (currentId === id) openDetails(id);
+    } catch (e) {
+        showToast('Failed: ' + e.message, 'error');
+    }
+}
+
+window.requestPaymentAction = function (id) {
+    return runPaymentAction(id || currentId, requestPayment, 'Payment Requested', 'Payment request sent.');
+}
+
+window.resendPaymentRequestAction = function (id) {
+    return runPaymentAction(id || currentId, resendPaymentRequest, 'Payment Requested', 'Payment request resent.');
+}
+
+window.recoverStuckPaidBookingAction = function (id) {
+    return runPaymentAction(id || currentId, recoverStuckPaidBooking, 'Confirmed', 'Booking marked as Confirmed.');
 }
 
 window.confirmRejection = function () {

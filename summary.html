@@ -57,6 +57,9 @@
                 <option value="Pending">Pending</option>
                 <option value="On Hold">On Hold</option>
                 <option value="HCC Checks">HCC Checks</option>
+                <option value="Pre-Confirmed">Pre-Confirmed</option>
+                <option value="Payment Requested">Payment Requested</option>
+                <option value="Paid">Paid</option>
                 <option value="Confirmed">Confirmed</option>
                 <option value="Rejected">Rejected</option>
                 <option value="Cancelled">Cancelled</option>
@@ -359,6 +362,19 @@
                     class="bg-red-600 hover:bg-red-700 active:bg-red-800 text-white text-xs font-bold py-3 min-h-11 rounded shadow-sm transition-colors">Reject</button>
                 <button data-action="change-status" data-status="Confirmed"
                     class="bg-green-600 hover:bg-green-700 active:bg-green-800 text-white text-xs font-bold py-3 min-h-11 rounded shadow-sm transition-colors">Confirm</button>
+            </div>
+
+            <!-- Payment-flow actions (shown at all sizes, toggled per-status by populateDetailPane) -->
+            <div class="p-4 pt-0 border-t-0 bg-gray-50 space-y-2">
+                <button id="btn-request-payment"
+                    class="hidden w-full bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white text-xs font-bold py-3 min-h-11 rounded transition-colors">Request
+                    Payment (Stripe)</button>
+                <button id="btn-resend-payment-request"
+                    class="hidden w-full bg-indigo-100 hover:bg-indigo-200 active:bg-indigo-300 text-indigo-800 text-xs font-bold py-3 min-h-11 rounded transition-colors">Resend
+                    Payment Request</button>
+                <button id="btn-recover-paid"
+                    class="hidden w-full bg-cyan-100 hover:bg-cyan-200 active:bg-cyan-300 text-cyan-800 text-xs font-bold py-3 min-h-11 rounded transition-colors">Mark
+                    as Confirmed</button>
             </div>
         </div>
     </div>

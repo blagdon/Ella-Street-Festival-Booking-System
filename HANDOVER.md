@@ -106,10 +106,13 @@ client via a CDN `<script>` tag (not npm); admin pages use native ES module impo
 │       ├── send-email/          ← Single choke point for all outbound email
 │       ├── queue-bulk-email/    ← Admin: bulk-email confirmed bookings
 │       ├── get-reviews/         ← Admin: Google Maps review lookup (SerpApi)
-│       └── get-booking-documents/ ← Admin: sign document storage paths for viewing
+│       ├── get-booking-documents/ ← Admin: sign document storage paths for viewing
+│       ├── create-checkout-session/ ← Admin: create a Stripe Checkout Session, email the payment link
+│       └── stripe-webhook/      ← Public (Stripe-signature-gated): processes successful/expired payments
 ├── supabase-public.js           ← Credentials + config for PUBLIC pages (non-module)
 ├── email_templates.js           ← LEGACY fallback templates (real ones are in the DB)
 ├── vercel.json                  ← Vercel Cron config
+├── payment_success.html / payment_cancelled.html ← Static, no-auth Stripe Checkout redirect targets
 └── supabase/sql-archive/        ← Historical one-shot manual migration/fix scripts (see below)
 ```
 
@@ -159,8 +162,11 @@ hardcoded default at all** — they're `null`/`[]` until the settings table load
 | `queue-bulk-email` | Admin JWT only | Atomically inserts N `email_queue` rows as `Pending`, responds immediately, then drains them **in-process** (calls `sendViaZoho()` directly, not over HTTP) via `EdgeRuntime.waitUntil()` in the background. |
 | `get-reviews` | Admin JWT or trusted service call | SerpApi Google Maps review lookup for a business name, used by the performer-review-check feature. |
 | `get-booking-documents` | Admin JWT only | Resolves a booking's `documents` storage paths to time-limited (1hr) signed URLs via `createSignedUrls()` — `esf-documents` is a private bucket. Called from `js/shared.js`'s `populateDetailPane()` when rendering the Kanban/Summary detail pane. |
+| `create-checkout-session` | Admin JWT only | Creates a Stripe Checkout Session for a `Pre-Confirmed` (or, on resend, `Payment Requested`) booking, updates the booking to `Payment Requested`, and emails the `payment_requested` template with the session URL. Picks the `stripe_secret_key_test`/`_live` settings-table row by whether `instance_prefix` contains `-DEV-` (or the `stripe_test_mode` override — see below). See [Stripe Payment Collection](#stripe-payment-collection) below. |
+| `stripe-webhook` | None (`--no-verify-jwt`); gated instead by Stripe signature verification (tries the `stripe_webhook_secret_test` then `_live` settings-table rows) | On `checkout.session.completed`, calls `mark_stripe_payment_received()` then `finalize_stripe_confirmation()` RPCs, then best-effort emails `confirmed_chargeable` (deduped via `stripe_webhook_events`, in-process `sendViaZoho()`, never `functions.invoke`). No-ops on expired/failed payment events — the booking is already correctly sitting at `Payment Requested`. |
 | `_shared/zoho.ts` | n/a (imported, not deployed) | Zoho OAuth2 token refresh/cache + send logic, shared by `send-email` and `queue-bulk-email`. |
 | `_shared/bucket.ts` | n/a (imported, not deployed) | Resolves the document bucket name (env var, else `settings.bucket_name`, else `'esf-documents'`), shared by `submit-booking` and `get-booking-documents`. |
+| `_shared/stripe.ts` | n/a (imported, not deployed) | Loads all four Stripe credentials from the `settings` table (`loadStripeSettings()`) and resolves test-vs-live mode (keyed off `instance_prefix` + the `stripe_test_mode` override, mirroring the DEV/LIVE convention elsewhere), single Stripe SDK import point. Shared by `create-checkout-session` and `stripe-webhook`. |
 
 ### Data flow / RPC pattern
 Most reads/writes go straight through `js/api.js` against RLS-gated tables. Anywhere
@@ -217,6 +223,121 @@ the `public` schema — use a migration instead. Storage bucket/policy changes (
 known gap above is closed) still follow the old convention: a fix file in
 `supabase/sql-archive/`, run manually in the SQL Editor.
 
+### Stripe Payment Collection
+
+Added 2026-07-15. Inserts real online payment collection between "admin approves" and
+"booking is Confirmed," without touching location allocation (a fully separate
+`status='Confirmed'`-gated page/RPC) or the Rejected/Cancelled paths.
+
+**Status chain**: `Pending → Pre-Confirmed → Payment Requested → Paid → Confirmed`
+(plus the existing `On Hold`/`HCC Checks`/`Rejected`/`Cancelled` side-branches,
+unaffected). Two things NOT implemented as literal new statuses, deliberately:
+- "Submitted"/"Under Review" collapse into the existing `Pending` — every status
+  transition is already a deliberate admin click, there's no automatic event to
+  distinguish them.
+- "Location Allocated" is **not** a status — it's the existing, already-separate
+  `location_admin.html` process. Confirming this feature never touches
+  `booking_locations`/`rpc_set_booking_locations` is the actual verification that
+  location allocation is unaffected, not just an assertion.
+
+**The `Confirmed`-modal's meaning changed**: `js/kanban.js`/`js/summary.js`'s
+`finalizeConfirm(isChargeable)` (triggered by the same `#confirmTypeModal` as before,
+opened by the same button/drag-drop as before) now branches on the resolved cost, not
+just the admin's Free/Chargeable toggle: **free OR an explicit `£0` override** goes
+straight to `Confirmed` exactly as before (unchanged `finalizeConfirmation()` — payments
+row deleted if present, `confirmed_free` email); **chargeable with cost > 0** now goes to
+`Pre-Confirmed` instead (new `js/api.js` `preConfirmBooking()` — just saves `stall_cost`
+and the status, no payments row, no email yet). This closes a pre-existing gap where
+"free" and "chargeable-with-£0" were indistinguishable except by payments-row presence —
+now `stall_cost === 0` is the actual free/skip-Stripe rule.
+
+**Payment Requested → Paid → Confirmed is two separate top-level RPC calls from
+`stripe-webhook`, not one transaction** — `mark_stripe_payment_received()` then
+`finalize_stripe_confirmation()` (both `SECURITY DEFINER`, `search_path` pinned,
+`EXECUTE` restricted to `service_role` only). This is deliberate: a crash between the two
+leaves a real, visible, recoverable `Paid` booking (Kanban's "Mark as Confirmed" recovery
+button, `js/api.js`'s `recoverStuckPaidBooking()` — a **plain** status-only update, never
+`finalizeConfirmation()`, which would re-upsert `payments.paid=false` over a real Stripe
+payment) rather than an unreachable intermediate state. Both RPCs are safe to re-call —
+each no-ops (0 rows updated, no error) unless the booking is still in the expected
+preceding status — this, not the `stripe_webhook_events` table, is the real idempotency
+boundary for the financial state change. `stripe_webhook_events` (RLS enabled, zero
+policies, `service_role`-only grant) exists purely to dedupe the **email send**: a
+retried/duplicate Stripe webhook delivery would otherwise re-email the confirmation on
+every retry.
+
+**All four Stripe credentials live in the `settings` table, not Edge Function env
+vars** — `stripe_secret_key_test`, `stripe_secret_key_live`, `stripe_webhook_secret_test`,
+`stripe_webhook_secret_live`, all admin-editable via `settings.html`'s "Stripe Payments"
+card (password-masked inputs, `js/page-settings.js`'s `initStripeSettings()`), loaded
+server-side by `_shared/stripe.ts`'s `loadStripeSettings()`. This deliberately mirrors
+the existing Zoho-credentials pattern (also settings-table, not env vars) rather than
+`TURNSTILE_SECRET_KEY`'s pattern (env var) — the reasoning: like Zoho, these are values
+an admin should be able to rotate or configure live through the UI, with zero CLI access
+or redeploy needed, not fixed-per-environment values a human sets once via
+`supabase secrets set`. None of the four keys are in the `settings` RLS policy's
+anon-readable whitelist — same protection level as `zoho_*` (admin-authenticated reads
+via the "Allow admins full access to settings" policy, or `service_role` from an Edge
+Function, only).
+
+**Test/live mode is keyed off `bookings.instance_prefix`, plus one admin-editable
+override**, mirroring the existing DEV-vs-LIVE convention (`locations.dataset`,
+`fetchPayments()`'s instance filtering): `-DEV-` always → Test mode, no override
+possible. Every other instance (FOOD/NONFOOD/MISC, "Food/General") → Live mode by
+default, **unless** the `stripe_test_mode` settings-table row (text `'true'`/`'false'`,
+same "Stripe Payments" card toggle) is `'true'` — turning that on forces Test mode for
+Food/General bookings too, e.g. a full rehearsal before going live with real payments.
+`_shared/stripe.ts`'s `resolveStripeMode(instancePrefix, forceTestModeSetting)`
+implements this exactly; `create-checkout-session` is the only caller that reads the
+setting — the webhook doesn't need it, since it already tries both Test and Live webhook
+secrets (from `settings`, see above) regardless of which mode created the session. One
+Stripe webhook endpoint URL receives both Test-mode and Live-mode events (registered
+separately under each mode in the Stripe Dashboard, each with its own signing secret) —
+`stripe-webhook` tries both in turn. Note `stripe-webhook` now needs a Supabase client
+(and therefore `SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY` — still genuine Edge Function
+env vars, unaffected by this settings-table change) constructed **before** signature
+verification, since the webhook secrets themselves come from a DB query.
+
+**Checkout is hosted/redirect-only, deliberately not embedded Stripe.js** — the admin
+clicks "Request Payment", the stallholder gets an emailed link, opens it, pays on
+Stripe's own page, and is redirected to `payment_success.html`/`payment_cancelled.html`
+(new, static, no-auth — purely informational, since the webhook, not the redirect, is
+the actual source of truth). This means **no CSP changes were needed anywhere** — CSP
+doesn't govern top-level navigation.
+
+**Payment status visibility**: `payments.html`'s `fetchPayments()` (`js/api.js`) was
+extended additively — its original behavior (only bookings with an existing `payments`
+row) is untouched, **plus** `Payment Requested`/`Paid` bookings with no payments row yet
+(none is created until the webhook succeeds) are now also included, flagged
+`awaitingPayment: true` and rendered with a distinct "Awaiting Payment" badge rather than
+"UNPAID".
+
+**New `bookings` columns**: `stripe_checkout_session_id`, `stripe_payment_intent_id`,
+`stripe_payment_requested_at` (all nullable). **New table** `stripe_webhook_events`
+(email-send dedup ledger, see above). **No new columns on `payments`** — reused as-is
+(`bank_ref` holds `'Stripe: ' + payment_intent_id`, `editor` holds `'Stripe (automatic)'`
+to distinguish from a manually-entered admin name). **New email template**
+`payment_requested` (seeded by the migration, since `email_templates` has no "create
+new" UI — only `email_admin.html`'s editor for existing rows), placeholder
+`{{payment_link}}` added alongside the existing set.
+
+**`Payment Requested`/`Paid` are deliberately NOT Kanban drag targets** (`js/kanban.js`'s
+`initDragula()`) — only `Pre-Confirmed`/`Confirmed`/`Rejected`/etc. are. Dragging a card
+into either would fake a transition with no real Stripe Checkout Session or payment
+behind it. Cards can still leave those columns via the detail-pane buttons, just not by
+dragging in.
+
+**Testing**: `tests/stripe-payment.test.mjs`, same disposable-test-project guard as the
+rest of `tests/`. The `create-checkout-session` success-path tests additionally need
+both new functions deployed to the **test** project, and a Stripe Test-mode key/webhook
+secret in place — `scripts/seed-test-project.mjs`'s `ensureSettings()` now does this
+automatically (upserts `stripe_secret_key_test`/`stripe_webhook_secret_test` from
+`TEST_STRIPE_SECRET_KEY`/`TEST_STRIPE_WEBHOOK_SECRET`, same `.env.test`/CI-repo-secret
+values as before — only how they're delivered changed, from `supabase secrets set` to a
+settings-table row, consistent with the rest of this section). Deploying the two
+functions there is still a one-time manual step, same as `TURNSTILE_SECRET_KEY`'s
+existing test-project setup.
+
 ---
 
 ## 4. Current State
@@ -227,6 +348,9 @@ known gap above is closed) still follow the old convention: a fix file in
 - Location Manager — multi-location assignment per booking, occupancy-conflict enforced
   at the DB level, Google My Maps CSV export, search/sort
 - Payment tracking, statistics/charts, visitor map (Leaflet)
+- Stripe Checkout payment collection (Pre-Confirmed → Payment Requested → Paid →
+  Confirmed), test/live mode via `instance_prefix`, idempotent webhook — see
+  [Stripe Payment Collection](#stripe-payment-collection) above
 - HCC (Hull City Council food safety) check workflow — manual, environment-aware email send
 - Email template admin (`more.html`), user role management, steward mobile view
 - Booking cancellation (public self-service link) with automatic confirmation email
@@ -270,9 +394,12 @@ known gap above is closed) still follow the old convention: a fix file in
 ### `bookings` — the central table
 One row per application, all types share this table, distinguished by `instance_prefix`
 (`ESF26-FOOD-`, `ESF26-NONFOOD-`, `ESF26-MISC-`, `ESF26-DEV-`). Key columns: `id` (text
-PK, e.g. `ESF26-FOOD-0042`), `status` (`Pending`/`Confirmed`/`Rejected`/`Cancelled`/
-`On Hold`/`HCC Checks`), `business_name`, `owner_name`, `email`, `stall_cost`,
-`cancel_token`, `rejection_reason`. **`bookings.location_id` still exists as a column
+PK, e.g. `ESF26-FOOD-0042`), `status` (`Pending`/`Pre-Confirmed`/`Payment Requested`/
+`Paid`/`Confirmed`/`Rejected`/`Cancelled`/`On Hold`/`HCC Checks` — see
+[Stripe Payment Collection](#stripe-payment-collection) for the middle three), `business_name`,
+`owner_name`, `email`, `stall_cost`, `cancel_token`, `rejection_reason`,
+`stripe_checkout_session_id`, `stripe_payment_intent_id`, `stripe_payment_requested_at`
+(all nullable, added 2026-07-15). **`bookings.location_id` still exists as a column
 but is deprecated** — see below. `documents` (`text[]`) stores **storage paths into
 the (private) `esf-documents` bucket**, not public URLs — resolved to a signed URL on
 demand by the `get-booking-documents` Edge Function.
@@ -294,8 +421,19 @@ unique constraint on `id` alone) and why `schedules.location` needed a `dataset`
 added before it could get a composite FK.
 
 ### `payments`
-One row per chargeable confirmed booking: `booking_id` (FK), `stall_cost`, `paid`
-(boolean), `date_paid`, `bank_ref`, `editor`.
+One row per chargeable booking that has a payment resolved one way or another:
+`booking_id` (FK/PK), `paid` (boolean), `date_paid`, `bank_ref`, `editor` — amount is
+read from `bookings.stall_cost`, not stored redundantly here. A free/£0 booking never
+gets a row at all. Reused as-is for Stripe payments (no schema changes) — a successful
+Stripe payment upserts `paid=true, bank_ref='Stripe: '+payment_intent_id,
+editor='Stripe (automatic)'` via the `mark_stripe_payment_received()` RPC.
+
+### `stripe_webhook_events`
+Pure email-send dedup ledger for `stripe-webhook` (`event_id` PK, `event_type`,
+`received_at`). RLS enabled, zero policies — `service_role` (the webhook, only) bypasses
+RLS entirely; `anon`/`authenticated` get no access at all. **Not** the idempotency
+mechanism for the actual payment processing — see
+[Stripe Payment Collection](#stripe-payment-collection).
 
 ### `email_queue`
 Doubles as a send log and (for bulk sends) a real queue. Columns: `recipient`,
@@ -310,9 +448,12 @@ ever inserts a genuinely `Pending` row that something processes later.
 ### `email_templates`
 Editable via `more.html`. `id` (template key, e.g. `application_received`,
 `confirmed_chargeable`, `rejected`, `cancellation_confirmed`, `location_update`,
-`payment_reminder`), `subject`, `body_html` — both support `{{placeholder}}`
-substitution (`owner_name`, `business_name`, `booking_id`, `cancel_link`, `cost`,
-`bank_details`, `location_id`/`location_display`, `reason`).
+`payment_reminder`, `payment_requested`), `subject`, `body_html` — both support
+`{{placeholder}}` substitution (`owner_name`, `business_name`, `booking_id`,
+`cancel_link`, `cost`, `bank_details`, `location_id`/`location_display`, `reason`,
+`payment_link` — the last one only populated by `create-checkout-session` for
+`payment_requested`). No "create new" UI exists — a new template id must be seeded via
+migration/SQL, as `payment_requested` was.
 
 ### `audit_logs`
 Append-only. Every admin mutation writes here via `api.js → auditLog()`:
@@ -332,7 +473,11 @@ role-check policy in the database, via the `check_user_role()` / `get_is_admin()
 Generic key/value config table (see [Settings-driven config](#settings-driven-config)
 above). Keys currently in use include `stall_cost_food/general/dev`,
 `allowed_stall_types`, `festival_display_name`, `base_url`, `cancel_url`, `bank_details`,
-`map_center_lat/lng`, `hcc_council_email`, plus all `zoho_*` credentials/cached tokens.
+`map_center_lat/lng`, `hcc_council_email`, `stripe_test_mode` (boolean as text,
+Food/General Stripe test-mode override), `stripe_secret_key_test/live`,
+`stripe_webhook_secret_test/live` (the actual Stripe credentials themselves — see
+[Stripe Payment Collection](#stripe-payment-collection)), plus all `zoho_*`
+credentials/cached tokens.
 
 ### `performers` / `schedules` — separate feature, same database
 `performers`: application data (`name`, `email`, `phone`, `cost_per_30min`, `status`
@@ -369,14 +514,29 @@ Supabase SQL Editor (for SQL) and the `supabase` CLI (for Edge Function deploys)
 ### Deploying an Edge Function
 ```bash
 supabase functions deploy <function-name>
-# submit-booking and cancel-booking specifically need:
+# submit-booking, cancel-booking, and stripe-webhook specifically need:
 supabase functions deploy submit-booking --no-verify-jwt
 supabase functions deploy cancel-booking --no-verify-jwt
+supabase functions deploy stripe-webhook --no-verify-jwt
 ```
 Requires the CLI to be logged in and linked to the project (`supabase login`,
 project ref `rsnxhuhibglieofikkpo`). The CLI version used this session (`v2.72.7`) does
 **not** support `supabase functions logs` — use the Supabase Dashboard's
 Functions → *name* → Logs tab instead.
+
+### Stripe credentials (one-time, per environment)
+**Not an Edge Function secret** — set these via the admin UI, `settings.html`'s "Stripe
+Payments" card (password-masked fields, "Save Stripe Settings"), which upserts four
+`settings` rows: `stripe_secret_key_test`, `stripe_secret_key_live`,
+`stripe_webhook_secret_test`, `stripe_webhook_secret_live`. This deliberately mirrors how
+Zoho's credentials already work (also settings-table, not `supabase secrets set`) — an
+admin can configure/rotate these live, with no CLI access or redeploy needed. The two
+webhook secrets come from registering the deployed `stripe-webhook` URL as an endpoint
+**separately** under both Test mode and Live mode in the Stripe Dashboard — one URL, two
+registrations, two secrets. For the disposable test project
+(`qeplpcnrkgpaawfyliap`), `scripts/seed-test-project.mjs` does the equivalent
+automatically (test-mode credentials only, from `TEST_STRIPE_SECRET_KEY`/
+`TEST_STRIPE_WEBHOOK_SECRET`) — see [Testing](#testing) below.
 
 ### Creating an admin/steward user
 1. Create a Supabase Auth user (dashboard, or let them sign up if signup is enabled —
@@ -752,6 +912,29 @@ tested live, and deployed. In order, what was just finished:
     once did (see the `migration repair` Gotcha). No code/CI/docs referenced these files
     by path except this document, which has been updated throughout. Purely a file-move;
     no schema or application behavior changed.
+24. Implemented Stripe Checkout payment collection — full write-up under
+    [Stripe Payment Collection](#stripe-payment-collection) in section 3. New migration
+    (`bookings` columns, `stripe_webhook_events`, two `SECURITY DEFINER` RPCs, seeded
+    `payment_requested` template), two new Edge Functions (`create-checkout-session`,
+    `stripe-webhook`) plus `_shared/stripe.ts`, two new static pages
+    (`payment_success.html`/`payment_cancelled.html`), and updates to
+    `js/config.js`/`api.js`/`shared.js`/`kanban.js`/`summary.js`/`payments.js` and their
+    HTML pages for the three new statuses and payment-flow actions. Verified:
+    `location_admin.html`/`js/locations.js`/`rpc_set_booking_locations` were not modified
+    at all. Not yet deployed/verified live — needs the Stripe credentials set up above and
+    a real Stripe Test-mode run (Checkout's official test card `4242 4242 4242 4242`)
+    against a `DEV`-instance booking before this touches production.
+25. Moved all four Stripe credentials (`stripe_secret_key_test/live`,
+    `stripe_webhook_secret_test/live`) from Edge Function env vars into the `settings`
+    table (new "Stripe Payments" card on `settings.html`), at the project owner's
+    explicit request — also added the `stripe_test_mode` Food/General override toggle
+    to the same card in the same pass. `_shared/stripe.ts` reworked around a single
+    `loadStripeSettings()` DB call; `stripe-webhook` now constructs its Supabase client
+    (needed to load the webhook secrets) **before** signature verification rather than
+    after. `SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY` are unaffected — still genuine env
+    vars, this only applies to Stripe-specific credentials. `scripts/seed-test-project.mjs`
+    updated to seed the test-mode pair into the disposable test project's `settings`
+    table instead of expecting `supabase secrets set` there.
 
 **Explicitly deferred, not started:** Slack/Discord/Sentry-style alerting for Edge
 Function errors — the project owner said "I'll do it later," don't assume it's wanted
@@ -781,6 +964,19 @@ stay in the separate `ellafestperformersadmin.vercel.app` codebase.
 
 - **`bookings.location_id` (the old CSV text column) still exists but is dead** — don't
   read or write it; use `booking_locations` + `rpc_set_booking_locations()` exclusively.
+
+- **`Pending`/`Paid` are NOT synonyms for "no payment yet"/"payment done" in the way you'd
+  guess.** `stall_cost === 0` is the actual free/skip-Stripe rule (not just the admin's
+  Free/Chargeable toggle — an explicit `£0` chargeable override is treated as free too).
+  A booking only ever reaches `Paid` via `mark_stripe_payment_received()`, immediately
+  followed by `finalize_stripe_confirmation()` → `Confirmed` — these are two **separate**
+  RPC calls from `stripe-webhook`, on purpose (see
+  [Stripe Payment Collection](#stripe-payment-collection)), so don't "simplify" them into
+  one transaction — that would make `Paid` unobservable and break the Kanban recovery
+  action that exists specifically for a crash between the two. If you ever see a booking
+  stuck at `Paid`, that recovery action (`js/api.js`'s `recoverStuckPaidBooking()`) is
+  the fix, not re-running `finalizeConfirmation()` (which would clobber the real
+  Stripe-recorded `payments.paid=true` back to `false`).
 
 - **The public Supabase anon key being visible in `supabase-public.js` is intentional**,
   not a leak to fix. All real protection is RLS + `SECURITY DEFINER` role-check functions.

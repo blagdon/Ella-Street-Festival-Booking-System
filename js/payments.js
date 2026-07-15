@@ -1,4 +1,4 @@
-import { fetchPayments, updatePayment } from './api.js';
+import { fetchPayments, updatePayment, resendPaymentRequest } from './api.js';
 import { manualSendPaymentReminder } from './shared.js';
 import { showToast } from './ui.js';
 import { escapeHtml } from './utils.js';
@@ -36,6 +36,12 @@ function setupEventListeners() {
             openEditModal(editBtn.dataset.id);
             return;
         }
+
+        const resendBtn = e.target.closest('.btn-resend-payment');
+        if (resendBtn) {
+            resendPaymentRequestRow(resendBtn.dataset.id);
+            return;
+        }
     });
 }
 
@@ -60,7 +66,8 @@ function renderTable() {
     const filtered = allRecords.filter(r => {
         const matchesStatus = (statusFilter === 'all') ||
             (statusFilter === 'paid' && r.paid) ||
-            (statusFilter === 'unpaid' && !r.paid);
+            (statusFilter === 'unpaid' && !r.paid && !r.awaitingPayment) ||
+            (statusFilter === 'awaiting' && r.awaitingPayment);
         const matchesSearch = (r.business || r.business_name || '').toLowerCase().includes(searchTerm) ||
             (r.owner || r.owner_name || '').toLowerCase().includes(searchTerm);
         return matchesStatus && matchesSearch;
@@ -83,8 +90,12 @@ function renderTable() {
     // Build Desktop Table HTML
     if (tbody) {
         tbody.innerHTML = filtered.map(r => {
-            const paidClass = r.paid ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800';
-            const paidText = r.paid ? 'PAID' : 'UNPAID';
+            let paidClass = r.paid ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800';
+            let paidText = r.paid ? 'PAID' : 'UNPAID';
+            if (r.awaitingPayment) {
+                paidClass = 'bg-indigo-100 text-indigo-800';
+                paidText = 'AWAITING PAYMENT';
+            }
 
             // Get Status Color 
             let statusColor = 'bg-gray-100 text-gray-800';
@@ -130,8 +141,12 @@ function renderTable() {
                     ${escapeHtml(r.editor || '-')}
                 </td>
                 <td class="px-6 py-4 pr-12 whitespace-nowrap text-right text-sm font-medium space-x-3">
-                    ${!r.paid ? `<button data-id="${escapeHtml(r.id)}" class="btn-reminder text-purple-600 hover:text-purple-900 font-bold">Reminder</button>` : ''}
-                    <button data-id="${escapeHtml(r.id)}" class="btn-edit text-blue-600 hover:text-blue-900">Edit</button>
+                    ${r.awaitingPayment
+                    ? (r.status === 'Payment Requested' ? `<button data-id="${escapeHtml(r.id)}" class="btn-resend-payment text-indigo-600 hover:text-indigo-900 font-bold">Resend Payment Link</button>` : '')
+                    : `
+                        ${!r.paid ? `<button data-id="${escapeHtml(r.id)}" class="btn-reminder text-purple-600 hover:text-purple-900 font-bold">Reminder</button>` : ''}
+                        <button data-id="${escapeHtml(r.id)}" class="btn-edit text-blue-600 hover:text-blue-900">Edit</button>
+                    `}
                 </td>
             </tr>
         `}).join('');
@@ -140,11 +155,14 @@ function renderTable() {
     // Build Mobile Cards HTML
     if (mobileContainer) {
         mobileContainer.innerHTML = filtered.map(r => {
-            const paidClass = r.paid ? 'paid' : 'unpaid';
-            const paidBadgeClass = r.paid ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800';
-            const paidText = r.paid ? 'PAID' : 'UNPAID';
-            let statusColor = 'bg-gray-100 text-gray-800';
-            if (r.status === 'Confirmed') statusColor = 'bg-green-100 text-green-800';
+            const paidClass = r.paid ? 'paid' : (r.awaitingPayment ? 'awaiting' : 'unpaid');
+            let paidBadgeClass = r.paid ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800';
+            let paidText = r.paid ? 'PAID' : 'UNPAID';
+            if (r.awaitingPayment) {
+                paidBadgeClass = 'bg-indigo-100 text-indigo-800';
+                paidText = 'AWAITING PAYMENT';
+            }
+            let statusColor = (CONFIG.UI && CONFIG.UI.STATUS_COLORS && CONFIG.UI.STATUS_COLORS[r.status]) || 'bg-gray-100 text-gray-800';
 
             return `
             <div class="payment-card ${paidClass} bg-white rounded-lg border border-gray-200 p-4 shadow-sm">
@@ -187,6 +205,12 @@ function renderTable() {
                 <div class="flex justify-between items-center pt-3 border-t border-gray-100">
                     <span class="text-xs text-gray-400 font-mono">${escapeHtml(r.id)}</span>
                     <div class="flex gap-2">
+                        ${r.awaitingPayment
+                    ? (r.status === 'Payment Requested' ? `
+                        <button data-id="${escapeHtml(r.id)}" class="btn-resend-payment bg-indigo-100 text-indigo-700 px-3 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-200">
+                            Resend Payment Link
+                        </button>` : '')
+                    : `
                         ${!r.paid ? `
                         <button data-id="${escapeHtml(r.id)}" class="btn-reminder bg-purple-100 text-purple-700 px-3 py-2 rounded-lg text-sm font-semibold hover:bg-purple-200">
                             Reminder
@@ -194,6 +218,7 @@ function renderTable() {
                         <button data-id="${escapeHtml(r.id)}" class="btn-edit bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-700 transition">
                             Edit Payment
                         </button>
+                    `}
                     </div>
                 </div>
             </div>
@@ -265,6 +290,17 @@ async function refreshData() {
 async function sendReminder(id) {
     if (!id) return;
     await manualSendPaymentReminder(id);
+}
+
+async function resendPaymentRequestRow(id) {
+    if (!id) return;
+    try {
+        await resendPaymentRequest(id);
+        showToast('Payment request resent.');
+        await loadData();
+    } catch (e) {
+        showToast('Failed to resend: ' + e.message, 'error');
+    }
 }
 
 /**
