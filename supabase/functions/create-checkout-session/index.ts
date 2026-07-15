@@ -94,10 +94,10 @@ Deno.serve(async (req) => {
 
     // The admin confirms a booking as chargeable and this fires straight
     // away (no more separate "Pre-Confirmed" step) — so a payment request
-    // can now originate from Pending/On Hold/HCC Checks as well as being
-    // resent from Payment Requested. Only reject statuses that have already
-    // been resolved one way or another.
-    if (['Confirmed', 'Paid', 'Rejected', 'Cancelled'].includes(booking.status)) {
+    // can now originate from Pending/HCC Checks as well as being resent
+    // from Payment Requested. Only reject statuses that have already been
+    // resolved one way or another.
+    if (['Confirmed', 'Rejected', 'Cancelled'].includes(booking.status)) {
       return new Response(JSON.stringify({ error: `Cannot request payment from status '${booking.status}'.` }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }

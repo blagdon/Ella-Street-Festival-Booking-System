@@ -159,7 +159,6 @@ function renderTable(records, append = false) {
         if (mainStatus === 'Confirmed') mainStatusColor = 'bg-green-100 text-green-700';
         if (mainStatus === 'Rejected') mainStatusColor = 'bg-red-100 text-red-700';
         if (mainStatus === 'Cancelled') mainStatusColor = 'bg-gray-100 text-gray-700';
-        if (mainStatus === 'On Hold') mainStatusColor = 'bg-purple-100 text-purple-700';
         if (mainStatus === 'HCC Checks') mainStatusColor = 'bg-orange-100 text-orange-700';
 
         row.innerHTML = `

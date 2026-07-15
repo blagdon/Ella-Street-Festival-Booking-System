@@ -36,7 +36,7 @@ Row inserted into `bookings` via the submit-booking Edge Function
 Booking appears in the Kanban board (Pending column)
         │
         ▼
-Admin reviews → changes status (Confirmed / Rejected / On Hold / HCC Checks / Cancelled)
+Admin reviews → changes status (Confirmed / Rejected / HCC Checks / Cancelled)
         │                                   │
         ▼                                   ▼
 Confirmation/rejection email sent    HCC Checks: tracked in hcc_checks,
@@ -230,7 +230,7 @@ Added 2026-07-15. Inserts real online payment collection between "admin approves
 `status='Confirmed'`-gated page/RPC) or the Rejected/Cancelled paths.
 
 **Status chain**: `Pending → Payment Requested → Confirmed` (plus the existing
-`On Hold`/`HCC Checks`/`Rejected`/`Cancelled` side-branches, unaffected). Two things NOT
+`HCC Checks`/`Rejected`/`Cancelled` side-branches, unaffected). Two things NOT
 implemented as literal new statuses, deliberately:
 - "Submitted"/"Under Review" collapse into the existing `Pending` — every status
   transition is already a deliberate admin click, there's no automatic event to
@@ -267,12 +267,12 @@ update that sets `status='Payment Requested'` — there's no separate persistenc
 before it runs, so the Edge Function accepts an optional `cost` in its request body
 (falling back to the booking's already-stored `stall_cost` for a plain "Resend Payment
 Request" call, which doesn't pass one). If Stripe/email fails, the booking is left
-exactly where it was (Pending/On Hold/HCC Checks) — the admin sees an error toast and can
+exactly where it was (Pending/HCC Checks) — the admin sees an error toast and can
 retry from the same Confirm button, no stuck intermediate state possible.
 `create-checkout-session`'s status check now only rejects bookings that are already
 resolved (`Confirmed`/`Rejected`/`Cancelled`), rather than requiring a specific prior
-status, since a payment request can now originate from `Pending`, `On Hold`, or
-`HCC Checks` as well as being resent from `Payment Requested`.
+status, since a payment request can now originate from `Pending` or `HCC Checks` as well
+as being resent from `Payment Requested`.
 
 **No intermediate "Paid" status either — this was a second same-day simplification,
 right after the Pre-Confirmed one above.** The feature originally had `stripe-webhook`
@@ -370,8 +370,8 @@ different, see that file's own comments) was updated to include `{{cancel_link}}
 for consistency with its sibling seeded templates.
 
 **`Payment Requested` is deliberately NOT a Kanban drag target** (`js/kanban.js`'s
-`initDragula()`) — only `Pending`/`On Hold`/`HCC Checks`/`Confirmed`/`Rejected`/
-`Cancelled` are. Dragging a card into it would fake a transition with no real Stripe
+`initDragula()`) — only `Pending`/`HCC Checks`/`Confirmed`/`Rejected`/`Cancelled` are.
+Dragging a card into it would fake a transition with no real Stripe
 Checkout Session behind it. Cards can still leave that column via the detail-pane
 buttons, just not by dragging in. Dropping onto `Confirmed` opens the same
 `#confirmTypeModal` as clicking the Confirm button — the admin's Free/Chargeable choice
@@ -529,7 +529,7 @@ for this security fix.
 One row per application, all types share this table, distinguished by `instance_prefix`
 (`ESF26-FOOD-`, `ESF26-NONFOOD-`, `ESF26-MISC-`, `ESF26-DEV-`). Key columns: `id` (text
 PK, e.g. `ESF26-FOOD-0042`), `status` (`Pending`/`Payment Requested`/
-`Confirmed`/`Rejected`/`Cancelled`/`On Hold`/`HCC Checks` — see
+`Confirmed`/`Rejected`/`Cancelled`/`HCC Checks` — see
 [Stripe Payment Collection](#stripe-payment-collection) for `Payment Requested`), `business_name`,
 `owner_name`, `email`, `stall_cost`, `cancel_token`, `rejection_reason`,
 `stripe_checkout_session_id`, `stripe_payment_intent_id`, `stripe_payment_requested_at`
@@ -1190,6 +1190,32 @@ tested live, and deployed. In order, what was just finished:
     updated to query the view; `tests/security.test.mjs` rewritten/extended
     accordingly. Verified empirically against the disposable test project before this
     was considered done.
+32. **Removed the `On Hold` status** — the owner asked directly, no further context
+    given. Before touching anything, checked the live Kanban board across all three
+    instances (FOOD, GENERAL, DEV) via a logged-in admin session: zero bookings were
+    actually sitting in `On Hold` at the time, so there was nothing to reassign/migrate.
+    Removed from `js/config.js`'s `STATUS_LIST`/`STATUS_COLORS`, the Kanban column +
+    `getBoardStatuses()`/`cardBorderClass()`/dragula containers in `js/kanban.js`, the
+    Summary status filter + both (desktop/mobile) "On Hold" action buttons in
+    `summary.html`, both status-breakdown displays in `js/stats.js` (had to keep the
+    doughnut chart's `backgroundColor` array positionally aligned with
+    `Object.keys(statusCounts)` after removing the entry, and rebalanced the
+    per-instance breakdown grid from `md:grid-cols-6` to `md:grid-cols-5`), and the badge
+    color mapping in `js/page-hcc-dashboard.js`. The one place the **database** itself
+    hard-coded `'On Hold'` (not just the frontend allow-list) was
+    `cancel_booking_secure()`'s allowed-statuses check — a trader could self-cancel a
+    booking that was `On Hold`, so removing the status without a forward-fix migration
+    would have been a silent behavior change, not just a UI cleanup. New migration
+    `20260715183903_remove_on_hold_status.sql` drops `'On Hold'` from that RPC's
+    `NOT IN` list. Also fixed, spotted along the way: `create-checkout-session`'s
+    already-resolved-status check still listed `'Paid'` even though that status was
+    removed in item 29 — harmless (no booking can ever have that status again) but
+    misleading; cleaned up in the same pass. `USER_GUIDE.md`/`ARCHITECTURE.md` were
+    **not** updated — both were already out of date before this session touched
+    anything (see the `ARCHITECTURE.md` Gotcha below; `USER_GUIDE.md` has never
+    documented `Payment Requested` at all), so a partial On-Hold-only edit wouldn't
+    have made either one accurate — needs a full pass if this repo ever prioritizes
+    user-facing docs again.
 
 **Explicitly deferred, not started:** Slack/Discord/Sentry-style alerting for Edge
 Function errors — the project owner said "I'll do it later," don't assume it's wanted

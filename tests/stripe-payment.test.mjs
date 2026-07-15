@@ -213,7 +213,7 @@ describe('create-checkout-session', () => {
 
   test('accepts a cost override in the request body (chargeable-confirm now fires with no prior persisted stall_cost) and saves it', async () => {
     const id = `${PREFIX}COSTOVERRIDE`;
-    await insertBooking(id, { status: 'On Hold', stall_cost: null });
+    await insertBooking(id, { status: 'HCC Checks', stall_cost: null });
 
     const { status, json } = await callFunction('create-checkout-session', { booking_id: id, cost: 22.5 }, adminToken);
     assert.equal(status, 200, JSON.stringify(json));

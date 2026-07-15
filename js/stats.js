@@ -63,7 +63,6 @@ function renderCharts(allRows, combinedData, foodData, nonFoodData) {
     const statusCounts = {
         Confirmed: 0,
         Pending: 0,
-        'On Hold': 0,
         'HCC Checks': 0,
         Rejected: 0,
         Cancelled: 0
@@ -79,8 +78,6 @@ function renderCharts(allRows, combinedData, foodData, nonFoodData) {
             statusCounts[s]++;
         } else if (s === 'HCC Checks') {
             statusCounts['HCC Checks']++;
-        } else if (s === 'On Hold') {
-            statusCounts['On Hold']++;
         } else {
             statusCounts.Pending++;
         }
@@ -114,7 +111,6 @@ function renderCharts(allRows, combinedData, foodData, nonFoodData) {
                     backgroundColor: [
                         '#10b981', // Confirmed - green
                         '#f59e0b', // Pending - yellow
-                        '#6366f1', // On Hold - indigo
                         '#f97316', // HCC Checks - orange
                         '#ef4444', // Rejected - red
                         '#6b7280'  // Cancelled - gray
@@ -281,14 +277,13 @@ function renderPanel(containerId, data, title, headerClass, borderClass) {
     container.innerHTML = '';
 
     // CALCULATE METRICS
-    const statusCounts = { Pending: 0, Confirmed: 0, Rejected: 0, Cancelled: 0, OnHold: 0, HCCChecks: 0 };
+    const statusCounts = { Pending: 0, Confirmed: 0, Rejected: 0, Cancelled: 0, HCCChecks: 0 };
     const conf = { rows: [], power: 0, charity: 0, resident: 0, cats: {} };
     const pend = { rows: [], power: 0, charity: 0, resident: 0, cats: {} };
 
     data.forEach(r => {
         const s = r.status || 'Pending';
-        if (s === 'On Hold') statusCounts.OnHold++;
-        else if (s === 'HCC Checks') statusCounts.HCCChecks++;
+        if (s === 'HCC Checks') statusCounts.HCCChecks++;
         else if (statusCounts.hasOwnProperty(s)) statusCounts[s]++;
         else statusCounts.Pending++;
 
@@ -317,10 +312,9 @@ function renderPanel(containerId, data, title, headerClass, borderClass) {
             <div class="p-6 space-y-8">
                 <div>
                     <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Booking Status Breakdown</h3>
-                    <div class="grid grid-cols-2 md:grid-cols-6 gap-4">
+                    <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
                         ${statBox('Confirmed', statusCounts.Confirmed, 'text-green-800 bg-green-50 border-green-100')}
                         ${statBox('Pending', statusCounts.Pending, 'text-yellow-800 bg-yellow-50 border-yellow-100')}
-                        ${statBox('On Hold', statusCounts.OnHold, 'text-indigo-800 bg-indigo-50 border-indigo-100')}
                         ${statBox('HCC Checks', statusCounts.HCCChecks, 'text-orange-800 bg-orange-50 border-orange-100')}
                         ${statBox('Rejected', statusCounts.Rejected, 'text-red-800 bg-red-50 border-red-100')}
                         ${statBox('Cancelled', statusCounts.Cancelled, 'text-gray-600 bg-gray-100 border-gray-200')}

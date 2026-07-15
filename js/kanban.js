@@ -9,15 +9,14 @@ import { showToast, renderInstanceBadge, showConfirm } from './ui.js';
 function getBoardStatuses() {
     const instance = localStorage.getItem('ESF_INSTANCE') || 'DEV';
     return instance === 'GENERAL'
-        ? ['Pending', 'On Hold', 'Payment Requested', 'Confirmed', 'Rejected', 'Cancelled']
-        : ['Pending', 'On Hold', 'HCC Checks', 'Payment Requested', 'Confirmed', 'Rejected', 'Cancelled'];
+        ? ['Pending', 'Payment Requested', 'Confirmed', 'Rejected', 'Cancelled']
+        : ['Pending', 'HCC Checks', 'Payment Requested', 'Confirmed', 'Rejected', 'Cancelled'];
 }
 
 function cardBorderClass(status) {
     switch (status) {
         case 'Confirmed': return 'border-green-500';
         case 'Rejected': return 'border-red-500';
-        case 'On Hold': return 'border-purple-500';
         case 'HCC Checks': return 'border-orange-500';
         case 'Payment Requested': return 'border-indigo-500';
         default: return 'border-yellow-400';
@@ -126,10 +125,9 @@ function initDragula() {
     // changes via "Request Payment"/the Stripe webhook, never a plain drag
     // (which would fake a transition with no real Checkout Session or
     // payment behind it). Cards can still leave that column via the
-    // detail-pane buttons (Reject/On Hold/etc), just not by dragging.
+    // detail-pane buttons (Reject/HCC Checks/etc), just not by dragging.
     const containers = [
         document.getElementById('col-Pending'),
-        document.getElementById('col-On Hold'),
         instance !== 'GENERAL' ? document.getElementById('col-HCC Checks') : null,
         document.getElementById('col-Confirmed'),
         document.getElementById('col-Rejected'),
