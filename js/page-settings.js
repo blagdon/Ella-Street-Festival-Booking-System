@@ -9,6 +9,7 @@ const sb = getSupabaseClient();
 
 function initSettings() {
     initToggles();
+    initStripeSettings();
     initStallCosts();
     initStallTypes();
     initSystemConstants();
@@ -107,6 +108,141 @@ async function initToggles() {
             // Revert UI to previous state
             updateUI(formKey, formKey === 'general' ? generalOpen : foodOpen);
         }
+    }
+}
+
+/**
+ * "Stripe Test Mode for Food/General" — a settings-table boolean
+ * (`stripe_test_mode`, text 'true'/'false') read by the create-checkout-session
+ * Edge Function. DEV-instance bookings always use Stripe Test Mode regardless
+ * (unchanged); this toggle additionally forces Test Mode for FOOD/NONFOOD/MISC
+ * bookings too, e.g. for a full rehearsal before going live with real payments.
+ */
+async function initStripeSettings() {
+    const btn = document.getElementById('toggle-stripe-test-mode');
+    const dot = document.getElementById('toggle-stripe-test-mode-dot');
+    const lbl = document.getElementById('lbl-stripe-test-mode-status');
+
+    if (!btn) return;
+
+    let testModeOn = false;
+
+    try {
+        const { data, error } = await sb.from('settings').select('key, value').eq('key', 'stripe_test_mode').maybeSingle();
+        if (error) throw error;
+        testModeOn = data ? (data.value === 'true') : false;
+        updateUI(testModeOn);
+    } catch (err) {
+        showToast("Failed to load Stripe test mode setting: " + err.message, 'error');
+    }
+
+    btn.addEventListener('click', () => toggleSetting(!testModeOn));
+
+    function updateUI(isOn) {
+        if (isOn) {
+            btn.className = "relative inline-flex h-6 w-11 items-center rounded-full bg-green-500 transition-colors focus:outline-none cursor-pointer";
+            dot.className = "inline-block h-4 w-4 transform rounded-full bg-white transition-transform translate-x-6";
+            lbl.className = "text-xs font-semibold text-green-600";
+            lbl.textContent = "Test Mode ON for Food/General";
+        } else {
+            btn.className = "relative inline-flex h-6 w-11 items-center rounded-full bg-gray-300 transition-colors focus:outline-none cursor-pointer";
+            dot.className = "inline-block h-4 w-4 transform rounded-full bg-white transition-transform translate-x-1";
+            lbl.className = "text-xs font-semibold text-gray-600";
+            lbl.textContent = "Live Mode for Food/General";
+        }
+        testModeOn = isOn;
+    }
+
+    async function toggleSetting(newValue) {
+        const strVal = newValue ? 'true' : 'false';
+
+        lbl.className = "text-xs text-gray-400 italic";
+        lbl.textContent = "Saving...";
+
+        try {
+            const { data: { session } } = await sb.auth.getSession();
+            const userEmail = session?.user?.email || 'admin';
+
+            const { error } = await sb.from('settings').upsert({
+                key: 'stripe_test_mode',
+                value: strVal,
+                updated_at: new Date().toISOString(),
+                updated_by: userEmail
+            });
+            if (error) throw error;
+
+            updateUI(newValue);
+            showToast(`Stripe Test Mode for Food/General turned ${newValue ? 'ON' : 'OFF'}`);
+            await auditLog('toggle_stripe_test_mode', 'stripe_test_mode', { test_mode: newValue });
+        } catch (err) {
+            showToast(`Failed to update setting: ${err.message}`, 'error');
+            updateUI(testModeOn);
+        }
+    }
+
+    // Credential fields (secret key + webhook signing secret, per mode).
+    // Deliberately NOT hardcoded anywhere — these are the only source of
+    // truth create-checkout-session/stripe-webhook read from, mirroring how
+    // Zoho's credentials already work in this same table. Save is
+    // permissive (no "all required" check) since an admin may legitimately
+    // want to save just the Test-mode pair first and add Live later.
+    const txtSecretTest = document.getElementById('stripe-secret-key-test');
+    const txtSecretLive = document.getElementById('stripe-secret-key-live');
+    const txtWebhookTest = document.getElementById('stripe-webhook-secret-test');
+    const txtWebhookLive = document.getElementById('stripe-webhook-secret-live');
+    const btnSaveStripe = document.getElementById('btn-save-stripe');
+
+    if (txtSecretTest && txtSecretLive && txtWebhookTest && txtWebhookLive && btnSaveStripe) {
+        try {
+            const { data, error } = await sb.from('settings').select('key, value').in('key', [
+                'stripe_secret_key_test', 'stripe_secret_key_live',
+                'stripe_webhook_secret_test', 'stripe_webhook_secret_live'
+            ]);
+            if (error) throw error;
+
+            (data || []).forEach(item => {
+                if (item.key === 'stripe_secret_key_test') txtSecretTest.value = item.value || '';
+                else if (item.key === 'stripe_secret_key_live') txtSecretLive.value = item.value || '';
+                else if (item.key === 'stripe_webhook_secret_test') txtWebhookTest.value = item.value || '';
+                else if (item.key === 'stripe_webhook_secret_live') txtWebhookLive.value = item.value || '';
+            });
+        } catch (err) {
+            showToast("Failed to load Stripe credentials: " + err.message, 'error');
+        }
+
+        btnSaveStripe.addEventListener('click', async () => {
+            btnSaveStripe.disabled = true;
+            btnSaveStripe.textContent = "Saving...";
+
+            try {
+                const { data: { session } } = await sb.auth.getSession();
+                const userEmail = session?.user?.email || 'admin';
+                const now = new Date().toISOString();
+
+                const updates = [
+                    { key: 'stripe_secret_key_test', value: txtSecretTest.value.trim(), updated_at: now, updated_by: userEmail },
+                    { key: 'stripe_secret_key_live', value: txtSecretLive.value.trim(), updated_at: now, updated_by: userEmail },
+                    { key: 'stripe_webhook_secret_test', value: txtWebhookTest.value.trim(), updated_at: now, updated_by: userEmail },
+                    { key: 'stripe_webhook_secret_live', value: txtWebhookLive.value.trim(), updated_at: now, updated_by: userEmail }
+                ];
+
+                const { error } = await sb.from('settings').upsert(updates);
+                if (error) throw error;
+
+                showToast("Stripe credentials saved successfully");
+                await auditLog('update_stripe_settings', 'system', {
+                    has_secret_key_test: !!txtSecretTest.value.trim(),
+                    has_secret_key_live: !!txtSecretLive.value.trim(),
+                    has_webhook_secret_test: !!txtWebhookTest.value.trim(),
+                    has_webhook_secret_live: !!txtWebhookLive.value.trim()
+                });
+            } catch (err) {
+                showToast(`Failed to save Stripe credentials: ${err.message}`, 'error');
+            } finally {
+                btnSaveStripe.disabled = false;
+                btnSaveStripe.textContent = "Save Stripe Settings";
+            }
+        });
     }
 }
 

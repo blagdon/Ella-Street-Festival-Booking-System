@@ -37,14 +37,19 @@ jobs:
       - name: Check RLS policies/grants match the committed snapshot
         run: bash scripts/check-rls-grants-snapshot.sh
 
-  # tests/integration.test.mjs, tests/workflow.test.mjs, tests/security.test.mjs -
-  # all run only against the disposable "test backup" Supabase project
-  # (qeplpcnrkgpaawfyliap), every file hard-refuses to run against anything
-  # else. Needs that project's URL/anon/service-role keys and the seeded
-  # test admin's email/password as repo secrets (see HANDOVER.md's Testing
-  # section for the one-time project-side setup: deploying the three Edge
-  # Functions there and setting the Turnstile test secret - this workflow
-  # assumes that's already done, it doesn't redo it on every run).
+  # tests/integration.test.mjs, tests/workflow.test.mjs, tests/security.test.mjs,
+  # tests/stripe-payment.test.mjs - all run only against the disposable "test
+  # backup" Supabase project (qeplpcnrkgpaawfyliap), every file hard-refuses
+  # to run against anything else. Needs that project's URL/anon/service-role
+  # keys, the seeded test admin's email/password, and a Stripe TEST-mode
+  # secret key/webhook secret (never live keys) as repo secrets - the seed
+  # step below writes the Stripe pair into the test project's own settings
+  # table (Stripe credentials live there, not Edge Function env vars - see
+  # HANDOVER.md's Stripe Payment Collection section), same as every other
+  # settings-table row this suite depends on. Also needs the Edge Functions
+  # deployed there and the Turnstile test secret set (see HANDOVER.md's
+  # Testing section) - this workflow assumes that one-time setup is done,
+  # it doesn't redo it on every run.
   integration-tests:
     runs-on: ubuntu-latest
     steps:
@@ -61,6 +66,8 @@ jobs:
           TEST_SUPABASE_SERVICE_ROLE_KEY=${{ secrets.TEST_SUPABASE_SERVICE_ROLE_KEY }}
           TEST_ADMIN_EMAIL=${{ secrets.TEST_ADMIN_EMAIL }}
           TEST_ADMIN_PASSWORD=${{ secrets.TEST_ADMIN_PASSWORD }}
+          TEST_STRIPE_SECRET_KEY=${{ secrets.TEST_STRIPE_SECRET_KEY }}
+          TEST_STRIPE_WEBHOOK_SECRET=${{ secrets.TEST_STRIPE_WEBHOOK_SECRET }}
           EOF
       - name: Ensure test fixtures (idempotent)
         run: npm run test:setup
