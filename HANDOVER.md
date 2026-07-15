@@ -921,9 +921,7 @@ tested live, and deployed. In order, what was just finished:
     `js/config.js`/`api.js`/`shared.js`/`kanban.js`/`summary.js`/`payments.js` and their
     HTML pages for the three new statuses and payment-flow actions. Verified:
     `location_admin.html`/`js/locations.js`/`rpc_set_booking_locations` were not modified
-    at all. Not yet deployed/verified live — needs the Stripe credentials set up above and
-    a real Stripe Test-mode run (Checkout's official test card `4242 4242 4242 4242`)
-    against a `DEV`-instance booking before this touches production.
+    at all. Deployed and verified live end-to-end as of item 27 below.
 25. Moved all four Stripe credentials (`stripe_secret_key_test/live`,
     `stripe_webhook_secret_test/live`) from Edge Function env vars into the `settings`
     table (new "Stripe Payments" card on `settings.html`), at the project owner's
@@ -953,6 +951,39 @@ tested live, and deployed. In order, what was just finished:
     pattern) — it was never actually tested for anon-rejection, unlike the new RPCs
     here; not fixed as part of this session since it's pre-existing code outside this
     feature's scope, but flagged for whoever picks this up next.
+27. **Merged `stripe_integration` into `main` and verified the full flow live on
+    production** (`app.ellastreet.co.uk`, project `rsnxhuhibglieofikkpo`) — both
+    migrations pushed, both Edge Functions deployed, real credentials entered via
+    `settings.html`. Walked a real `£1` Food-instance booking (with the
+    `stripe_test_mode` override on, so it used the Test-mode key rather than a real
+    Live one) through Pre-Confirmed → Request Payment → a genuine Stripe Checkout
+    payment (test card `4242 4242 4242 4242`) → Paid → Confirmed, and confirmed
+    `payments.html` shows a real row (`bank_ref` = the actual `pi_...` payment intent,
+    `editor` = `Stripe (automatic)`).
+    **Found and fixed a second real gap this way** (the automated test suite couldn't
+    have caught this — it never exercises a genuine signed webhook call end-to-end):
+    the Stripe **webhook destination** that had been registered pointed at the
+    disposable **test** project's URL (`qeplpcnrkgpaawfyliap`), not the live one — so
+    the first live payment's webhook was never even delivered, and the booking sat
+    stuck in `Payment Requested` indefinitely. Fixed by registering a second,
+    dedicated destination in the Stripe Dashboard (Test mode) pointing at
+    `https://rsnxhuhibglieofikkpo.supabase.co/functions/v1/stripe-webhook`, then
+    updating `stripe_webhook_secret_test` in `settings.html` to that destination's own
+    signing secret. **A related, more subtle failure surfaced immediately after**: even
+    with the correct destination, the very first delivery attempts failed with
+    `{"error": "Webhook signature verification failed."}` (visible in the Stripe
+    Dashboard's Event deliveries tab for that destination) — caused by the wrong
+    destination's secret having been copied into `settings.html` at first, since two
+    similarly-named destinations now exist in the same Stripe Test-mode account.
+    Re-copying the secret from the correct ("Live Project, Test Mode") destination and
+    resending the failed event via Stripe's own "Resend" button (no new payment
+    needed) confirmed the fix — the event then delivered successfully and the booking
+    completed the full status chain. **Lesson for next time**: when multiple Stripe
+    webhook destinations exist in one account (e.g. one per Supabase project), always
+    double-check which destination's secret you're copying — the destination name
+    alone is easy to mis-click between similar-sounding options. `email test`
+    (`ESF26-FOOD-0022`) was intentionally left as a real Confirmed/Paid booking in the
+    live database afterward as a working example, at the owner's choice.
 
 **Explicitly deferred, not started:** Slack/Discord/Sentry-style alerting for Edge
 Function errors — the project owner said "I'll do it later," don't assume it's wanted
