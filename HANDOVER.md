@@ -229,7 +229,7 @@ Added 2026-07-15. Inserts real online payment collection between "admin approves
 "booking is Confirmed," without touching location allocation (a fully separate
 `status='Confirmed'`-gated page/RPC) or the Rejected/Cancelled paths.
 
-**Status chain**: `Pending → Payment Requested → Paid → Confirmed` (plus the existing
+**Status chain**: `Pending → Payment Requested → Confirmed` (plus the existing
 `On Hold`/`HCC Checks`/`Rejected`/`Cancelled` side-branches, unaffected). Two things NOT
 implemented as literal new statuses, deliberately:
 - "Submitted"/"Under Review" collapse into the existing `Pending` — every status
@@ -270,24 +270,38 @@ Request" call, which doesn't pass one). If Stripe/email fails, the booking is le
 exactly where it was (Pending/On Hold/HCC Checks) — the admin sees an error toast and can
 retry from the same Confirm button, no stuck intermediate state possible.
 `create-checkout-session`'s status check now only rejects bookings that are already
-resolved (`Confirmed`/`Paid`/`Rejected`/`Cancelled`), rather than requiring a specific
-prior status, since a payment request can now originate from `Pending`, `On Hold`, or
+resolved (`Confirmed`/`Rejected`/`Cancelled`), rather than requiring a specific prior
+status, since a payment request can now originate from `Pending`, `On Hold`, or
 `HCC Checks` as well as being resent from `Payment Requested`.
 
-**Payment Requested → Paid → Confirmed is two separate top-level RPC calls from
-`stripe-webhook`, not one transaction** — `mark_stripe_payment_received()` then
-`finalize_stripe_confirmation()` (both `SECURITY DEFINER`, `search_path` pinned,
-`EXECUTE` restricted to `service_role` only). This is deliberate: a crash between the two
-leaves a real, visible, recoverable `Paid` booking (Kanban's "Mark as Confirmed" recovery
-button, `js/api.js`'s `recoverStuckPaidBooking()` — a **plain** status-only update, never
-`finalizeConfirmation()`, which would re-upsert `payments.paid=false` over a real Stripe
-payment) rather than an unreachable intermediate state. Both RPCs are safe to re-call —
-each no-ops (0 rows updated, no error) unless the booking is still in the expected
-preceding status — this, not the `stripe_webhook_events` table, is the real idempotency
-boundary for the financial state change. `stripe_webhook_events` (RLS enabled, zero
-policies, `service_role`-only grant) exists purely to dedupe the **email send**: a
-retried/duplicate Stripe webhook delivery would otherwise re-email the confirmation on
-every retry.
+**No intermediate "Paid" status either — this was a second same-day simplification,
+right after the Pre-Confirmed one above.** The feature originally had `stripe-webhook`
+make two separate top-level RPC calls — `mark_stripe_payment_received()` (→ `Paid`, with
+the `payments` upsert) then `finalize_stripe_confirmation()` (`Paid` → `Confirmed`) — on
+purpose, so a crash between the two would leave a real, visible, recoverable `Paid`
+booking rather than an unreachable intermediate state (a Kanban "Mark as Confirmed"
+recovery button existed specifically for this). The admin asked for `Paid` to be removed
+entirely, so `stripe-webhook` now makes **one** call to `finalize_stripe_payment()`
+(`20260715141600_stripe_atomic_payment_confirmation.sql` — drops the two old RPCs,
+adds this one), which does the status update (`Payment Requested` → `Confirmed`,
+`stripe_payment_intent_id`, `date_confirmed`) and the `payments` upsert inside a single
+`SECURITY DEFINER` function call — i.e. one Postgres transaction. This actually closes
+the crash gap rather than just making it recoverable: either both writes commit, or (on
+any error) neither does and the booking is left exactly at `Payment Requested`, which
+Stripe's own webhook retry (or "Resend Payment Request") already knows how to recover
+from — no dedicated recovery button needed anymore, so `recoverStuckPaidBooking()` and
+the "Mark as Confirmed" button are gone too. Same idempotency property as before, now via
+one guard instead of two: `finalize_stripe_payment` no-ops (0 rows updated, no error)
+unless the booking is still `Payment Requested` when it runs — this, not the
+`stripe_webhook_events` table, is the real idempotency boundary for the financial state
+change. `stripe_webhook_events` (RLS enabled, zero policies, `service_role`-only grant)
+still exists purely to dedupe the **email send**: a retried/duplicate Stripe webhook
+delivery would otherwise re-email the confirmation on every retry. Learned from the
+Pre-Confirmed migration's own history: `finalize_stripe_payment`'s grants
+`REVOKE ... FROM "anon", "authenticated"` **by name**, not just `FROM PUBLIC`, from the
+very first migration this time — this project's schema-level `ALTER DEFAULT PRIVILEGES`
+grants new functions directly to those roles regardless of a `PUBLIC` revoke (see the
+Gotchas entry on this below).
 
 **All four Stripe credentials live in the `settings` table, not Edge Function env
 vars** — `stripe_secret_key_test`, `stripe_secret_key_live`, `stripe_webhook_secret_test`,
@@ -330,8 +344,8 @@ doesn't govern top-level navigation.
 
 **Payment status visibility**: `payments.html`'s `fetchPayments()` (`js/api.js`) was
 extended additively — its original behavior (only bookings with an existing `payments`
-row) is untouched, **plus** `Payment Requested`/`Paid` bookings with no payments row yet
-(none is created until the webhook succeeds) are now also included, flagged
+row) is untouched, **plus** `Payment Requested` bookings with no payments row yet (none
+is created until the webhook succeeds) are now also included, flagged
 `awaitingPayment: true` and rendered with a distinct "Awaiting Payment" badge rather than
 "UNPAID".
 
@@ -344,11 +358,11 @@ to distinguish from a manually-entered admin name). **New email template**
 new" UI — only `email_admin.html`'s editor for existing rows), placeholder
 `{{payment_link}}` added alongside the existing set.
 
-**`Payment Requested`/`Paid` are deliberately NOT Kanban drag targets** (`js/kanban.js`'s
+**`Payment Requested` is deliberately NOT a Kanban drag target** (`js/kanban.js`'s
 `initDragula()`) — only `Pending`/`On Hold`/`HCC Checks`/`Confirmed`/`Rejected`/
-`Cancelled` are. Dragging a card into either would fake a transition with no real Stripe
-Checkout Session or payment behind it. Cards can still leave those columns via the
-detail-pane buttons, just not by dragging in. Dropping onto `Confirmed` opens the same
+`Cancelled` are. Dragging a card into it would fake a transition with no real Stripe
+Checkout Session behind it. Cards can still leave that column via the detail-pane
+buttons, just not by dragging in. Dropping onto `Confirmed` opens the same
 `#confirmTypeModal` as clicking the Confirm button — the admin's Free/Chargeable choice
 then decides whether it lands on `Confirmed` directly or on `Payment Requested` via Stripe.
 
@@ -373,9 +387,10 @@ existing test-project setup.
 - Location Manager — multi-location assignment per booking, occupancy-conflict enforced
   at the DB level, Google My Maps CSV export, search/sort
 - Payment tracking, statistics/charts, visitor map (Leaflet)
-- Stripe Checkout payment collection (Pending → Payment Requested → Paid → Confirmed,
-  fired immediately on a chargeable confirm), test/live mode via `instance_prefix`,
-  idempotent webhook — see [Stripe Payment Collection](#stripe-payment-collection) above
+- Stripe Checkout payment collection (Pending → Payment Requested → Confirmed, fired
+  immediately on a chargeable confirm, one atomic RPC on successful payment), test/live
+  mode via `instance_prefix`, idempotent webhook — see
+  [Stripe Payment Collection](#stripe-payment-collection) above
 - HCC (Hull City Council food safety) check workflow — manual, environment-aware email send
 - Email template admin (`more.html`), user role management, steward mobile view
 - Booking cancellation (public self-service link) with automatic confirmation email
@@ -420,8 +435,8 @@ existing test-project setup.
 One row per application, all types share this table, distinguished by `instance_prefix`
 (`ESF26-FOOD-`, `ESF26-NONFOOD-`, `ESF26-MISC-`, `ESF26-DEV-`). Key columns: `id` (text
 PK, e.g. `ESF26-FOOD-0042`), `status` (`Pending`/`Payment Requested`/
-`Paid`/`Confirmed`/`Rejected`/`Cancelled`/`On Hold`/`HCC Checks` — see
-[Stripe Payment Collection](#stripe-payment-collection) for the middle two), `business_name`,
+`Confirmed`/`Rejected`/`Cancelled`/`On Hold`/`HCC Checks` — see
+[Stripe Payment Collection](#stripe-payment-collection) for `Payment Requested`), `business_name`,
 `owner_name`, `email`, `stall_cost`, `cancel_token`, `rejection_reason`,
 `stripe_checkout_session_id`, `stripe_payment_intent_id`, `stripe_payment_requested_at`
 (all nullable, added 2026-07-15). **`bookings.location_id` still exists as a column
@@ -1020,18 +1035,38 @@ tested live, and deployed. In order, what was just finished:
     `cardBorderClass`, and `js/shared.js`'s `sharedUpdateStatus` (its whole
     `'Pre-Confirmed'` branch deleted, along with the now-unused `js/api.js`
     `preConfirmBooking()`). The "Request Payment (Stripe)" button is gone too (its
-    action now happens automatically); "Resend Payment Request" and the stuck-`Paid`
-    recovery button are unaffected. `create-checkout-session` now accepts an optional
-    `cost` in its request body (since there's no longer a step that persists
-    `stall_cost` before it runs) and only rejects already-resolved statuses
-    (`Confirmed`/`Paid`/`Rejected`/`Cancelled`) rather than requiring a specific prior
-    status — see [Stripe Payment Collection](#stripe-payment-collection) above for the
-    full new flow. `tests/stripe-payment.test.mjs` fixtures updated accordingly; no DB
-    migration needed (`bookings.status` is a plain text column, no CHECK constraint, so
-    removing a value from the app-level allow-list needed no schema change) — worth a
-    one-time manual check that no live booking was actually sitting in `Pre-Confirmed`
-    at the moment this shipped (none was, per the item 27 verification booking already
-    having completed its full chain to `Confirmed`).
+    action now happens automatically); "Resend Payment Request" is unaffected (the
+    stuck-`Paid` recovery button is addressed separately in item 29 below).
+    `create-checkout-session` now accepts an optional `cost` in its request body (since
+    there's no longer a step that persists `stall_cost` before it runs) and only rejects
+    already-resolved statuses (at this point `Confirmed`/`Paid`/`Rejected`/`Cancelled`,
+    later narrowed further by item 29) rather than requiring a specific prior status —
+    see [Stripe Payment Collection](#stripe-payment-collection) above for the current
+    flow. `tests/stripe-payment.test.mjs` fixtures updated accordingly; no DB migration
+    needed (`bookings.status` is a plain text column, no CHECK constraint, so removing a
+    value from the app-level allow-list needed no schema change) — worth a one-time
+    manual check that no live booking was actually sitting in `Pre-Confirmed` at the
+    moment this shipped (none was, per the item 27 verification booking already having
+    completed its full chain to `Confirmed`).
+29. **Removed the `Paid` status too, immediately after item 28** — the owner asked
+    directly whether `Paid` was ever used; the honest answer was "yes, but only for a
+    few milliseconds in the success path, as a crash-recovery window between two
+    separate webhook RPC calls" (see the "No intermediate Paid status" paragraph in
+    [Stripe Payment Collection](#stripe-payment-collection) above for the full
+    before/after). Rather than just removing the status and losing that crash-recovery
+    property, `mark_stripe_payment_received()` and `finalize_stripe_confirmation()` were
+    replaced with one atomic `finalize_stripe_payment()` RPC (new migration
+    `20260715141600_stripe_atomic_payment_confirmation.sql`, which also drops the two old
+    functions) — a single `SECURITY DEFINER` call is one transaction, so the crash window
+    disappears entirely rather than needing a manual recovery step. `Paid` is gone from
+    `js/config.js`'s `STATUS_LIST`/`STATUS_COLORS`, the Kanban `Paid` column,
+    `cardBorderClass`, the Summary status filter, `js/api.js`'s `fetchPayments()`
+    awaiting-payment filter (now just `status === 'Payment Requested'`), and the
+    "Mark as Confirmed" recovery button + `recoverStuckPaidBooking()` everywhere
+    (`js/api.js`, `js/shared.js`, `js/kanban.js`, `js/summary.js`, `js/page-kanban.js`,
+    `js/page-summary.js`). `create-checkout-session`'s already-resolved check is now just
+    `Confirmed`/`Rejected`/`Cancelled`. `tests/stripe-payment.test.mjs`'s RPC tests
+    rewritten for the single call.
 
 **Explicitly deferred, not started:** Slack/Discord/Sentry-style alerting for Edge
 Function errors — the project owner said "I'll do it later," don't assume it's wanted
@@ -1062,18 +1097,22 @@ stay in the separate `ellafestperformersadmin.vercel.app` codebase.
 - **`bookings.location_id` (the old CSV text column) still exists but is dead** — don't
   read or write it; use `booking_locations` + `rpc_set_booking_locations()` exclusively.
 
-- **`Pending`/`Paid` are NOT synonyms for "no payment yet"/"payment done" in the way you'd
-  guess.** `stall_cost === 0` is the actual free/skip-Stripe rule (not just the admin's
-  Free/Chargeable toggle — an explicit `£0` chargeable override is treated as free too).
-  A booking only ever reaches `Paid` via `mark_stripe_payment_received()`, immediately
-  followed by `finalize_stripe_confirmation()` → `Confirmed` — these are two **separate**
-  RPC calls from `stripe-webhook`, on purpose (see
-  [Stripe Payment Collection](#stripe-payment-collection)), so don't "simplify" them into
-  one transaction — that would make `Paid` unobservable and break the Kanban recovery
-  action that exists specifically for a crash between the two. If you ever see a booking
-  stuck at `Paid`, that recovery action (`js/api.js`'s `recoverStuckPaidBooking()`) is
-  the fix, not re-running `finalizeConfirmation()` (which would clobber the real
-  Stripe-recorded `payments.paid=true` back to `false`).
+- **`stall_cost === 0` is the actual free/skip-Stripe rule**, not the admin's
+  Free/Chargeable toggle by itself — an explicit `£0` chargeable override is treated as
+  free too. A `Confirmed` booking with `stall_cost === 0` and no `payments` row is
+  correct, not a bug.
+
+- **There is no `Paid` status — a successful Stripe payment goes straight from
+  `Payment Requested` to `Confirmed` in one atomic RPC**, `finalize_stripe_payment()`
+  (`stripe-webhook` → this one call → done). This used to be two separate RPC calls
+  (`mark_stripe_payment_received()` then `finalize_stripe_confirmation()`) specifically
+  so a crash between them left a recoverable intermediate `Paid` state — that design was
+  deliberately replaced (see item 29 in Next Steps and
+  [Stripe Payment Collection](#stripe-payment-collection)) with one atomic call instead,
+  precisely so there's no intermediate state to get stuck in at all. **Do not re-split
+  `finalize_stripe_payment()` back into two calls** without re-adding a `Paid`-equivalent
+  recovery path — the whole point of merging them was to make a stuck state
+  architecturally impossible, not just to shorten the code.
 
 - **`REVOKE ALL ... FROM PUBLIC` alone does NOT lock `anon`/`authenticated` out of a new
   table or function on this project.** Confirmed live while testing the Stripe RPCs:

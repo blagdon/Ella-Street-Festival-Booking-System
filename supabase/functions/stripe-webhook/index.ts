@@ -182,19 +182,15 @@ Deno.serve(async (req) => {
             ? session.payment_intent
             : (session.payment_intent?.id || session.id)
 
-          // Idempotency boundary for the financial state itself: both RPCs
-          // are safely re-callable no-ops if the booking has already moved
-          // past the expected status (see the migration's comments).
-          const { error: rpc1Err } = await supabaseAdmin.rpc('mark_stripe_payment_received', {
+          // Idempotency boundary for the financial state itself: this RPC is
+          // a single atomic transaction (status update + payments upsert),
+          // and is a safe no-op if the booking isn't currently 'Payment
+          // Requested' (see the migration's comments).
+          const { error: rpcErr } = await supabaseAdmin.rpc('finalize_stripe_payment', {
             p_booking_id: bookingId,
             p_payment_intent_id: paymentIntentId
           })
-          if (rpc1Err) throw new Error('mark_stripe_payment_received failed: ' + rpc1Err.message)
-
-          const { error: rpc2Err } = await supabaseAdmin.rpc('finalize_stripe_confirmation', {
-            p_booking_id: bookingId
-          })
-          if (rpc2Err) throw new Error('finalize_stripe_confirmation failed: ' + rpc2Err.message)
+          if (rpcErr) throw new Error('finalize_stripe_payment failed: ' + rpcErr.message)
 
           // Idempotency boundary for the EMAIL send specifically: only the
           // first delivery of this exact Stripe event id to fully complete

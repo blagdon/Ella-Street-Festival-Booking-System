@@ -38,9 +38,6 @@ function init() {
     const btnResendPaymentRequest = document.getElementById('btn-resend-payment-request');
     if (btnResendPaymentRequest) btnResendPaymentRequest.addEventListener('click', () => window.resendPaymentRequestAction());
 
-    const btnRecoverPaid = document.getElementById('btn-recover-paid');
-    if (btnRecoverPaid) btnRecoverPaid.addEventListener('click', () => window.recoverStuckPaidBookingAction());
-
     const btnSendSystemEmail = document.getElementById('btn-send-system-email');
     if (btnSendSystemEmail) btnSendSystemEmail.addEventListener('click', function () { window.sendSystemEmail(this); });
 

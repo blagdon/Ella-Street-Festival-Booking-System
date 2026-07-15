@@ -78,47 +78,38 @@ async function insertBooking(id, overrides = {}) {
   if (error) throw new Error(`Fixture setup failed for ${id}: ${error.message}`);
 }
 
-describe('mark_stripe_payment_received / finalize_stripe_confirmation RPCs', () => {
-  test('anon cannot call either RPC directly', async () => {
-    const { error: e1 } = await anon.rpc('mark_stripe_payment_received', { p_booking_id: 'x', p_payment_intent_id: 'pi_x' });
-    assert.ok(e1, 'expected anon to be rejected calling mark_stripe_payment_received');
-
-    const { error: e2 } = await anon.rpc('finalize_stripe_confirmation', { p_booking_id: 'x' });
-    assert.ok(e2, 'expected anon to be rejected calling finalize_stripe_confirmation');
+describe('finalize_stripe_payment RPC', () => {
+  test('anon cannot call it directly', async () => {
+    const { error } = await anon.rpc('finalize_stripe_payment', { p_booking_id: 'x', p_payment_intent_id: 'pi_x' });
+    assert.ok(error, 'expected anon to be rejected calling finalize_stripe_payment');
   });
 
-  test('happy path: Payment Requested -> Paid (with payments row) -> Confirmed', async () => {
+  test('happy path: Payment Requested -> Confirmed (with payments row), atomically, in one call', async () => {
     const id = `${PREFIX}HAPPY`;
     await insertBooking(id, { status: 'Payment Requested', stall_cost: 15 });
 
-    const { error: rpc1Err } = await service.rpc('mark_stripe_payment_received', {
+    const { error: rpcErr } = await service.rpc('finalize_stripe_payment', {
       p_booking_id: id,
       p_payment_intent_id: 'pi_test_happy_001',
     });
-    assert.equal(rpc1Err, null, rpc1Err?.message);
+    assert.equal(rpcErr, null, rpcErr?.message);
 
-    const { data: afterStep1 } = await service.from('bookings').select('status, stripe_payment_intent_id').eq('id', id).single();
-    assert.equal(afterStep1.status, 'Paid');
-    assert.equal(afterStep1.stripe_payment_intent_id, 'pi_test_happy_001');
+    const { data: booking } = await service.from('bookings').select('status, stripe_payment_intent_id, date_confirmed').eq('id', id).single();
+    assert.equal(booking.status, 'Confirmed');
+    assert.equal(booking.stripe_payment_intent_id, 'pi_test_happy_001');
+    assert.ok(booking.date_confirmed);
 
     const { data: payment } = await service.from('payments').select('*').eq('booking_id', id).single();
     assert.equal(payment.paid, true);
     assert.equal(payment.editor, 'Stripe (automatic)');
     assert.ok(payment.bank_ref.includes('pi_test_happy_001'));
-
-    const { error: rpc2Err } = await service.rpc('finalize_stripe_confirmation', { p_booking_id: id });
-    assert.equal(rpc2Err, null, rpc2Err?.message);
-
-    const { data: afterStep2 } = await service.from('bookings').select('status, date_confirmed').eq('id', id).single();
-    assert.equal(afterStep2.status, 'Confirmed');
-    assert.ok(afterStep2.date_confirmed);
   });
 
-  test('mark_stripe_payment_received no-ops if the booking is not Payment Requested', async () => {
+  test('no-ops if the booking is not Payment Requested', async () => {
     const id = `${PREFIX}NOOP1`;
     await insertBooking(id, { status: 'Cancelled' });
 
-    const { error } = await service.rpc('mark_stripe_payment_received', { p_booking_id: id, p_payment_intent_id: 'pi_test_noop' });
+    const { error } = await service.rpc('finalize_stripe_payment', { p_booking_id: id, p_payment_intent_id: 'pi_test_noop' });
     assert.equal(error, null, error?.message);
 
     const { data: booking } = await service.from('bookings').select('status').eq('id', id).single();
@@ -128,30 +119,19 @@ describe('mark_stripe_payment_received / finalize_stripe_confirmation RPCs', () 
     assert.equal(payment, null, 'no payments row should have been created');
   });
 
-  test('finalize_stripe_confirmation no-ops if the booking is not Paid', async () => {
-    const id = `${PREFIX}NOOP2`;
-    await insertBooking(id, { status: 'Pending' });
-
-    const { error } = await service.rpc('finalize_stripe_confirmation', { p_booking_id: id });
-    assert.equal(error, null, error?.message);
-
-    const { data: booking } = await service.from('bookings').select('status').eq('id', id).single();
-    assert.equal(booking.status, 'Pending', 'status must be untouched');
-  });
-
-  test('re-calling mark_stripe_payment_received after the booking already progressed is a safe no-op', async () => {
+  test('re-calling after the booking already progressed is a safe no-op (duplicate webhook delivery)', async () => {
     const id = `${PREFIX}IDEMPOTENT`;
     await insertBooking(id, { status: 'Payment Requested', stall_cost: 20 });
 
-    await service.rpc('mark_stripe_payment_received', { p_booking_id: id, p_payment_intent_id: 'pi_test_first' });
+    await service.rpc('finalize_stripe_payment', { p_booking_id: id, p_payment_intent_id: 'pi_test_first' });
     // Simulate a duplicate webhook delivery of the SAME event, arriving
-    // after the booking already moved to 'Paid' (status guard should
+    // after the booking already moved to 'Confirmed' (status guard should
     // prevent a second write / clobber).
-    const { error } = await service.rpc('mark_stripe_payment_received', { p_booking_id: id, p_payment_intent_id: 'pi_test_duplicate' });
+    const { error } = await service.rpc('finalize_stripe_payment', { p_booking_id: id, p_payment_intent_id: 'pi_test_duplicate' });
     assert.equal(error, null, error?.message);
 
     const { data: booking } = await service.from('bookings').select('status, stripe_payment_intent_id').eq('id', id).single();
-    assert.equal(booking.status, 'Paid');
+    assert.equal(booking.status, 'Confirmed');
     assert.equal(booking.stripe_payment_intent_id, 'pi_test_first', 'the duplicate call must not overwrite the original payment intent id');
   });
 });

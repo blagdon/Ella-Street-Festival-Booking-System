@@ -1,5 +1,5 @@
 import { initAdminPage } from './supabase.js';
-import { initKanban, filterCards, loadBoard, setSort, emailAllConfirmed, closeModal, openEmailModal, saveNote, changeStatus, promptStatusChange, finalizeConfirm, sendSystemEmail, confirmRejection, sendBulkEmail, cancelDrag, resendPaymentRequestAction, recoverStuckPaidBookingAction } from './kanban.js';
+import { initKanban, filterCards, loadBoard, setSort, emailAllConfirmed, closeModal, openEmailModal, saveNote, changeStatus, promptStatusChange, finalizeConfirm, sendSystemEmail, confirmRejection, sendBulkEmail, cancelDrag, resendPaymentRequestAction } from './kanban.js';
 
 function init() {
     initKanban();
@@ -37,9 +37,6 @@ function init() {
 
     const btnResendPaymentRequest = document.getElementById('btn-resend-payment-request');
     if (btnResendPaymentRequest) btnResendPaymentRequest.addEventListener('click', () => resendPaymentRequestAction());
-
-    const btnRecoverPaid = document.getElementById('btn-recover-paid');
-    if (btnRecoverPaid) btnRecoverPaid.addEventListener('click', () => recoverStuckPaidBookingAction());
 
     const btnSendSystemEmail = document.getElementById('btn-send-system-email');
     if (btnSendSystemEmail) btnSendSystemEmail.addEventListener('click', function () { sendSystemEmail(this); });

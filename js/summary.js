@@ -1,4 +1,4 @@
-import { fetchKanbanData, updateBookingStatus, addNote, sendEmail, queueBulkEmail, requestPayment, resendPaymentRequest, recoverStuckPaidBooking } from './api.js';
+import { fetchKanbanData, updateBookingStatus, addNote, sendEmail, queueBulkEmail, requestPayment, resendPaymentRequest } from './api.js';
 import { sharedUpdateStatus, populateDetailPane } from './shared.js';
 import { showToast, renderInstanceBadge, showConfirm } from './ui.js';
 import { escapeHtml, sortBookings } from './utils.js';
@@ -456,10 +456,9 @@ async function confirmChargeableAndRequestPayment(id, overrideCost) {
 }
 
 /**
- * "Resend Payment Request" / stuck-'Paid' recovery — mirrors
- * js/kanban.js's equivalents. The Edge Function (or, for recovery, a plain
- * conditional update) already writes the new status server-side, so these
- * just refresh the local cache/table rather than going through
+ * "Resend Payment Request" — mirrors js/kanban.js's equivalent. The Edge
+ * Function already writes the new status server-side, so this just
+ * refreshes the local cache/table rather than going through
  * sharedUpdateStatus.
  */
 async function runPaymentAction(id, action, newStatus, successMessage) {
@@ -477,10 +476,6 @@ async function runPaymentAction(id, action, newStatus, successMessage) {
 
 window.resendPaymentRequestAction = function (id) {
     return runPaymentAction(id || currentId, resendPaymentRequest, 'Payment Requested', 'Payment request resent.');
-}
-
-window.recoverStuckPaidBookingAction = function (id) {
-    return runPaymentAction(id || currentId, recoverStuckPaidBooking, 'Confirmed', 'Booking marked as Confirmed.');
 }
 
 window.confirmRejection = function () {

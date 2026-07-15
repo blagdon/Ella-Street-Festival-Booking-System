@@ -1,4 +1,4 @@
-import { fetchKanbanData, updateBookingStatus, addNote, sendEmail, queueBulkEmail, requestPayment, resendPaymentRequest, recoverStuckPaidBooking } from './api.js';
+import { fetchKanbanData, updateBookingStatus, addNote, sendEmail, queueBulkEmail, requestPayment, resendPaymentRequest } from './api.js';
 import { CONFIG, getStallCost } from './config.js';
 import { safeError, escapeHtml, sortBookings } from './utils.js';
 import { sharedUpdateStatus, populateDetailPane } from './shared.js';
@@ -9,8 +9,8 @@ import { showToast, renderInstanceBadge, showConfirm } from './ui.js';
 function getBoardStatuses() {
     const instance = localStorage.getItem('ESF_INSTANCE') || 'DEV';
     return instance === 'GENERAL'
-        ? ['Pending', 'On Hold', 'Payment Requested', 'Paid', 'Confirmed', 'Rejected', 'Cancelled']
-        : ['Pending', 'On Hold', 'HCC Checks', 'Payment Requested', 'Paid', 'Confirmed', 'Rejected', 'Cancelled'];
+        ? ['Pending', 'On Hold', 'Payment Requested', 'Confirmed', 'Rejected', 'Cancelled']
+        : ['Pending', 'On Hold', 'HCC Checks', 'Payment Requested', 'Confirmed', 'Rejected', 'Cancelled'];
 }
 
 function cardBorderClass(status) {
@@ -20,7 +20,6 @@ function cardBorderClass(status) {
         case 'On Hold': return 'border-purple-500';
         case 'HCC Checks': return 'border-orange-500';
         case 'Payment Requested': return 'border-indigo-500';
-        case 'Paid': return 'border-cyan-500';
         default: return 'border-yellow-400';
     }
 }
@@ -123,11 +122,11 @@ function initDragula() {
 
     const instance = localStorage.getItem('ESF_INSTANCE') || 'DEV';
 
-    // 'Payment Requested' and 'Paid' are deliberately NOT drag targets — they
-    // only ever change via "Request Payment"/the Stripe webhook, never a
-    // plain drag (which would fake a transition with no real Checkout
-    // Session or payment behind it). Cards can still leave those columns via
-    // the detail-pane buttons (Reject/On Hold/etc), just not by dragging.
+    // 'Payment Requested' is deliberately NOT a drag target — it only ever
+    // changes via "Request Payment"/the Stripe webhook, never a plain drag
+    // (which would fake a transition with no real Checkout Session or
+    // payment behind it). Cards can still leave that column via the
+    // detail-pane buttons (Reject/On Hold/etc), just not by dragging.
     const containers = [
         document.getElementById('col-Pending'),
         document.getElementById('col-On Hold'),
@@ -584,26 +583,6 @@ async function runPaymentAction(id, action, successMessage) {
 export function resendPaymentRequestAction(id) {
     const targetId = id || currentId;
     return runPaymentAction(targetId, resendPaymentRequest, 'Payment request resent.');
-}
-
-/**
- * Manual recovery for a booking stuck at 'Paid' (webhook completed the
- * payment-recording step but died before the confirmation step). Plain
- * status-only change server-side — see js/api.js's recoverStuckPaidBooking
- * for why this must never re-run finalizeConfirmation.
- */
-export async function recoverStuckPaidBookingAction(id) {
-    const targetId = id || currentId;
-    try {
-        await recoverStuckPaidBooking(targetId);
-        const idx = allBookings.findIndex(b => b.id === targetId);
-        if (idx > -1) allBookings[idx].status = 'Confirmed';
-        moveCardToStatus(targetId, 'Confirmed');
-        showToast('Booking marked as Confirmed.');
-        if (currentId === targetId) openDetails(targetId);
-    } catch (e) {
-        showToast('Failed: ' + e.message, 'error');
-    }
 }
 
 function moveCardToStatus(id, status) {

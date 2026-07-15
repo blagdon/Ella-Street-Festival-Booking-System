@@ -360,14 +360,13 @@ export function populateDetailPane(item) {
         statusBadge.className = `inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${sClass}`;
     }
 
-    // Payment-flow action buttons — each only makes sense from one specific
-    // status, so hide/show rather than always rendering all three.
+    // Payment-flow action button — only makes sense from one specific
+    // status, so hide/show rather than always rendering it.
     const toggle = (eid, show) => {
         const el = document.getElementById(eid);
         if (el) el.classList.toggle('hidden', !show);
     };
     toggle('btn-resend-payment-request', item.status === 'Payment Requested');
-    toggle('btn-recover-paid', item.status === 'Paid');
 
     // Show rejection reason banner only for rejected bookings
     const rejContainer = document.getElementById('d-rejection-container');

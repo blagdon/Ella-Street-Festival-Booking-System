@@ -326,13 +326,13 @@ export async function fetchPayments(currentInstance) {
         };
     });
 
-    // Additive: bookings mid-Stripe-flow (Payment Requested / Paid) don't
-    // get a payments row until the webhook actually succeeds, so without
-    // this they'd be invisible here even though a payment is genuinely
-    // in flight. Shown with paid:false and awaitingPayment:true so the UI
+    // Additive: bookings mid-Stripe-flow (Payment Requested) don't get a
+    // payments row until the webhook actually succeeds, so without this
+    // they'd be invisible here even though a payment is genuinely in
+    // flight. Shown with paid:false and awaitingPayment:true so the UI
     // can render a distinct "Awaiting Payment" badge instead of "UNPAID".
     const awaitingPayment = bookings
-        .filter(b => !payMap.has(b.id) && ['Payment Requested', 'Paid'].includes(b.status))
+        .filter(b => !payMap.has(b.id) && b.status === 'Payment Requested')
         .map(b => ({
             ...b,
             paid: false,
@@ -399,27 +399,6 @@ export async function resendPaymentRequest(bookingId) {
     const data = await requestPayment(bookingId);
     await auditLog('resend_payment_request', bookingId);
     return data;
-}
-
-/**
- * Manual recovery action for a booking stuck at 'Paid' (the Stripe webhook
- * completed mark_stripe_payment_received but died before
- * finalize_stripe_confirmation). Deliberately a PLAIN status-only update —
- * never calls finalizeConfirmation, which would re-upsert payments with
- * paid:false and clobber the real Stripe payment that already succeeded.
- * No-ops (via the WHERE clause) if the booking isn't actually still 'Paid'.
- * @param {string} id
- */
-export async function recoverStuckPaidBooking(id) {
-    validateBookingId(id);
-    const sb = getSupabaseClient();
-    const { error } = await sb.from(TBL_BOOKINGS)
-        .update({ status: 'Confirmed', date_confirmed: new Date().toISOString() })
-        .eq('id', id)
-        .eq('status', 'Paid');
-    if (error) throw error;
-    await auditLog('recover_stuck_paid_booking', id);
-    return { status: 'success' };
 }
 
 /**
