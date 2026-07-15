@@ -8,6 +8,7 @@ const TBL_LOCATIONS = 'locations';
 const TBL_BOOKING_LOCATIONS = 'booking_locations';
 const TBL_EMAIL_QUEUE = 'email_queue';
 const TBL_AUDIT_LOGS = 'audit_logs';
+const VIEW_PUBLIC_BOOKINGS_INFO = 'public_bookings_info';
 
 /**
  * locations.id may be a numeric Postgres column, while booking_locations.location_id
@@ -531,10 +532,16 @@ export async function fetchMapData(currentInstance) {
     const { data: mapLocs } = await sb.from(TBL_LOCATIONS).select('*').eq('dataset', mapDataset);
     const safeMapLocs = normalizeLocationIds(mapLocs);
 
-    // 2. Get Confirmed Bookings
-    let bQuery = sb.from(TBL_BOOKINGS)
-        .select('id, business_name, description, stall_type, category, instance_prefix')
-        .eq('status', 'Confirmed');
+    // 2. Get Confirmed bookings and their assigned location(s) via the
+    // public_bookings_info view — anon has no direct access to the
+    // bookings table at all (2026-07-15 security fix: PII columns like
+    // owner_name/email/phone/address/documents/cancel_token must never be
+    // reachable by an unauthenticated visitor). The view already joins
+    // booking_locations internally, so each row here is one
+    // (booking, location) pair — a booking with multiple locations simply
+    // produces multiple rows, one per location_id.
+    let bQuery = sb.from(VIEW_PUBLIC_BOOKINGS_INFO)
+        .select('business_name, description, stall_type, category, instance_prefix, location_id');
 
     if (currentInstance === 'DEV') {
         bQuery = bQuery.eq('instance_prefix', CONFIG.INSTANCE_MAP['DEV']);
@@ -545,22 +552,10 @@ export async function fetchMapData(currentInstance) {
     const { data: bData, error: mapBErr } = await bQuery;
     if (mapBErr) throw mapBErr;
 
-    // 3. Join Data via booking_locations
-    const bookingIds = (bData || []).map(b => b.id);
-    const { data: joinRows, error: joinErr } = bookingIds.length
-        ? await sb.from(TBL_BOOKING_LOCATIONS).select('booking_id, location_id').in('booking_id', bookingIds)
-        : { data: [], error: null };
-    if (joinErr) throw joinErr;
-
-    const bookingsById = new Map((bData || []).map(b => [b.id, b]));
-    const bookingMap = new Map();
-    (joinRows || []).forEach(r => {
-        const b = bookingsById.get(r.booking_id);
-        if (b) bookingMap.set(r.location_id, b);
-    });
+    const bookingByLocation = new Map((bData || []).map(b => [b.location_id, b]));
 
     return safeMapLocs.map(l => {
-        const booking = bookingMap.get(l.id);
+        const booking = bookingByLocation.get(l.id);
         if (!booking) return null;
         return {
             location_id: l.id,

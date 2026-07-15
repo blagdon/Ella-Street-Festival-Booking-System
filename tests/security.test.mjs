@@ -30,6 +30,7 @@ const devLocationId = 'TESTSECLOC-DEV';
 const liveLocationId = 'TESTSECLOC-LIVE';
 
 before(async () => {
+  await service.from('booking_locations').delete().in('booking_id', [confirmedBookingId, pendingBookingId]);
   await service.from('bookings').delete().in('id', [confirmedBookingId, pendingBookingId]);
   await service.from('performers').delete().in('id', [scheduledPerformerId, appliedPerformerId]);
   await service.from('locations').delete().in('id', [devLocationId, liveLocationId]);
@@ -67,43 +68,54 @@ before(async () => {
     { id: liveLocationId, dataset: 'LIVE', lat: 0, lng: 0 },
   ]);
   if (locationsInsertErr) throw new Error(`Fixture setup failed (locations): ${locationsInsertErr.message}`);
+
+  // Give the confirmed booking a location, so the public_bookings_info
+  // view's join and the booking_locations anon policy both have a real
+  // row to exercise (the pending booking is deliberately left unassigned).
+  const { error: bookingLocationsInsertErr } = await service.from('booking_locations').insert([
+    { booking_id: confirmedBookingId, location_id: liveLocationId },
+  ]);
+  if (bookingLocationsInsertErr) throw new Error(`Fixture setup failed (booking_locations): ${bookingLocationsInsertErr.message}`);
 });
 
 after(async () => {
+  await service.from('booking_locations').delete().in('booking_id', [confirmedBookingId, pendingBookingId]);
   await service.from('bookings').delete().in('id', [confirmedBookingId, pendingBookingId]);
   await service.from('performers').delete().in('id', [scheduledPerformerId, appliedPerformerId]);
   await service.from('locations').delete().in('id', [devLocationId, liveLocationId]);
 });
 
 describe('anon access to bookings', () => {
-  test('Confirmed booking is visible through its permitted, non-sensitive columns', async () => {
-    // The anon column grant on bookings is limited to id, business_name,
-    // description, stall_type, category, instance_prefix - select('*')
-    // requires implicit access to every column, so it doesn't silently drop
-    // the disallowed ones, it errors outright (confirmed live: "permission
-    // denied for table bookings"). A real anon consumer (js/api.js's
-    // fetchMapData()) selects these exact columns explicitly, same as here.
+  // 2026-07-15 security fix: a third-party review correctly flagged that
+  // the "Public see confirmed" RLS policy let anon SELECT any Confirmed
+  // row, relying entirely on column-level GRANTs (see git history) as the
+  // only thing narrowing which columns that exposed — a single future
+  // `GRANT SELECT ON bookings TO anon` would have silently undone that.
+  // The policy and those column grants are now both gone; anon has zero
+  // access to the bookings table itself, full stop. Public consumers
+  // (js/api.js's fetchMapData()) go through the public_bookings_info view
+  // instead — see the next describe block.
+  test('anon cannot select from bookings at all, even the previously-permitted columns', async () => {
     const { data, error } = await anon
       .from('bookings')
       .select('id, business_name, description, stall_type, category, instance_prefix')
       .eq('id', confirmedBookingId)
       .single();
-    assert.equal(error, null, error?.message);
-    assert.equal(data.business_name, 'Sec Test Confirmed');
+    assert.ok(error, 'expected selecting even the old permitted-column set as anon to be rejected outright');
+    assert.equal(data, null);
   });
 
-  test('anon cannot select a column outside the grant, even on a visible row', async () => {
+  test('anon cannot select any single column from bookings, confirmed or not', async () => {
+    const { error: confirmedErr } = await anon.from('bookings').select('id').eq('id', confirmedBookingId).single();
+    assert.ok(confirmedErr, 'expected selecting bookings.id as anon to be rejected outright');
+
+    const { error: pendingErr } = await anon.from('bookings').select('id').eq('id', pendingBookingId).single();
+    assert.ok(pendingErr, 'expected selecting bookings.id as anon to be rejected outright');
+  });
+
+  test('anon cannot select a PII column from bookings', async () => {
     const { error } = await anon.from('bookings').select('email').eq('id', confirmedBookingId).single();
     assert.ok(error, 'expected selecting bookings.email as anon to be rejected outright');
-  });
-
-  test('Pending booking is not visible to anon at all', async () => {
-    const { data, error } = await anon
-      .from('bookings')
-      .select('id, business_name, description, stall_type, category, instance_prefix')
-      .eq('id', pendingBookingId);
-    assert.equal(error, null, error?.message);
-    assert.equal(data.length, 0, 'expected RLS to hide non-Confirmed bookings from anon entirely');
   });
 
   test('anon cannot write to bookings (no INSERT/UPDATE/DELETE policy exists)', async () => {
@@ -122,6 +134,55 @@ describe('anon access to bookings', () => {
 
     const { data: stillThere } = await service.from('bookings').select('business_name').eq('id', confirmedBookingId).single();
     assert.equal(stillThere.business_name, 'Sec Test Confirmed', 'the booking must be unchanged after the rejected anon update attempt');
+  });
+});
+
+describe('anon access to public_bookings_info (replaces direct bookings access)', () => {
+  test('Confirmed booking is visible through the view, with its assigned location', async () => {
+    const { data, error } = await anon
+      .from('public_bookings_info')
+      .select('id, business_name, category, stall_type, description, instance_prefix, location_id')
+      .eq('id', confirmedBookingId)
+      .single();
+    assert.equal(error, null, error?.message);
+    assert.equal(data.business_name, 'Sec Test Confirmed');
+    assert.equal(data.location_id, liveLocationId);
+  });
+
+  test('the view has no PII columns to select at all', async () => {
+    const { error } = await anon.from('public_bookings_info').select('email').eq('id', confirmedBookingId).single();
+    assert.ok(error, 'expected selecting a non-existent PII column on the view to be rejected');
+  });
+
+  test('Pending booking is not visible through the view (not Confirmed)', async () => {
+    const { data, error } = await anon.from('public_bookings_info').select('id').eq('id', pendingBookingId);
+    assert.equal(error, null, error?.message);
+    assert.equal(data.length, 0, 'expected the view to hide non-Confirmed bookings from anon entirely');
+  });
+
+  test('anon cannot write to the view', async () => {
+    const { error } = await anon.from('public_bookings_info').update({ business_name: 'Hacked' }).eq('id', confirmedBookingId);
+    assert.ok(error, 'expected anon UPDATE on the view to be rejected');
+  });
+});
+
+describe('anon access to booking_locations', () => {
+  // "Allow public anon to read confirmed booking locations" checks
+  // bookings.status via the is_booking_confirmed() SECURITY DEFINER helper
+  // (added in the same migration as the view above) rather than a direct
+  // cross-table subquery, specifically so this keeps working now that anon
+  // has zero RLS-permitted rows on bookings itself.
+  test('a Confirmed booking\'s location assignment is visible to anon', async () => {
+    const { data, error } = await anon.from('booking_locations').select('location_id').eq('booking_id', confirmedBookingId);
+    assert.equal(error, null, error?.message);
+    assert.equal(data.length, 1);
+    assert.equal(data[0].location_id, liveLocationId);
+  });
+
+  test('a non-Confirmed booking has no visible location assignment to anon', async () => {
+    const { data, error } = await anon.from('booking_locations').select('location_id').eq('booking_id', pendingBookingId);
+    assert.equal(error, null, error?.message);
+    assert.equal(data.length, 0);
   });
 });
 

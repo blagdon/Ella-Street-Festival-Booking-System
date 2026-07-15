@@ -388,6 +388,87 @@ settings-table row, consistent with the rest of this section). Deploying the two
 functions there is still a one-time manual step, same as `TURNSTILE_SECRET_KEY`'s
 existing test-project setup.
 
+### Public visitor-facing data access (`bookings`)
+
+Added 2026-07-15, migration `20260715165015_secure_public_bookings_view.sql`, in
+response to a third-party security review flagging anon SELECT access to `bookings`.
+
+**What the review found**: the `"Public see confirmed"` RLS policy let `anon` SELECT any
+row where `status = 'Confirmed'`, and `bookings` has real PII columns (`owner_name`,
+`email`, `phone`, `address`, `admin_notes`, `rejection_reason`, `documents`,
+`cancel_token`). **What was actually true at the time**: those specific PII columns were
+never anon-selectable in practice — a pre-existing column-level `GRANT SELECT` restricted
+`anon` to exactly `id`/`business_name`/`category`/`stall_type`/`description`/
+`instance_prefix` (see the Gotchas entry below, which documented this exact combination
+after an earlier, near-identical review flagged the same thing and it turned out to
+already be handled). So the review's specific "Impact" bullets overstated current
+exposure — but the underlying architecture was still fragile: RLS alone permitted
+full-row access to any Confirmed booking, with the column grants as the *only* thing
+narrowing it, and nothing would stop a future `GRANT SELECT ON bookings TO anon` (e.g.
+someone "fixing" an unrelated bug) from silently re-exposing everything. The fix below
+was implemented anyway, at the reviewer's/owner's request, because it's a genuinely
+better architecture regardless of whether real exposure existed — this is documented
+here in detail specifically so the next person doesn't waste time re-litigating whether
+the original report was "right," and doesn't accidentally revert to the old pattern.
+
+**The fix**: anon now has **zero** access to the `bookings` table — no RLS policy, no
+column grants, nothing. All previous anon-facing functionality goes through a new view,
+`public_bookings_info` (mirrors the existing `public_performer_info`/
+`public_schedule_info` pattern — a view owned by `postgres`, so it runs with the owner's
+privileges rather than the querying role's, meaning `anon` needs only `GRANT SELECT` on
+the view itself, never on the base table):
+
+```sql
+CREATE OR REPLACE VIEW "public"."public_bookings_info" AS
+ SELECT b.id, b.business_name, b.category, b.stall_type, b.description, b.instance_prefix,
+        bl.location_id
+   FROM bookings b JOIN booking_locations bl ON bl.booking_id = b.id
+  WHERE b.status = 'Confirmed';
+```
+
+An inner join (not left) on `booking_locations` is deliberate: a Confirmed booking with
+no location assigned yet has nothing useful to show on the public map, so it's correctly
+absent from the view. This also collapses what `js/api.js`'s `fetchMapData()` used to do
+as two separate queries (`bookings` then `booking_locations`, joined client-side in JS)
+into one query against the view — see that function for the updated code.
+
+**A second, less obvious break this caused, and how it's fixed**: the existing
+`"Allow public anon to read confirmed booking locations"` policy on `booking_locations`
+checks `bookings.status = 'Confirmed'` via a cross-table subquery in its `USING` clause.
+That subquery runs as the querying role (`anon`) — so once `anon` lost all RLS-permitted
+rows on `bookings`, the subquery would itself return zero rows for every check, and the
+`booking_locations` policy would deny everything, silently breaking the public map's
+location markers entirely (a real regression a naive "just drop the bookings policy" fix
+would have caused). Fixed with a new `SECURITY DEFINER` helper,
+`is_booking_confirmed(p_booking_id)` — same pattern as the existing `check_user_role()`
+function — which runs as its owner (bypassing RLS) rather than as `anon`, so the
+`booking_locations` policy keeps working without granting `anon` anything on `bookings`
+directly:
+
+```sql
+CREATE POLICY "Allow public anon to read confirmed booking locations"
+  ON booking_locations FOR SELECT TO anon
+  USING (is_booking_confirmed(booking_id));
+```
+
+This was verified empirically (not just reasoned about) against the disposable test
+project before it was ever considered safe: after applying the migration, a direct
+`anon.from('bookings').select(...)` for any column — including the ones that used to be
+column-granted — returns `permission denied for table bookings`; `anon` querying
+`public_bookings_info` for a Confirmed booking still returns the expected row including
+its joined `location_id`; and `anon` querying `booking_locations` for that same booking's
+location assignment still succeeds. `tests/security.test.mjs`'s `anon access to
+bookings`/`anon access to public_bookings_info`/`anon access to booking_locations`
+describe blocks codify all of this permanently.
+
+**Not touched, deliberately out of scope**: `js/api.js`'s `fetchMapData()` also
+references a `visitor-map` Edge Function URL as an unauthenticated fallback path — that
+function does not exist in `supabase/functions/`, so the `fetch` always fails and the
+code silently falls through to the (now-secured) direct view query. This is dead/
+aspirational code, not a security issue (it never returns anything, safe or otherwise),
+but it's misleading — worth a follow-up cleanup, not fixed here since it was out of scope
+for this security fix.
+
 ---
 
 ## 4. Current State
@@ -397,7 +478,9 @@ existing test-project setup.
 - Kanban board and searchable/sortable list ("Summary") views, both with bulk-email
 - Location Manager — multi-location assignment per booking, occupancy-conflict enforced
   at the DB level, Google My Maps CSV export, search/sort
-- Payment tracking, statistics/charts, visitor map (Leaflet)
+- Payment tracking, statistics/charts, visitor map (Leaflet) — the map now reads via the
+  `public_bookings_info` view rather than the `bookings` table directly, see
+  [Public visitor-facing data access](#public-visitor-facing-data-access-bookings) above
 - Stripe Checkout payment collection (Pending → Payment Requested → Confirmed, fired
   immediately on a chargeable confirm, one atomic RPC on successful payment), test/live
   mode via `instance_prefix`, idempotent webhook — see
@@ -453,7 +536,10 @@ PK, e.g. `ESF26-FOOD-0042`), `status` (`Pending`/`Payment Requested`/
 (all nullable, added 2026-07-15). **`bookings.location_id` still exists as a column
 but is deprecated** — see below. `documents` (`text[]`) stores **storage paths into
 the (private) `esf-documents` bucket**, not public URLs — resolved to a signed URL on
-demand by the `get-booking-documents` Edge Function.
+demand by the `get-booking-documents` Edge Function. **Anon has zero direct access to
+this table** (no RLS policy, no column grants) — public/unauthenticated consumers must
+go through the `public_bookings_info` view instead, see
+[Public visitor-facing data access](#public-visitor-facing-data-access-bookings).
 
 ### `booking_locations` — replaces the old CSV location column
 Join table: `(booking_id, location_id)`. Superseded `bookings.location_id` (which used
@@ -632,16 +718,21 @@ with a real run via `gh run watch` — all three green.
     HCC Checks → cancel), calling the same table/RPC operations `js/api.js`
     does, through a real signed-in admin session.
   - `tests/security.test.mjs` — behavioral RLS/column-grant checks against
-    the real REST API as an actual anon caller: `bookings`/`performers` are
-    visible only through their permitted columns (selecting a
+    the real REST API as an actual anon caller: `bookings` has **zero** anon
+    access of any kind (as of 2026-07-15 — see
+    [Public visitor-facing data access](#public-visitor-facing-data-access-bookings)),
+    `performers` is visible only through its permitted columns (selecting a
     disallowed column like `email` is rejected outright, not silently
     dropped — column-grant-restricted tables error on `select('*')` rather
     than omitting columns, learn this the hard way once and it explains a
     few early test failures below), non-`Confirmed`/non-`Scheduled` rows are
-    invisible, `locations`' `DEV` rows never appear, and `user_roles`/
-    `email_queue` reject anon entirely (zero table grants, not just
-    RLS-filtered). This is the permanent version of the ad-hoc curl checks
-    used to verify the `locations` DEV/LIVE fix earlier this session.
+    invisible on `public_bookings_info`/`performers` respectively,
+    `booking_locations` stays readable for a Confirmed booking's own location
+    via the `is_booking_confirmed()` helper, `locations`' `DEV` rows never
+    appear, and `user_roles`/`email_queue` reject anon entirely (zero table
+    grants, not just RLS-filtered). This is the permanent version of the
+    ad-hoc curl checks used to verify the `locations` DEV/LIVE fix earlier
+    this session.
 
   **`--test-concurrency=1` is required, not optional** — Node's test runner
   runs separate test *files* concurrently by default, but all three files
@@ -772,7 +863,9 @@ tested live, and deployed. In order, what was just finished:
     policy change silently inherits it" risk already fixed for INSERT/UPDATE
     elsewhere). Run by the project owner in the SQL Editor and confirmed live via a
     fresh schema dump — anon's grants on both tables now show only column-scoped
-    SELECT/INSERT plus table-level `TRIGGER`.
+    SELECT/INSERT plus table-level `TRIGGER`. **(`bookings`'s column-scoped SELECT was
+    itself later removed entirely, item 31 below — this entry describes the state at
+    the time it was written, not the current one.)**
 12. Storage bucket privacy hardening — `documents`, `performer-documents`, and
     `esf-documents` were all `public = true` (any object readable by an
     unauthenticated URL, no RLS involved since bucket-level `public` bypasses it
@@ -1078,6 +1171,25 @@ tested live, and deployed. In order, what was just finished:
     `js/page-summary.js`). `create-checkout-session`'s already-resolved check is now just
     `Confirmed`/`Rejected`/`Cancelled`. `tests/stripe-payment.test.mjs`'s RPC tests
     rewritten for the single call.
+30. **Fixed the `payment_requested` email** — it showed the raw Stripe Checkout URL as
+    its own link text, and never substituted `{{cancel_link}}` at all (the placeholder
+    existed in the docs/UI but `create-checkout-session` never populated it).
+    `create-checkout-session` now fetches the `cancel_url` setting and the booking's
+    `cancel_token`, same pattern as `js/shared.js`'s `getEmailFromTemplate`/
+    `stripe-webhook`'s `sendConfirmationEmail`. The live template body was edited
+    directly via `email_admin.html` to show `<a href="{{payment_link}}">Pay Now</a>`
+    instead of the raw URL, and add a `<a href="{{cancel_link}}">Cancel Booking</a>`
+    line, matching the wording style already used by the `payment_reminder` template.
+31. **Security fix: removed anon's direct access to `bookings`, replaced with the
+    `public_bookings_info` view** — see
+    [Public visitor-facing data access](#public-visitor-facing-data-access-bookings)
+    above for the full writeup (what a third-party review found, what was actually true
+    on investigation, the fix, and the `booking_locations`-policy regression it would
+    have caused if the fix had been "just drop the anon policy" without the
+    `is_booking_confirmed()` `SECURITY DEFINER` helper). `js/api.js`'s `fetchMapData()`
+    updated to query the view; `tests/security.test.mjs` rewritten/extended
+    accordingly. Verified empirically against the disposable test project before this
+    was considered done.
 
 **Explicitly deferred, not started:** Slack/Discord/Sentry-style alerting for Edge
 Function errors — the project owner said "I'll do it later," don't assume it's wanted
@@ -1216,23 +1328,29 @@ stay in the separate `ellafestperformersadmin.vercel.app` codebase.
   - Lists `email_queue.status` as only `Sent`/`Error` → `Pending` and `Processing` also
     exist now (added for the bulk-email queue-and-drain mechanism).
 
-- **RLS policies on `bookings`/`performers` look more permissive than they are —
-  check column-level `GRANT`s before flagging anon exposure.** `anon`'s SELECT
-  policies on both tables (`"Public see confirmed"` on `bookings`, `"Public row-level
-  access for views"`/`"Public can view scheduled"` on `performers`) are row-scoped
-  only, as RLS always is — but each table also has a column-restricted `GRANT SELECT`
-  for anon (`bookings`: `id, business_name, description, stall_type, category,
-  instance_prefix`; `performers`: `id, name, description, performance_type,
-  performance_type_other, status`) that independently blocks reading `email`, `phone`,
-  `address`, `owner_name`, `admin_notes`, etc., regardless of the RLS policy. A
-  reviewer reading only `pg_policies` (not `information_schema.column_privileges`)
-  will see full-row access and wrongly conclude PII is exposed — this happened once
-  already this session (a third-party review flagged it as Critical; verified against
-  the live schema and it was already fixed, see `fix_bookings_rls_exposure.sql` and
-  `fix_performer_schedule_column_grants.sql`). Always check the actual column grants
-  before acting on this class of report. The anon column-SELECT access on `bookings`
-  is also genuinely used (`js/api.js`'s `fetchMapData()`, backing `visitor_map.html`),
-  not dead — don't revoke it outright.
+- **`bookings`'s anon access pattern changed on 2026-07-15 — the advice below about
+  "don't revoke it outright" is now out of date for `bookings` specifically, kept here
+  for the history.** `anon`'s old SELECT policy on `bookings` (`"Public see confirmed"`)
+  was row-scoped only, as RLS always is — but the table also had a column-restricted
+  `GRANT SELECT` for anon (`id, business_name, description, stall_type, category,
+  instance_prefix`) that independently blocked reading `email`, `phone`, `address`,
+  `owner_name`, `admin_notes`, etc., regardless of the RLS policy. A reviewer reading
+  only `pg_policies` (not `information_schema.column_privileges`) would see full-row
+  access and wrongly conclude PII was exposed — this happened **twice**: once earlier
+  this session (verified against the live schema and found to already be handled, see
+  `fix_bookings_rls_exposure.sql`/`fix_performer_schedule_column_grants.sql`), and again
+  later the same day, which is what prompted the actual fix — see
+  [Public visitor-facing data access](#public-visitor-facing-data-access-bookings)
+  above. That second time, the same verification was done (column grants really did
+  already prevent PII exposure), but the fix was implemented anyway at the owner's
+  request: relying on "RLS allows the row + column grants narrow it" as the only safety
+  net is fragile regardless of whether it's currently exploited, since one future
+  `GRANT SELECT ON bookings TO anon` would silently undo it. `bookings` now has **zero**
+  anon access of any kind — the old column grants are gone too, replaced by the
+  `public_bookings_info` view. **`performers` was NOT changed** and still uses the
+  column-grant pattern described below — the same "always check
+  `information_schema.column_privileges`, not just `pg_policies`, before concluding PII
+  is exposed" caution still applies there specifically.
 
 - **`public` schema has a real baseline migration (2026-07-14), and the `storage`
   gap is closed too (`20260714144652_storage_buckets_and_policies.sql`) — but
