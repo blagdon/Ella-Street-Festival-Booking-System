@@ -162,7 +162,7 @@ hardcoded default at all** — they're `null`/`[]` until the settings table load
 | `queue-bulk-email` | Admin JWT only | Atomically inserts N `email_queue` rows as `Pending`, responds immediately, then drains them **in-process** (calls `sendViaZoho()` directly, not over HTTP) via `EdgeRuntime.waitUntil()` in the background. |
 | `get-reviews` | Admin JWT or trusted service call | SerpApi Google Maps review lookup for a business name, used by the performer-review-check feature. |
 | `get-booking-documents` | Admin JWT only | Resolves a booking's `documents` storage paths to time-limited (1hr) signed URLs via `createSignedUrls()` — `esf-documents` is a private bucket. Called from `js/shared.js`'s `populateDetailPane()` when rendering the Kanban/Summary detail pane. |
-| `create-checkout-session` | Admin JWT only | Creates a Stripe Checkout Session for a `Pre-Confirmed` (or, on resend, `Payment Requested`) booking, updates the booking to `Payment Requested`, and emails the `payment_requested` template with the session URL. Picks the `stripe_secret_key_test`/`_live` settings-table row by whether `instance_prefix` contains `-DEV-` (or the `stripe_test_mode` override — see below). See [Stripe Payment Collection](#stripe-payment-collection) below. |
+| `create-checkout-session` | Admin JWT only | Creates a Stripe Checkout Session for any not-yet-resolved booking (called directly from the chargeable-confirm modal, or again on "Resend Payment Request" from `Payment Requested`), saves the resolved `stall_cost`, updates the booking to `Payment Requested`, and emails the `payment_requested` template with the session URL. Picks the `stripe_secret_key_test`/`_live` settings-table row by whether `instance_prefix` contains `-DEV-` (or the `stripe_test_mode` override — see below). See [Stripe Payment Collection](#stripe-payment-collection) below. |
 | `stripe-webhook` | None (`--no-verify-jwt`); gated instead by Stripe signature verification (tries the `stripe_webhook_secret_test` then `_live` settings-table rows) | On `checkout.session.completed`, calls `mark_stripe_payment_received()` then `finalize_stripe_confirmation()` RPCs, then best-effort emails `confirmed_chargeable` (deduped via `stripe_webhook_events`, in-process `sendViaZoho()`, never `functions.invoke`). No-ops on expired/failed payment events — the booking is already correctly sitting at `Payment Requested`. |
 | `_shared/zoho.ts` | n/a (imported, not deployed) | Zoho OAuth2 token refresh/cache + send logic, shared by `send-email` and `queue-bulk-email`. |
 | `_shared/bucket.ts` | n/a (imported, not deployed) | Resolves the document bucket name (env var, else `settings.bucket_name`, else `'esf-documents'`), shared by `submit-booking` and `get-booking-documents`. |
@@ -229,9 +229,9 @@ Added 2026-07-15. Inserts real online payment collection between "admin approves
 "booking is Confirmed," without touching location allocation (a fully separate
 `status='Confirmed'`-gated page/RPC) or the Rejected/Cancelled paths.
 
-**Status chain**: `Pending → Pre-Confirmed → Payment Requested → Paid → Confirmed`
-(plus the existing `On Hold`/`HCC Checks`/`Rejected`/`Cancelled` side-branches,
-unaffected). Two things NOT implemented as literal new statuses, deliberately:
+**Status chain**: `Pending → Payment Requested → Paid → Confirmed` (plus the existing
+`On Hold`/`HCC Checks`/`Rejected`/`Cancelled` side-branches, unaffected). Two things NOT
+implemented as literal new statuses, deliberately:
 - "Submitted"/"Under Review" collapse into the existing `Pending` — every status
   transition is already a deliberate admin click, there's no automatic event to
   distinguish them.
@@ -240,16 +240,39 @@ unaffected). Two things NOT implemented as literal new statuses, deliberately:
   `booking_locations`/`rpc_set_booking_locations` is the actual verification that
   location allocation is unaffected, not just an assertion.
 
-**The `Confirmed`-modal's meaning changed**: `js/kanban.js`/`js/summary.js`'s
-`finalizeConfirm(isChargeable)` (triggered by the same `#confirmTypeModal` as before,
-opened by the same button/drag-drop as before) now branches on the resolved cost, not
-just the admin's Free/Chargeable toggle: **free OR an explicit `£0` override** goes
-straight to `Confirmed` exactly as before (unchanged `finalizeConfirmation()` — payments
-row deleted if present, `confirmed_free` email); **chargeable with cost > 0** now goes to
-`Pre-Confirmed` instead (new `js/api.js` `preConfirmBooking()` — just saves `stall_cost`
-and the status, no payments row, no email yet). This closes a pre-existing gap where
-"free" and "chargeable-with-£0" were indistinguishable except by payments-row presence —
-now `stall_cost === 0` is the actual free/skip-Stripe rule.
+**No intermediate "Pre-Confirmed" status — this was a same-day simplification.** The
+feature originally landed with a deliberate two-step chargeable flow (`Pre-Confirmed`,
+persisted with no email/Stripe call, then a separate "Request Payment" click). Later the
+same day the admin asked for that collapsed into one step: confirming a booking as
+chargeable now fires the Stripe Checkout Session and payment-request email immediately,
+landing straight on `Payment Requested` — there is no click in between anymore. The
+original two-step design's rationale (avoid confusing "confirmed" with "paid", let the
+admin double-check the cost before Stripe is involved) is superseded by this explicit
+instruction; the cost is still editable in the same `#confirmTypeModal` right up to the
+moment the admin clicks — it's the *separate later click* that was removed, not the
+review step itself.
+
+**`js/kanban.js`/`js/summary.js`'s `finalizeConfirm(isChargeable)`** (triggered by the
+same `#confirmTypeModal` as before, opened by the same button/drag-drop as before)
+branches on the resolved cost, not just the admin's Free/Chargeable toggle: **free OR an
+explicit `£0` override** goes straight to `Confirmed` exactly as before (unchanged
+`finalizeConfirmation()` — payments row deleted if present, `confirmed_free` email);
+**chargeable with cost > 0** now calls `js/api.js`'s `requestPayment(id, cost)` directly
+(async — a real Stripe API round trip, not a synchronous local write), which invokes
+`create-checkout-session` with the resolved cost in the request body. This closes a
+pre-existing gap where "free" and "chargeable-with-£0" were indistinguishable except by
+payments-row presence — `stall_cost === 0` is the actual free/skip-Stripe rule.
+`create-checkout-session` writes the booking's `stall_cost` itself as part of the same
+update that sets `status='Payment Requested'` — there's no separate persistence step
+before it runs, so the Edge Function accepts an optional `cost` in its request body
+(falling back to the booking's already-stored `stall_cost` for a plain "Resend Payment
+Request" call, which doesn't pass one). If Stripe/email fails, the booking is left
+exactly where it was (Pending/On Hold/HCC Checks) — the admin sees an error toast and can
+retry from the same Confirm button, no stuck intermediate state possible.
+`create-checkout-session`'s status check now only rejects bookings that are already
+resolved (`Confirmed`/`Paid`/`Rejected`/`Cancelled`), rather than requiring a specific
+prior status, since a payment request can now originate from `Pending`, `On Hold`, or
+`HCC Checks` as well as being resent from `Payment Requested`.
 
 **Payment Requested → Paid → Confirmed is two separate top-level RPC calls from
 `stripe-webhook`, not one transaction** — `mark_stripe_payment_received()` then
@@ -322,10 +345,12 @@ new" UI — only `email_admin.html`'s editor for existing rows), placeholder
 `{{payment_link}}` added alongside the existing set.
 
 **`Payment Requested`/`Paid` are deliberately NOT Kanban drag targets** (`js/kanban.js`'s
-`initDragula()`) — only `Pre-Confirmed`/`Confirmed`/`Rejected`/etc. are. Dragging a card
-into either would fake a transition with no real Stripe Checkout Session or payment
-behind it. Cards can still leave those columns via the detail-pane buttons, just not by
-dragging in.
+`initDragula()`) — only `Pending`/`On Hold`/`HCC Checks`/`Confirmed`/`Rejected`/
+`Cancelled` are. Dragging a card into either would fake a transition with no real Stripe
+Checkout Session or payment behind it. Cards can still leave those columns via the
+detail-pane buttons, just not by dragging in. Dropping onto `Confirmed` opens the same
+`#confirmTypeModal` as clicking the Confirm button — the admin's Free/Chargeable choice
+then decides whether it lands on `Confirmed` directly or on `Payment Requested` via Stripe.
 
 **Testing**: `tests/stripe-payment.test.mjs`, same disposable-test-project guard as the
 rest of `tests/`. The `create-checkout-session` success-path tests additionally need
@@ -348,9 +373,9 @@ existing test-project setup.
 - Location Manager — multi-location assignment per booking, occupancy-conflict enforced
   at the DB level, Google My Maps CSV export, search/sort
 - Payment tracking, statistics/charts, visitor map (Leaflet)
-- Stripe Checkout payment collection (Pre-Confirmed → Payment Requested → Paid →
-  Confirmed), test/live mode via `instance_prefix`, idempotent webhook — see
-  [Stripe Payment Collection](#stripe-payment-collection) above
+- Stripe Checkout payment collection (Pending → Payment Requested → Paid → Confirmed,
+  fired immediately on a chargeable confirm), test/live mode via `instance_prefix`,
+  idempotent webhook — see [Stripe Payment Collection](#stripe-payment-collection) above
 - HCC (Hull City Council food safety) check workflow — manual, environment-aware email send
 - Email template admin (`more.html`), user role management, steward mobile view
 - Booking cancellation (public self-service link) with automatic confirmation email
@@ -394,9 +419,9 @@ existing test-project setup.
 ### `bookings` — the central table
 One row per application, all types share this table, distinguished by `instance_prefix`
 (`ESF26-FOOD-`, `ESF26-NONFOOD-`, `ESF26-MISC-`, `ESF26-DEV-`). Key columns: `id` (text
-PK, e.g. `ESF26-FOOD-0042`), `status` (`Pending`/`Pre-Confirmed`/`Payment Requested`/
+PK, e.g. `ESF26-FOOD-0042`), `status` (`Pending`/`Payment Requested`/
 `Paid`/`Confirmed`/`Rejected`/`Cancelled`/`On Hold`/`HCC Checks` — see
-[Stripe Payment Collection](#stripe-payment-collection) for the middle three), `business_name`,
+[Stripe Payment Collection](#stripe-payment-collection) for the middle two), `business_name`,
 `owner_name`, `email`, `stall_cost`, `cancel_token`, `rejection_reason`,
 `stripe_checkout_session_id`, `stripe_payment_intent_id`, `stripe_payment_requested_at`
 (all nullable, added 2026-07-15). **`bookings.location_id` still exists as a column
@@ -956,10 +981,13 @@ tested live, and deployed. In order, what was just finished:
     migrations pushed, both Edge Functions deployed, real credentials entered via
     `settings.html`. Walked a real `£1` Food-instance booking (with the
     `stripe_test_mode` override on, so it used the Test-mode key rather than a real
-    Live one) through Pre-Confirmed → Request Payment → a genuine Stripe Checkout
-    payment (test card `4242 4242 4242 4242`) → Paid → Confirmed, and confirmed
-    `payments.html` shows a real row (`bank_ref` = the actual `pi_...` payment intent,
-    `editor` = `Stripe (automatic)`).
+    Live one) through what was at the time a two-step Pre-Confirmed → Request Payment
+    flow, then a genuine Stripe Checkout payment (test card `4242 4242 4242 4242`) →
+    Paid → Confirmed, and confirmed `payments.html` shows a real row (`bank_ref` = the
+    actual `pi_...` payment intent, `editor` = `Stripe (automatic)`). **The Pre-Confirmed
+    step was removed later the same day** — see item 28 and
+    [Stripe Payment Collection](#stripe-payment-collection) above; this entry is kept as
+    an accurate historical record of what was actually verified at the time.
     **Found and fixed a second real gap this way** (the automated test suite couldn't
     have caught this — it never exercises a genuine signed webhook call end-to-end):
     the Stripe **webhook destination** that had been registered pointed at the
@@ -984,6 +1012,26 @@ tested live, and deployed. In order, what was just finished:
     alone is easy to mis-click between similar-sounding options. `email test`
     (`ESF26-FOOD-0022`) was intentionally left as a real Confirmed/Paid booking in the
     live database afterward as a working example, at the owner's choice.
+28. **Removed the `Pre-Confirmed` status, same day as item 27** — the owner asked for
+    the chargeable-confirm flow to fire the Stripe payment request immediately instead
+    of requiring a separate later "Request Payment" click. `Pre-Confirmed` is gone from
+    `js/config.js`'s `STATUS_LIST`/`STATUS_COLORS`, both Kanban columns, the Summary
+    status filter, `js/kanban.js`/`js/summary.js`'s dragula containers/drop-intercept/
+    `cardBorderClass`, and `js/shared.js`'s `sharedUpdateStatus` (its whole
+    `'Pre-Confirmed'` branch deleted, along with the now-unused `js/api.js`
+    `preConfirmBooking()`). The "Request Payment (Stripe)" button is gone too (its
+    action now happens automatically); "Resend Payment Request" and the stuck-`Paid`
+    recovery button are unaffected. `create-checkout-session` now accepts an optional
+    `cost` in its request body (since there's no longer a step that persists
+    `stall_cost` before it runs) and only rejects already-resolved statuses
+    (`Confirmed`/`Paid`/`Rejected`/`Cancelled`) rather than requiring a specific prior
+    status — see [Stripe Payment Collection](#stripe-payment-collection) above for the
+    full new flow. `tests/stripe-payment.test.mjs` fixtures updated accordingly; no DB
+    migration needed (`bookings.status` is a plain text column, no CHECK constraint, so
+    removing a value from the app-level allow-list needed no schema change) — worth a
+    one-time manual check that no live booking was actually sitting in `Pre-Confirmed`
+    at the moment this shipped (none was, per the item 27 verification booking already
+    having completed its full chain to `Confirmed`).
 
 **Explicitly deferred, not started:** Slack/Discord/Sentry-style alerting for Edge
 Function errors — the project owner said "I'll do it later," don't assume it's wanted

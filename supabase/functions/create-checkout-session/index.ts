@@ -71,7 +71,7 @@ Deno.serve(async (req) => {
       })
     }
 
-    const { booking_id } = await req.json()
+    const { booking_id, cost: costOverride } = await req.json()
     if (!booking_id || typeof booking_id !== 'string') {
       return new Response(JSON.stringify({ error: 'Missing booking_id.' }), {
         status: 400,
@@ -92,14 +92,25 @@ Deno.serve(async (req) => {
       })
     }
 
-    if (!['Pre-Confirmed', 'Payment Requested'].includes(booking.status)) {
-      return new Response(JSON.stringify({ error: `Cannot request payment from status '${booking.status}'. Booking must be Pre-Confirmed.` }), {
+    // The admin confirms a booking as chargeable and this fires straight
+    // away (no more separate "Pre-Confirmed" step) — so a payment request
+    // can now originate from Pending/On Hold/HCC Checks as well as being
+    // resent from Payment Requested. Only reject statuses that have already
+    // been resolved one way or another.
+    if (['Confirmed', 'Paid', 'Rejected', 'Cancelled'].includes(booking.status)) {
+      return new Response(JSON.stringify({ error: `Cannot request payment from status '${booking.status}'.` }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
     }
 
-    const cost = parseFloat(booking.stall_cost)
+    // Cost is normally supplied by the caller (the admin's chargeable-confirm
+    // cost, possibly overridden in the modal) since there's no longer a
+    // separate step that persists it first. Falls back to the booking's
+    // already-stored stall_cost for a plain "Resend Payment Request" call.
+    const cost = (costOverride !== undefined && costOverride !== null)
+      ? parseFloat(costOverride)
+      : parseFloat(booking.stall_cost)
     if (!cost || isNaN(cost) || cost <= 0) {
       return new Response(JSON.stringify({ error: 'Booking has no valid stall cost set — cannot create a payment request for £0 or an unset cost.' }), {
         status: 400,
@@ -163,6 +174,7 @@ Deno.serve(async (req) => {
     const { error: updateErr } = await supabaseClient
       .from('bookings')
       .update({
+        stall_cost: cost,
         stripe_checkout_session_id: session.id,
         stripe_payment_requested_at: nowIso,
         status: 'Payment Requested'

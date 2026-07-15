@@ -418,21 +418,48 @@ window.finalizeConfirm = function (isChargeable) {
 
     // Free (admin's explicit choice) OR an explicit £0 cost both skip
     // Stripe entirely and go straight to Confirmed, exactly as today.
-    // Otherwise, chargeable bookings land on Pre-Confirmed — "Request
-    // Payment" (Stripe) is a separate, deliberate next step.
+    // Otherwise, a chargeable booking immediately gets a Stripe Checkout
+    // Session and moves to Payment Requested — no separate step in between.
     const isFree = !isChargeable || overrideCost === 0;
     if (isFree) {
         updateStatus(id, 'Confirmed', null, false, overrideCost);
     } else {
-        updateStatus(id, 'Pre-Confirmed', null, true, overrideCost);
+        confirmChargeableAndRequestPayment(id, overrideCost);
     }
 }
 
 /**
- * "Request Payment" / "Resend Payment Request" / stuck-'Paid' recovery —
- * mirrors js/kanban.js's equivalents. The Edge Function (or, for recovery,
- * a plain conditional update) already writes the new status server-side,
- * so these just refresh the local cache/table rather than going through
+ * Chargeable-confirm path: resolves the final cost, then immediately
+ * creates a Stripe Checkout Session and emails the stallholder (mirrors
+ * js/kanban.js's equivalent). The Edge Function writes the new status
+ * ('Payment Requested') itself once Stripe confirms the session, so a
+ * Stripe/email failure leaves the booking exactly where it was.
+ */
+async function confirmChargeableAndRequestPayment(id, overrideCost) {
+    const booking = allBookings.find(b => b.id === id);
+    const prefix = (booking && booking.instance_prefix) || CONFIG.INSTANCE_MAP['DEV'];
+    let cost = overrideCost;
+    if (cost === null || cost === undefined || isNaN(cost)) {
+        cost = (booking && booking.stall_cost !== undefined && booking.stall_cost !== null)
+            ? parseFloat(booking.stall_cost)
+            : getStallCost(prefix);
+    }
+    try {
+        await requestPayment(id, cost);
+        if (booking) { booking.stall_cost = cost; booking.status = 'Payment Requested'; }
+        showToast('Booking confirmed — payment request sent.');
+        window.filterTable();
+        if (currentId === id) openDetails(id);
+    } catch (e) {
+        showToast('Failed to send payment request: ' + e.message, 'error');
+    }
+}
+
+/**
+ * "Resend Payment Request" / stuck-'Paid' recovery — mirrors
+ * js/kanban.js's equivalents. The Edge Function (or, for recovery, a plain
+ * conditional update) already writes the new status server-side, so these
+ * just refresh the local cache/table rather than going through
  * sharedUpdateStatus.
  */
 async function runPaymentAction(id, action, newStatus, successMessage) {
@@ -446,10 +473,6 @@ async function runPaymentAction(id, action, newStatus, successMessage) {
     } catch (e) {
         showToast('Failed: ' + e.message, 'error');
     }
-}
-
-window.requestPaymentAction = function (id) {
-    return runPaymentAction(id || currentId, requestPayment, 'Payment Requested', 'Payment request sent.');
 }
 
 window.resendPaymentRequestAction = function (id) {

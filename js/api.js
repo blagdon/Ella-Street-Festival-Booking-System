@@ -226,24 +226,6 @@ export async function sendEmail(id, subject, body) {
 }
 
 /**
- * Moves a chargeable booking to Pre-Confirmed and saves the agreed cost,
- * without touching payments or sending any email — those only happen once
- * the admin explicitly clicks "Request Payment" (chargeable, via Stripe) or
- * the booking turns out to be free/£0 (handled separately by
- * finalizeConfirmation, unchanged).
- * @param {string} id
- * @param {number} cost
- */
-export async function preConfirmBooking(id, cost) {
-    validateBookingId(id);
-    const sb = getSupabaseClient();
-    const { error } = await sb.from(TBL_BOOKINGS).update({ status: 'Pre-Confirmed', stall_cost: cost }).eq('id', id);
-    if (error) throw error;
-    await auditLog('pre_confirm_booking', id, { stall_cost: cost });
-    return { status: 'success' };
-}
-
-/**
  * Finalizes a confirmation (handles payments logic).
  * @param {string} id
  * @param {boolean} isChargeable
@@ -383,32 +365,34 @@ export async function updatePayment(payload) {
 }
 
 /**
- * Creates a Stripe Checkout Session for a Pre-Confirmed booking and emails
- * the stallholder a payment link (server-side, via the create-checkout-session
- * Edge Function). Also used for "Resend Payment Request" — same function,
- * called again from a Payment Requested booking, which just generates a
- * fresh session (Stripe Checkout Sessions expire after 24h) and re-sends.
+ * Creates a Stripe Checkout Session for a booking and emails the
+ * stallholder a payment link (server-side, via the create-checkout-session
+ * Edge Function), moving it straight to 'Payment Requested'. `cost` is
+ * passed through when the admin is confirming a booking as chargeable for
+ * the first time (there's no separate persistence step before this call);
+ * omit it to resend using whatever cost is already saved on the booking.
  * @param {string} bookingId
+ * @param {number|null} cost
  */
-export async function requestPayment(bookingId) {
+export async function requestPayment(bookingId, cost = null) {
     validateBookingId(bookingId);
     const sb = getSupabaseClient();
-    const { data, error } = await sb.functions.invoke('create-checkout-session', {
-        body: { booking_id: bookingId }
-    });
+    const body = { booking_id: bookingId };
+    if (cost !== null && cost !== undefined) body.cost = cost;
+    const { data, error } = await sb.functions.invoke('create-checkout-session', { body });
     if (error) {
         const errMsg = await parseEdgeFunctionError(error, 'Failed to create payment request');
         throw new Error(errMsg);
     }
     if (data && data.error) throw new Error(data.error);
-    await auditLog('request_payment', bookingId);
+    await auditLog('request_payment', bookingId, cost !== null ? { stall_cost: cost } : {});
     return data;
 }
 
 /**
- * Alias for requestPayment — kept as a separate export so call sites read
- * clearly ("Resend Payment Request" vs "Request Payment"), even though the
- * underlying Edge Function call is identical.
+ * Alias for requestPayment (no cost override — reuses whatever's already
+ * saved on the booking) — kept as a separate export so call sites read
+ * clearly ("Resend Payment Request" vs "Request Payment").
  * @param {string} bookingId
  */
 export async function resendPaymentRequest(bookingId) {

@@ -182,17 +182,17 @@ describe('create-checkout-session', () => {
     assert.equal(status, 401);
   });
 
-  test('rejects a booking that is not Pre-Confirmed or Payment Requested', async () => {
+  test('rejects a booking that is already resolved (Confirmed/Paid/Rejected/Cancelled)', async () => {
     const id = `${PREFIX}WRONGSTATUS`;
-    await insertBooking(id, { status: 'Pending', stall_cost: 10 });
+    await insertBooking(id, { status: 'Confirmed', stall_cost: 10 });
 
     const { status, json } = await callFunction('create-checkout-session', { booking_id: id }, adminToken);
     assert.equal(status, 400, JSON.stringify(json));
   });
 
-  test('rejects a booking with no stall cost set', async () => {
+  test('rejects a booking with no stall cost set and no cost override', async () => {
     const id = `${PREFIX}NOCOST`;
-    await insertBooking(id, { status: 'Pre-Confirmed', stall_cost: null });
+    await insertBooking(id, { status: 'Pending', stall_cost: null });
 
     const { status, json } = await callFunction('create-checkout-session', { booking_id: id }, adminToken);
     assert.equal(status, 400, JSON.stringify(json));
@@ -200,15 +200,23 @@ describe('create-checkout-session', () => {
 
   test('rejects a booking with a £0 stall cost (should never reach here — free bookings skip Stripe)', async () => {
     const id = `${PREFIX}ZEROCOST`;
-    await insertBooking(id, { status: 'Pre-Confirmed', stall_cost: 0 });
+    await insertBooking(id, { status: 'Pending', stall_cost: 0 });
 
     const { status, json } = await callFunction('create-checkout-session', { booking_id: id }, adminToken);
     assert.equal(status, 400, JSON.stringify(json));
   });
 
-  test('creates a real Stripe Test-mode Checkout Session and moves the booking to Payment Requested', async () => {
+  test('rejects an explicit £0 cost override too', async () => {
+    const id = `${PREFIX}ZEROOVERRIDE`;
+    await insertBooking(id, { status: 'Pending', stall_cost: null });
+
+    const { status, json } = await callFunction('create-checkout-session', { booking_id: id, cost: 0 }, adminToken);
+    assert.equal(status, 400, JSON.stringify(json));
+  });
+
+  test('creates a real Stripe Test-mode Checkout Session directly from Pending and moves the booking to Payment Requested', async () => {
     const id = `${PREFIX}CHECKOUT`;
-    await insertBooking(id, { status: 'Pre-Confirmed', stall_cost: 12.5 });
+    await insertBooking(id, { status: 'Pending', stall_cost: 12.5 });
 
     const { status, json } = await callFunction('create-checkout-session', { booking_id: id }, adminToken);
     assert.equal(status, 200, JSON.stringify(json));
@@ -223,9 +231,21 @@ describe('create-checkout-session', () => {
     assert.ok(booking.stripe_payment_requested_at);
   });
 
+  test('accepts a cost override in the request body (chargeable-confirm now fires with no prior persisted stall_cost) and saves it', async () => {
+    const id = `${PREFIX}COSTOVERRIDE`;
+    await insertBooking(id, { status: 'On Hold', stall_cost: null });
+
+    const { status, json } = await callFunction('create-checkout-session', { booking_id: id, cost: 22.5 }, adminToken);
+    assert.equal(status, 200, JSON.stringify(json));
+
+    const { data: booking } = await service.from('bookings').select('status, stall_cost').eq('id', id).single();
+    assert.equal(booking.status, 'Payment Requested');
+    assert.equal(Number(booking.stall_cost), 22.5);
+  });
+
   test('a second request within the double-click window is rejected, not a duplicate session', async () => {
     const id = `${PREFIX}DOUBLECLICK`;
-    await insertBooking(id, { status: 'Pre-Confirmed', stall_cost: 8 });
+    await insertBooking(id, { status: 'Pending', stall_cost: 8 });
 
     const first = await callFunction('create-checkout-session', { booking_id: id }, adminToken);
     assert.equal(first.status, 200, JSON.stringify(first.json));
@@ -238,7 +258,7 @@ describe('create-checkout-session', () => {
     await service.from('settings').delete().eq('key', 'stripe_test_mode');
 
     const id = `${PREFIX}LIVEBYDEFAULT`;
-    await insertBooking(id, { status: 'Pre-Confirmed', stall_cost: 9, instance_prefix: 'ESF26-FOOD-' });
+    await insertBooking(id, { status: 'Pending', stall_cost: 9, instance_prefix: 'ESF26-FOOD-' });
 
     const { status, json } = await callFunction('create-checkout-session', { booking_id: id }, adminToken);
     assert.equal(status, 500, JSON.stringify(json));
@@ -250,7 +270,7 @@ describe('create-checkout-session', () => {
     assert.equal(settingErr, null, settingErr?.message);
 
     const id = `${PREFIX}FORCEDTESTMODE`;
-    await insertBooking(id, { status: 'Pre-Confirmed', stall_cost: 9, instance_prefix: 'ESF26-FOOD-' });
+    await insertBooking(id, { status: 'Pending', stall_cost: 9, instance_prefix: 'ESF26-FOOD-' });
 
     const { status, json } = await callFunction('create-checkout-session', { booking_id: id }, adminToken);
     assert.equal(status, 200, JSON.stringify(json));
@@ -282,11 +302,11 @@ describe('stripe-webhook', () => {
 
 describe('free (£0) bookings skip Stripe entirely', () => {
   test('a booking finalized as free never creates a payments row or touches Stripe columns', async () => {
-    // Mirrors what preConfirmBooking + the free branch of finalizeConfirmation
-    // do together for a £0/free booking — this is the exact application
-    // logic path (js/api.js), tested here at the DB level (no browser/ESM
-    // import available in this Node test runner, same approach the rest of
-    // this suite already uses for app-logic assertions).
+    // Mirrors the free branch of finalizeConfirmation for a £0/free booking
+    // — this is the exact application logic path (js/api.js), tested here
+    // at the DB level (no browser/ESM import available in this Node test
+    // runner, same approach the rest of this suite already uses for
+    // app-logic assertions).
     const id = `${PREFIX}FREE`;
     await insertBooking(id, { status: 'Pending' });
 

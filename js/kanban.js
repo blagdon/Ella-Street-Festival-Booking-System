@@ -9,8 +9,8 @@ import { showToast, renderInstanceBadge, showConfirm } from './ui.js';
 function getBoardStatuses() {
     const instance = localStorage.getItem('ESF_INSTANCE') || 'DEV';
     return instance === 'GENERAL'
-        ? ['Pending', 'On Hold', 'Pre-Confirmed', 'Payment Requested', 'Paid', 'Confirmed', 'Rejected', 'Cancelled']
-        : ['Pending', 'On Hold', 'HCC Checks', 'Pre-Confirmed', 'Payment Requested', 'Paid', 'Confirmed', 'Rejected', 'Cancelled'];
+        ? ['Pending', 'On Hold', 'Payment Requested', 'Paid', 'Confirmed', 'Rejected', 'Cancelled']
+        : ['Pending', 'On Hold', 'HCC Checks', 'Payment Requested', 'Paid', 'Confirmed', 'Rejected', 'Cancelled'];
 }
 
 function cardBorderClass(status) {
@@ -19,7 +19,6 @@ function cardBorderClass(status) {
         case 'Rejected': return 'border-red-500';
         case 'On Hold': return 'border-purple-500';
         case 'HCC Checks': return 'border-orange-500';
-        case 'Pre-Confirmed': return 'border-teal-500';
         case 'Payment Requested': return 'border-indigo-500';
         case 'Paid': return 'border-cyan-500';
         default: return 'border-yellow-400';
@@ -133,7 +132,6 @@ function initDragula() {
         document.getElementById('col-Pending'),
         document.getElementById('col-On Hold'),
         instance !== 'GENERAL' ? document.getElementById('col-HCC Checks') : null,
-        document.getElementById('col-Pre-Confirmed'),
         document.getElementById('col-Confirmed'),
         document.getElementById('col-Rejected'),
         document.getElementById('col-Cancelled')
@@ -161,10 +159,11 @@ function initDragula() {
             }
 
             // INTERCEPT: Confirmation (Chargeable check) — dropping onto
-            // either 'Pre-Confirmed' or 'Confirmed' opens the same modal;
-            // the admin's Free/Chargeable choice (and £0 override) decides
-            // the real destination status, same as clicking the button.
-            if (newStatus === 'Confirmed' || newStatus === 'Pre-Confirmed') {
+            // 'Confirmed' opens the same modal as clicking the Confirm
+            // button; the admin's Free/Chargeable choice (and £0 override)
+            // decides whether it lands on Confirmed directly or immediately
+            // fires a Stripe payment request (landing on Payment Requested).
+            if (newStatus === 'Confirmed') {
                 showConfirmModalLocal(bookingId);
                 return;
             }
@@ -525,22 +524,49 @@ export function finalizeConfirm(isChargeable) {
 
     // Free (admin's explicit choice) OR an explicit £0 cost both skip Stripe
     // entirely and go straight to Confirmed, exactly as today. Otherwise,
-    // chargeable bookings now land on Pre-Confirmed — "Request Payment"
-    // (Stripe) is a separate, deliberate next step, not automatic.
+    // a chargeable booking immediately gets a Stripe Checkout Session and
+    // moves to Payment Requested — there's no separate deliberate step in
+    // between anymore.
     const isFree = !isChargeable || overrideCost === 0;
     if (isFree) {
         updateStatus(id, 'Confirmed', null, false, overrideCost);
     } else {
-        updateStatus(id, 'Pre-Confirmed', null, true, overrideCost);
+        confirmChargeableAndRequestPayment(id, overrideCost);
     }
 }
 
 /**
- * "Request Payment" / "Resend Payment Request" — creates (or recreates) a
- * Stripe Checkout Session server-side and emails the stallholder a payment
- * link. The Edge Function itself writes the new status ('Payment
- * Requested'), so this just refreshes the local cache/card position rather
- * than going through sharedUpdateStatus.
+ * Chargeable-confirm path: resolves the final cost, then immediately
+ * creates a Stripe Checkout Session and emails the stallholder (the Edge
+ * Function itself writes the new status, 'Payment Requested', once Stripe
+ * confirms the session was created — so a Stripe/email failure leaves the
+ * booking exactly where it was, not stuck halfway).
+ */
+async function confirmChargeableAndRequestPayment(id, overrideCost) {
+    const booking = allBookings.find(b => b.id === id);
+    const prefix = (booking && booking.instance_prefix) || CONFIG.INSTANCE_MAP['DEV'];
+    let cost = overrideCost;
+    if (cost === null || cost === undefined || isNaN(cost)) {
+        cost = (booking && booking.stall_cost !== undefined && booking.stall_cost !== null)
+            ? parseFloat(booking.stall_cost)
+            : getStallCost(prefix);
+    }
+    try {
+        await requestPayment(id, cost);
+        if (booking) { booking.stall_cost = cost; booking.status = 'Payment Requested'; }
+        moveCardToStatus(id, 'Payment Requested');
+        showToast('Booking confirmed — payment request sent.');
+        if (currentId === id) openDetails(id);
+    } catch (e) {
+        showToast('Failed to send payment request: ' + e.message, 'error');
+    }
+}
+
+/**
+ * "Resend Payment Request" — recreates a Stripe Checkout Session server-side
+ * and re-emails the stallholder. The Edge Function itself writes the status
+ * ('Payment Requested', unchanged here), so this just refreshes the local
+ * cache/card position rather than going through sharedUpdateStatus.
  */
 async function runPaymentAction(id, action, successMessage) {
     try {
@@ -553,11 +579,6 @@ async function runPaymentAction(id, action, successMessage) {
     } catch (e) {
         showToast('Failed: ' + e.message, 'error');
     }
-}
-
-export function requestPaymentAction(id) {
-    const targetId = id || currentId;
-    return runPaymentAction(targetId, requestPayment, 'Payment request sent.');
 }
 
 export function resendPaymentRequestAction(id) {

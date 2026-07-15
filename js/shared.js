@@ -1,5 +1,5 @@
 import { getSupabaseClient } from './supabase.js';
-import { updateBookingStatus, finalizeConfirmation, preConfirmBooking, sendEmail, auditLog, getSignedBookingDocuments } from './api.js';
+import { updateBookingStatus, finalizeConfirmation, sendEmail, auditLog, getSignedBookingDocuments } from './api.js';
 import { showToast } from './ui.js';
 import { escapeHtml, sanitizeUrl } from './utils.js';
 import { getStallCost, CONFIG } from './config.js';
@@ -219,23 +219,6 @@ export async function sharedUpdateStatus(id, status, allBookings, options = {}) 
             } else {
                 showToast('Booking rejected', 'info');
             }
-        } else if (status === 'Pre-Confirmed') {
-            // Chargeable path only — a free/£0 booking never reaches this
-            // branch, it goes straight to 'Confirmed' via the branch above.
-            // No email, no payments row yet: those only happen once the
-            // admin clicks "Request Payment" (Stripe) confirms it, or via
-            // the webhook on successful payment.
-            const booking = allBookings.find(b => b.id === id);
-            const prefix = (booking && booking.instance_prefix) || CONFIG.INSTANCE_MAP['DEV'];
-            let cost = overrideCost;
-            if (cost === null || cost === undefined || isNaN(cost)) {
-                cost = (booking && booking.stall_cost !== undefined && booking.stall_cost !== null)
-                    ? parseFloat(booking.stall_cost)
-                    : getStallCost(prefix);
-            }
-            await preConfirmBooking(id, cost);
-            if (booking) booking.stall_cost = cost;
-            showToast('Booking pre-confirmed. Use "Request Payment" to send the Stripe payment link.');
         } else {
             showToast(`Booking moved to ${status}`);
         }
@@ -383,7 +366,6 @@ export function populateDetailPane(item) {
         const el = document.getElementById(eid);
         if (el) el.classList.toggle('hidden', !show);
     };
-    toggle('btn-request-payment', item.status === 'Pre-Confirmed');
     toggle('btn-resend-payment-request', item.status === 'Payment Requested');
     toggle('btn-recover-paid', item.status === 'Paid');
 
