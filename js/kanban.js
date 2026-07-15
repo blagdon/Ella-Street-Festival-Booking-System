@@ -393,7 +393,7 @@ export async function sendBulkEmail(btn) {
 
     try {
         const { queued } = await queueBulkEmail(confirmed.map(b => b.id), subject, body);
-        window.closeModal('bulkEmailModal');
+        closeModal('bulkEmailModal');
         showToast(`${queued} email${queued !== 1 ? 's' : ''} queued and sending.`);
     } catch (e) {
         showToast('Failed to queue emails: ' + e.message, 'error');
