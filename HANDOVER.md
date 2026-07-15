@@ -508,6 +508,10 @@ for this security fix.
   `email_templates`, despite `ARCHITECTURE.md` claiming otherwise.
 - No error/alerting integration (Slack/Discord/Sentry) for Edge Function failures —
   explicitly deferred by the project owner ("I'll do it later").
+- No refund support — no refund UI, no Stripe refund API call anywhere, and
+  `payments` has no `refund_status`/`refund_amount` columns. Flagged 2026-07-15
+  during a schema review; deliberately not built speculatively — add the columns
+  alongside the actual refund feature/code when this is prioritized, not before.
 - ~~No real automated test suite~~ — **resolved 2026-07-14**. All three steps of
   the original plan (grep guard → RLS snapshot test → real integration tests)
   are done, and CI runs all of them on every push — see
