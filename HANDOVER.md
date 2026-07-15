@@ -1,7 +1,7 @@
 # HANDOVER — Ella Street Festival Booking System
 
 > Written for an AI coding agent picking this up cold. No prior context assumed.
-> Last updated: 2026-07-14, at the end of a long security/reliability hardening session.
+> Last updated: 2026-07-15.
 > `ARCHITECTURE.md` and `USER_GUIDE.md` also exist in this repo and are more exhaustive on
 > some points, but **both contain stale information** — see [Gotchas](#9-gotchas) for the
 > specific claims to distrust. Where this document and `ARCHITECTURE.md` disagree, trust
@@ -110,7 +110,7 @@ client via a CDN `<script>` tag (not npm); admin pages use native ES module impo
 ├── supabase-public.js           ← Credentials + config for PUBLIC pages (non-module)
 ├── email_templates.js           ← LEGACY fallback templates (real ones are in the DB)
 ├── vercel.json                  ← Vercel Cron config
-└── *.sql                        ← One-shot manual migration/fix scripts (see below)
+└── supabase/sql-archive/        ← Historical one-shot manual migration/fix scripts (see below)
 ```
 
 ### JS module dependency order (admin side)
@@ -203,13 +203,19 @@ Verified against the disposable test project — including the realistic case
 of an older backup whose `esf-documents` bucket was still `public=true` with
 no size/type limits, correctly brought in line by the migration's upsert.
 
-**The ~30 existing root-level `fix_*.sql`/`add_*.sql`/`drop_*.sql` files are left in
-place as historical record**, not retroactively converted into migrations — the baseline
-already captures their combined end-state, and their header comments have real "why"
-context worth keeping. They predate this workflow; don't add new ones going forward for
-schema changes covered by the `public` schema — use a migration instead. Storage
-bucket/policy changes (until the known gap above is closed) still follow the old
-convention: a root-level fix file, run manually in the SQL Editor.
+**The ~30 existing `fix_*.sql`/`add_*.sql`/`drop_*.sql` files (moved 2026-07-15 from the
+repo root into `supabase/sql-archive/` for tidiness — a third-party review flagged the
+root clutter) are kept as historical record**, not retroactively converted into
+migrations — the baseline already captures their combined end-state, and their header
+comments have real "why" context worth keeping. **Do not move them into
+`supabase/migrations/`** — the Supabase CLI treats every file there as a pending
+migration to replay via `db push`, and several of these contain DDL (e.g. `CREATE TYPE
+... AS ENUM`) with no `IF NOT EXISTS` form that would fail against the live project the
+same way the baseline migration itself did (see the Gotcha on `migration repair`). They
+predate this workflow; don't add new ones going forward for schema changes covered by
+the `public` schema — use a migration instead. Storage bucket/policy changes (until the
+known gap above is closed) still follow the old convention: a fix file in
+`supabase/sql-archive/`, run manually in the SQL Editor.
 
 ---
 
@@ -488,17 +494,20 @@ policies" rather than describing the specific hole) — kept generic even after,
 habit.
 
 ### SQL fix files (historical) / migrations (current)
-Root-level `.sql` files named `verb_target.sql` (`fix_bookings_rls_exposure.sql`,
-`add_schedules_location_fk.sql`, `drop_unused_admin_functions.sql`) are the pre-2026-07-14
-convention: header comment block (what/why), the DDL, a `-- VERIFY:` query, handed to a
-human to paste into the SQL Editor, confirmed working, then committed. These still exist
-as historical record. **The current convention for anything touching the `public` schema
-or storage buckets/`storage.objects` policies** is `supabase migration new <name>` under
-`supabase/migrations/`, applied via a human running `supabase db push` — same
-draft/review/confirm/commit shape, different mechanism. Keep `storage` and `public`
-changes in separate migration files (see [Migrations](#migrations-supabase-cli) for why) —
-never dump the full `storage` schema into one, only the bucket rows and `storage.objects`
-policies that are actually ours.
+`.sql` files named `verb_target.sql` (`fix_bookings_rls_exposure.sql`,
+`add_schedules_location_fk.sql`, `drop_unused_admin_functions.sql`), archived in
+`supabase/sql-archive/` (moved there from the repo root 2026-07-15), are the
+pre-2026-07-14 convention: header comment block (what/why), the DDL, a `-- VERIFY:`
+query, handed to a human to paste into the SQL Editor, confirmed working, then
+committed. These still exist as historical record — **never move them into
+`supabase/migrations/`**, the CLI would try to replay them as pending migrations (see
+the note under [Migrations](#migrations-supabase-cli)). **The current convention for
+anything touching the `public` schema or storage buckets/`storage.objects` policies** is
+`supabase migration new <name>` under `supabase/migrations/`, applied via a human
+running `supabase db push` — same draft/review/confirm/commit shape, different
+mechanism. Keep `storage` and `public` changes in separate migration files (see
+[Migrations](#migrations-supabase-cli) for why) — never dump the full `storage` schema
+into one, only the bucket rows and `storage.objects` policies that are actually ours.
 
 ### No inline event handlers
 CSP (`index.html` and every other page's `<meta http-equiv="Content-Security-Policy">`)
@@ -733,6 +742,16 @@ tested live, and deployed. In order, what was just finished:
     `TEST_SUPABASE_SERVICE_ROLE_KEY`/`TEST_ADMIN_EMAIL`/`TEST_ADMIN_PASSWORD`
     values already used locally in `.env.test`. All set, verified with a real
     run (`gh run watch`) — all three jobs green.
+23. Housekeeping (2026-07-15, prompted by a third-party review flagging root-directory
+    clutter): moved all ~30 historical `fix_*.sql`/`add_*.sql`/`drop_*.sql`/
+    `backfill_*.sql` files from the repo root into `supabase/sql-archive/` via `git mv`
+    (history preserved). **Deliberately not moved into `supabase/migrations/`** — the
+    Supabase CLI replays everything in that folder as a pending migration via `db push`,
+    and several of these files contain non-idempotent DDL (`CREATE TYPE ... AS ENUM`)
+    that would fail against the live project exactly as the baseline migration itself
+    once did (see the `migration repair` Gotcha). No code/CI/docs referenced these files
+    by path except this document, which has been updated throughout. Purely a file-move;
+    no schema or application behavior changed.
 
 **Explicitly deferred, not started:** Slack/Discord/Sentry-style alerting for Edge
 Function errors — the project owner said "I'll do it later," don't assume it's wanted
