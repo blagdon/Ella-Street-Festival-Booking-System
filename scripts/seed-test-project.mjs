@@ -93,7 +93,7 @@ async function ensureEmailTemplates() {
     {
       id: 'payment_requested',
       subject: 'Payment required (Ref: {{booking_id}})',
-      body_html: 'Dear {{owner_name}}, please pay {{cost}} for {{business_name}} ({{booking_id}}) using this link: {{payment_link}}',
+      body_html: 'Dear {{owner_name}}, please pay {{cost}} for {{business_name}} ({{booking_id}}) using this link: {{payment_link}}. Cancel: {{cancel_link}}',
     },
   ];
   const { error } = await admin.from('email_templates').upsert(rows, { onConflict: 'id' });

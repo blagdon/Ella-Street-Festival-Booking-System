@@ -356,7 +356,18 @@ is created until the webhook succeeds) are now also included, flagged
 to distinguish from a manually-entered admin name). **New email template**
 `payment_requested` (seeded by the migration, since `email_templates` has no "create
 new" UI — only `email_admin.html`'s editor for existing rows), placeholder
-`{{payment_link}}` added alongside the existing set.
+`{{payment_link}}` added alongside the existing set. `create-checkout-session` now also
+substitutes `{{cancel_link}}` (fetches the `cancel_url` setting and the booking's
+`cancel_token`, same pattern as `js/shared.js`'s `getEmailFromTemplate`/`stripe-webhook`'s
+`sendConfirmationEmail` — this placeholder wasn't wired up at all when the template was
+first seeded). The live template's body was edited directly via `email_admin.html`
+(2026-07-15, at the owner's request) to stop showing the raw Checkout URL as link text —
+it's now `<a href="{{payment_link}}">Pay Now</a>` — and to add a
+`<a href="{{cancel_link}}">Cancel Booking</a>` line, matching the "Cancel Link" wording
+style already used by the `payment_reminder` template. `scripts/seed-test-project.mjs`'s
+own simplified `payment_requested` row (plain text, not the real HTML — deliberately
+different, see that file's own comments) was updated to include `{{cancel_link}}` too,
+for consistency with its sibling seeded templates.
 
 **`Payment Requested` is deliberately NOT a Kanban drag target** (`js/kanban.js`'s
 `initDragula()`) — only `Pending`/`On Hold`/`HCC Checks`/`Confirmed`/`Rejected`/

@@ -81,7 +81,7 @@ Deno.serve(async (req) => {
 
     const { data: booking, error: bookingErr } = await supabaseClient
       .from('bookings')
-      .select('id, status, stall_cost, instance_prefix, business_name, owner_name, email, stripe_payment_requested_at, stripe_checkout_session_id')
+      .select('id, status, stall_cost, instance_prefix, business_name, owner_name, email, stripe_payment_requested_at, stripe_checkout_session_id, cancel_token')
       .eq('id', booking_id)
       .single()
 
@@ -136,12 +136,13 @@ Deno.serve(async (req) => {
       }
     }
 
-    const { data: baseUrlRow } = await supabaseClient
+    const { data: settingsRows } = await supabaseClient
       .from('settings')
-      .select('value')
-      .eq('key', 'base_url')
-      .maybeSingle()
-    const baseUrl = baseUrlRow?.value || 'https://app.ellastreet.co.uk'
+      .select('key, value')
+      .in('key', ['base_url', 'cancel_url'])
+    const settingsMap: Record<string, string> = {}
+    ;(settingsRows || []).forEach((r: any) => { settingsMap[r.key] = r.value })
+    const baseUrl = settingsMap['base_url'] || 'https://app.ellastreet.co.uk'
 
     const stripeSettings = await loadStripeSettings(supabaseClient)
     const mode = resolveStripeMode(booking.instance_prefix, stripeSettings.testModeSetting)
@@ -201,6 +202,10 @@ Deno.serve(async (req) => {
       }
 
       const costStr = `£${cost.toFixed(2)}`
+      const cancelBase = settingsMap['cancel_url'] || ''
+      const cancelLink = (booking.cancel_token && cancelBase)
+        ? `${cancelBase}?token=${encodeURIComponent(booking.cancel_token)}`
+        : (cancelBase || '')
       const replaceVars = (str: string) =>
         (str || '')
           .replace(/\{\{owner_name\}\}/g, escapeHtml(booking.owner_name || 'Trader'))
@@ -208,6 +213,7 @@ Deno.serve(async (req) => {
           .replace(/\{\{booking_id\}\}/g, booking.id || '')
           .replace(/\{\{cost\}\}/g, costStr)
           .replace(/\{\{payment_link\}\}/g, session.url as string)
+          .replace(/\{\{cancel_link\}\}/g, cancelLink)
 
       const subject = replaceVars(templateData.subject)
       const body = replaceVars(templateData.body_html)
