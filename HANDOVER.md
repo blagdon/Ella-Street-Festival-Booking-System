@@ -1294,6 +1294,25 @@ tested live, and deployed. In order, what was just finished:
     and the admin Kanban board still loads normally (75 bookings, all columns) with the
     real admin session, confirming the surviving `eq_text_user_role` operator is intact
     and doing its job.
+36. **Audited every index in the schema for unused ones, at the owner's request right
+    after item 35.** Different flavor of check than 33–35: index usage is a runtime
+    query-planner decision, not something grep can fully settle. What grep *can* settle
+    with certainty is the negative case — if no query anywhere filters on a column, the
+    index on it cannot possibly be used, full stop, regardless of what the planner would
+    otherwise choose. Two indexes met that bar: `idx_bookings_email` (no code anywhere,
+    admin JS or Edge Functions, filters `bookings` by `email` — there's no
+    duplicate-detection feature) and `idx_audit_logs_target_id` (`target_id` is
+    write-only, same finding as the `audit_logs` dead-column cleanup in item 34 — no
+    admin page reads it back). Dropped both in `20260716060029_drop_unused_indexes.sql`.
+    Deliberately did **not** attempt to verify the remaining indexes' actual runtime
+    usage via `pg_stat_user_indexes` — that would need a temporary diagnostic function
+    on the live project, and the owner explicitly said not to bother. The other
+    `bookings`/`booking_locations`/`hcc_checks`/`locations` indexes all have real
+    matching query patterns in the code (`idx_bookings_status` is even baked into the
+    `public_bookings_info` view's own `WHERE` clause) — "plausibly used," not verified
+    at the same certainty level as the two dropped here, but not acted on either.
+    `performers`/`schedules` indexes left untouched, same reasoning as every other
+    finding in this audit series.
 
 **Explicitly deferred, not started:** Slack/Discord/Sentry-style alerting for Edge
 Function errors — the project owner said "I'll do it later," don't assume it's wanted
