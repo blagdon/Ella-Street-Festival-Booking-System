@@ -84,6 +84,15 @@
                             <li><code>{{bank_details}}</code> - Bank account info (Only for Confirmed Chargeable)</li>
                             <li><code>{{location_id}}</code> - e.g. Zone A - 01 (Only for Confirmed Free / Location
                                 Updates)</li>
+                            <li><code>{{payment_link}}</code> - Stripe Checkout URL (Only for Payment Requested)</li>
+                            <li><code>{{payment_reference}}</code> - e.g. ESF26-FOOD-0042, the booking ID used as the
+                                bank-transfer reference (Only for Payment Requested)</li>
+                            <li><code>{{bank_account_name}}</code> - Bank transfer account name (Only for Payment
+                                Requested)</li>
+                            <li><code>{{bank_sort_code}}</code> - Bank transfer sort code (Only for Payment
+                                Requested)</li>
+                            <li><code>{{bank_account_number}}</code> - Bank transfer account number (Only for
+                                Payment Requested)</li>
                             <li><code>{{reason}}</code> - Rejection reason (Only for Rejected)</li>
                             <li><code>{{trader_list}}</code> - Formatted list of traders (Only for HCC Batch Check)</li>
                             <li><code>{{email}}</code> - Trader email address (HCC emails)</li>

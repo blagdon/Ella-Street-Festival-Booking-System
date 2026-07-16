@@ -599,7 +599,18 @@ One row per chargeable booking that has a payment resolved one way or another:
 read from `bookings.stall_cost`, not stored redundantly here. A free/£0 booking never
 gets a row at all. Reused as-is for Stripe payments (no schema changes) — a successful
 Stripe payment upserts `paid=true, bank_ref='Stripe: '+payment_intent_id,
-editor='Stripe (automatic)'` via the `mark_stripe_payment_received()` RPC.
+editor='Stripe (automatic)'` via `finalize_stripe_payment()`.
+
+**Extended 2026-07-16** for manual bank-transfer payments (see Next Steps item 43):
+`payment_method` (`'stripe'` | `'bank_transfer'`, nullable, CHECK-constrained),
+`payment_reference` (the value actually used to match the payment — the booking id
+for bank transfers, the Stripe payment intent id isn't stored here separately from
+`bank_ref`), `verified_by` (text — the admin's email, matching `editor`'s existing
+text-not-uuid convention, not a FK; server-derived from `user_roles.email`, never
+client-supplied), `verified_at`, `notes`. All nullable/additive; existing rows
+backfilled `payment_method='stripe'` where `bank_ref LIKE 'Stripe:%'` (the only
+reliable historical signal, since that prefix has been hardcoded since the original
+Stripe migration).
 
 ### `stripe_webhook_events`
 Pure email-send dedup ledger for `stripe-webhook` (`event_id` PK, `event_type`,
@@ -655,7 +666,11 @@ above). Keys currently in use include `stall_cost_food/general/dev`,
 Food/General Stripe test-mode override), `stripe_secret_key_test/live`,
 `stripe_webhook_secret_test/live` (the actual Stripe credentials themselves — see
 [Stripe Payment Collection](#stripe-payment-collection)), plus all `zoho_*`
-credentials/cached tokens.
+credentials/cached tokens. **2026-07-16**: `bank_account_name`, `bank_sort_code`,
+`bank_account_number` — the manual bank-transfer payment details shown in the
+`payment_requested` email, editable via settings.html's own card, deliberately
+separate from the pre-existing `bank_details` key (a single free-text blob used only
+by the unrelated `confirmed_chargeable` template) rather than repurposing it.
 
 ### `performers` / `schedules` — separate feature, same database
 `performers`: application data (`name`, `email`, `phone`, `cost_per_30min`, `status`
@@ -1551,6 +1566,79 @@ tested live, and deployed. In order, what was just finished:
     (which also picked up the unrelated pre-existing staleness from the July 16
     operator cleanup — that snapshot hadn't been regenerated since before that
     migration shipped).
+43. **Manual bank-transfer payments, alongside the existing fully-automated Stripe
+    flow** — requested as a complete feature spec (no new booking statuses, no new
+    Kanban columns; the board stays structurally unchanged). Closed a real gap: a
+    booking sitting in `Payment Requested` had **no way to be marked paid by bank
+    transfer at all** before this — `updatePayment()`/the Edit-Payment modal can
+    only ever *update* an existing `payments` row, never create one, so
+    `fetchPayments()`'s synthesized `awaitingPayment` rows only ever offered "Resend
+    Payment Link."
+
+    **DB** (`20260716142140_bank_transfer_payments.sql`): `payments` gets 5 new
+    columns (see Data Model above). `finalize_stripe_payment()` additively stamps
+    `payment_method='stripe'` — no other behavior change. New RPC
+    `rpc_record_bank_transfer_payment(p_booking_id, p_payment_reference, p_notes)`
+    mirrors `finalize_stripe_payment`'s exact atomic shape (one `UPDATE bookings ...
+    WHERE status='Payment Requested'`, then upsert `payments`) with two deliberate
+    differences: it's called directly by an admin's own authenticated session (no
+    server-only "bank webhook" exists), so it does its own internal
+    `role='admin'` check exactly like `rpc_set_booking_locations` rather than
+    relying on a service-role-only grant; and if the booking isn't currently
+    `Payment Requested`, it **raises an exception** instead of `finalize_stripe_payment`'s
+    silent no-op — that no-op is correct for a retried webhook with no human
+    watching, but this is a one-shot synchronous admin click, where silently doing
+    nothing would leave the admin believing they'd recorded a payment when nothing
+    happened. `payment_requested`'s `body_html` was updated to add a labeled
+    "Option 2 — Bank Transfer" section (Account Name/Sort Code/Account
+    Number/Payment Reference, the last always the booking id) plus the required
+    "your booking will not be confirmed until payment has been received and
+    verified by an administrator" sentence — built directly on top of the
+    template's **actual current live content** (fetched and read directly first,
+    not assumed from memory or the original seed migration — it had already
+    diverged via a live admin edit through `email_admin.html` sometime after that
+    migration ran), so the existing "Pay Now"/"Cancel Booking" wording is completely
+    unchanged, only the new section and sentence are inserted.
+
+    **Audit logging stays client-side, deliberately** — grepped every migration for
+    `INSERT INTO.*audit_logs` and found zero hits; even `finalize_stripe_payment`'s
+    fully-automatic Stripe confirmation writes no audit log today. `auditLog()`
+    (`js/api.js`) is the sole writer of that table by design (see item 34's dead-column
+    finding). The new `recordBankTransferPayment()` function follows this exactly:
+    calls the RPC, then fires three separate `auditLog()` calls
+    (`bank_transfer_recorded`, `bank_transfer_verified`,
+    `booking_auto_confirmed_bank_transfer`) — an admin recording a transfer *is* the
+    verification, so those two happen in the same action but are still logged as
+    the two distinct events requested, plus the knock-on status change.
+
+    **UI**: `payments.html` gets a new "Record Bank Transfer" button (next to
+    "Resend Payment Link", only for `awaitingPayment` rows) opening a new modal —
+    Booking/Amount read-only display, locked "Bank Transfer" method, an editable
+    Payment Reference (defaults to the booking id, editable per spec if the
+    stallholder used a different one), Notes. The pre-existing "Edit Payment"
+    modal/`updatePayment()` flow is completely untouched — it still serves its
+    original purpose (adjusting an already-existing `payments` row). `settings.html`
+    gets a new "Bank Transfer Payment Details" card (plain text inputs, not
+    masked — these aren't secrets, they're shown to stallholders) for the three new
+    settings keys, following `initSerpApiSettings()`'s exact load/save/audit-log
+    shape.
+
+    **A real, unrelated gap surfaced along the way**: `scripts/seed-test-project.mjs`'s
+    `ensureAdminUser()` had never set `user_roles.email` for the bootstrap test
+    admin (only `id`/`role`) — meaning `rpc_record_bank_transfer_payment`'s
+    `verified_by` came back as the `'Admin'` fallback instead of a real email in
+    testing, since the column it reads from was NULL. A real admin account created
+    via `manage_users.html` always has this set (`js/page-manage-users.js`'s
+    `createUser()`), so this was purely a stale test fixture, not an app bug — fixed
+    by seeding `email` alongside `role`.
+
+    Verified on the test project (64-test suite, including a new
+    `tests/bank-transfer-payment.test.mjs` covering the RPC's admin-only gating —
+    anon rejected, a demoted-to-steward session rejected, happy path, a booking not
+    currently `Payment Requested` rejected, a blank reference rejected — the
+    payment-request email's content, and one added assertion on the existing
+    `finalize_stripe_payment` happy-path test proving the additive change didn't
+    break the Stripe flow), then deployed to live.
 
 **Explicitly deferred, not started:** Slack/Discord/Sentry-style alerting for Edge
 Function errors — the project owner said "I'll do it later," don't assume it's wanted

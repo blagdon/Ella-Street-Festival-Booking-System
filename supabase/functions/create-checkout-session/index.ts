@@ -139,7 +139,7 @@ Deno.serve(async (req) => {
     const { data: settingsRows } = await supabaseClient
       .from('settings')
       .select('key, value')
-      .in('key', ['base_url', 'cancel_url'])
+      .in('key', ['base_url', 'cancel_url', 'bank_account_name', 'bank_sort_code', 'bank_account_number'])
     const settingsMap: Record<string, string> = {}
     ;(settingsRows || []).forEach((r: any) => { settingsMap[r.key] = r.value })
     const baseUrl = settingsMap['base_url'] || 'https://app.ellastreet.co.uk'
@@ -214,6 +214,10 @@ Deno.serve(async (req) => {
           .replace(/\{\{cost\}\}/g, costStr)
           .replace(/\{\{payment_link\}\}/g, session.url as string)
           .replace(/\{\{cancel_link\}\}/g, cancelLink)
+          .replace(/\{\{payment_reference\}\}/g, booking.id || '')
+          .replace(/\{\{bank_account_name\}\}/g, escapeHtml(settingsMap['bank_account_name'] || ''))
+          .replace(/\{\{bank_sort_code\}\}/g, escapeHtml(settingsMap['bank_sort_code'] || ''))
+          .replace(/\{\{bank_account_number\}\}/g, escapeHtml(settingsMap['bank_account_number'] || ''))
 
       const subject = replaceVars(templateData.subject)
       const body = replaceVars(templateData.body_html)

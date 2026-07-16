@@ -403,6 +403,44 @@ export async function resendPaymentRequest(bookingId) {
 }
 
 /**
+ * Records a manually-verified bank-transfer payment for a booking currently
+ * awaiting payment ('Payment Requested', no payments row yet) and atomically
+ * confirms it — the manual counterpart to what the Stripe webhook's
+ * finalize_stripe_payment RPC does automatically. One RPC call: no separate
+ * "mark paid" + "confirm booking" steps, no window where they could
+ * disagree.
+ * @param {object} payload
+ * @param {string} payload.booking_id
+ * @param {string} payload.payment_reference
+ * @param {string|null} [payload.notes]
+ */
+export async function recordBankTransferPayment(payload) {
+    validateBookingId(payload.booking_id);
+    const reference = validateString(payload.payment_reference, MAX_FIELD_LENGTHS.bank_ref);
+    if (!reference.trim()) throw new Error('Payment reference is required.');
+    const notes = payload.notes ? validateString(payload.notes, MAX_FIELD_LENGTHS.note) : null;
+
+    const sb = getSupabaseClient();
+    const { error } = await sb.rpc('rpc_record_bank_transfer_payment', {
+        p_booking_id: payload.booking_id,
+        p_payment_reference: reference,
+        p_notes: notes
+    });
+    if (error) throw error;
+
+    // Three distinct facts about one admin action, logged separately per the
+    // required audit trail — an admin recording a bank transfer *is* the
+    // verification, so "recorded" and "verified" happen together but are
+    // still two distinct events worth their own entries, plus the knock-on
+    // status change.
+    await auditLog('bank_transfer_recorded', payload.booking_id, { payment_reference: reference, notes });
+    await auditLog('bank_transfer_verified', payload.booking_id, { payment_reference: reference });
+    await auditLog('booking_auto_confirmed_bank_transfer', payload.booking_id, { payment_reference: reference });
+
+    return { status: 'success' };
+}
+
+/**
  * Fetches location data including bookings, locations, and global occupancy.
  * @param {string} currentInstance 
  */

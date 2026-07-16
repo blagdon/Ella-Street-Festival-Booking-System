@@ -1,4 +1,4 @@
-import { fetchPayments, updatePayment, resendPaymentRequest } from './api.js';
+import { fetchPayments, updatePayment, resendPaymentRequest, recordBankTransferPayment } from './api.js';
 import { manualSendPaymentReminder } from './shared.js';
 import { showToast } from './ui.js';
 import { escapeHtml } from './utils.js';
@@ -23,6 +23,10 @@ function setupEventListeners() {
     document.getElementById('btn-cancel-payment')?.addEventListener('click', closeModal);
     document.getElementById('btn-save-payment')?.addEventListener('click', savePayment);
 
+    document.getElementById('bank-transfer-modal-overlay')?.addEventListener('click', closeBankTransferModal);
+    document.getElementById('btn-cancel-bank-transfer')?.addEventListener('click', closeBankTransferModal);
+    document.getElementById('btn-save-bank-transfer')?.addEventListener('click', saveBankTransferPayment);
+
     // Event delegation for dynamic table/card buttons
     document.body.addEventListener('click', (e) => {
         const reminderBtn = e.target.closest('.btn-reminder');
@@ -40,6 +44,12 @@ function setupEventListeners() {
         const resendBtn = e.target.closest('.btn-resend-payment');
         if (resendBtn) {
             resendPaymentRequestRow(resendBtn.dataset.id);
+            return;
+        }
+
+        const bankTransferBtn = e.target.closest('.btn-record-bank-transfer');
+        if (bankTransferBtn) {
+            openBankTransferModal(bankTransferBtn.dataset.id);
             return;
         }
     });
@@ -142,7 +152,10 @@ function renderTable() {
                 </td>
                 <td class="px-6 py-4 pr-12 whitespace-nowrap text-right text-sm font-medium space-x-3">
                     ${r.awaitingPayment
-                    ? (r.status === 'Payment Requested' ? `<button data-id="${escapeHtml(r.id)}" class="btn-resend-payment text-indigo-600 hover:text-indigo-900 font-bold">Resend Payment Link</button>` : '')
+                    ? (r.status === 'Payment Requested' ? `
+                        <button data-id="${escapeHtml(r.id)}" class="btn-resend-payment text-indigo-600 hover:text-indigo-900 font-bold">Resend Payment Link</button>
+                        <button data-id="${escapeHtml(r.id)}" class="btn-record-bank-transfer text-green-600 hover:text-green-900 font-bold">Record Bank Transfer</button>
+                    ` : '')
                     : `
                         ${!r.paid ? `<button data-id="${escapeHtml(r.id)}" class="btn-reminder text-purple-600 hover:text-purple-900 font-bold">Reminder</button>` : ''}
                         <button data-id="${escapeHtml(r.id)}" class="btn-edit text-blue-600 hover:text-blue-900">Edit</button>
@@ -209,6 +222,9 @@ function renderTable() {
                     ? (r.status === 'Payment Requested' ? `
                         <button data-id="${escapeHtml(r.id)}" class="btn-resend-payment bg-indigo-100 text-indigo-700 px-3 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-200">
                             Resend Payment Link
+                        </button>
+                        <button data-id="${escapeHtml(r.id)}" class="btn-record-bank-transfer bg-green-100 text-green-700 px-3 py-2 rounded-lg text-sm font-semibold hover:bg-green-200">
+                            Record Bank Transfer
                         </button>` : '')
                     : `
                         ${!r.paid ? `
@@ -251,6 +267,57 @@ function openEditModal(id) {
 
 function closeModal() {
     document.getElementById('edit-modal').classList.add('hidden');
+}
+
+function openBankTransferModal(id) {
+    const r = allRecords.find(item => item.id === id);
+    if (!r) return;
+
+    document.getElementById('bt-modal-id').value = r.id;
+    document.getElementById('bt-modal-booking-display').innerText = `${r.business || r.business_name} (${r.id})`;
+    document.getElementById('bt-modal-amount-display').innerText = r.stall_cost != null ? `£${parseFloat(r.stall_cost).toFixed(2)}` : '—';
+    // Payment reference defaults to the booking ID, per spec — editable if the
+    // stallholder actually used a different reference on their transfer.
+    document.getElementById('bt-modal-reference').value = r.id;
+    document.getElementById('bt-modal-notes').value = '';
+
+    document.getElementById('bank-transfer-modal').classList.remove('hidden');
+}
+
+function closeBankTransferModal() {
+    document.getElementById('bank-transfer-modal').classList.add('hidden');
+}
+
+async function saveBankTransferPayment() {
+    const id = document.getElementById('bt-modal-id').value;
+    const reference = document.getElementById('bt-modal-reference').value;
+    const notes = document.getElementById('bt-modal-notes').value;
+
+    if (!reference.trim()) {
+        showToast('Payment reference is required.', 'error');
+        return;
+    }
+
+    const btn = document.getElementById('btn-save-bank-transfer');
+    btn.disabled = true;
+    btn.textContent = 'Recording...';
+
+    try {
+        await recordBankTransferPayment({
+            booking_id: id,
+            payment_reference: reference,
+            notes: notes || null
+        });
+
+        closeBankTransferModal();
+        showToast('Bank transfer recorded — booking confirmed.');
+        await loadData();
+    } catch (err) {
+        showToast('Error recording payment: ' + err.message, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Record Payment & Confirm Booking';
+    }
 }
 
 async function savePayment() {

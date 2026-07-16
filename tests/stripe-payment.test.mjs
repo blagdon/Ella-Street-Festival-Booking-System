@@ -103,6 +103,11 @@ describe('finalize_stripe_payment RPC', () => {
     assert.equal(payment.paid, true);
     assert.equal(payment.editor, 'Stripe (automatic)');
     assert.ok(payment.bank_ref.includes('pi_test_happy_001'));
+    // Added alongside the bank-transfer payments feature (see
+    // tests/bank-transfer-payment.test.mjs) — proves the additive
+    // finalize_stripe_payment change didn't break this existing flow and
+    // that the new classification column is populated going forward.
+    assert.equal(payment.payment_method, 'stripe');
   });
 
   test('no-ops if the booking is not Payment Requested', async () => {

@@ -155,6 +155,47 @@
                 </button>
             </div>
 
+            <!-- Bank Transfer Payment Details Card -->
+            <div class="bg-white p-6 rounded-xl border border-gray-200 shadow-sm hover-card col-span-1 md:col-span-2">
+                <div class="flex items-start justify-between mb-4">
+                    <div class="icon-box bg-gray-100 text-gray-600 p-3 rounded-lg">
+                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M3 10h18M7 15h1m4 0h1m-7 4h12a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z">
+                            </path>
+                        </svg>
+                    </div>
+                </div>
+                <h3 class="text-lg font-bold text-gray-800 mb-1">Bank Transfer Payment Details</h3>
+                <p class="text-xs text-gray-400 mb-4">
+                    Included in the payment-request email as the bank-transfer option, alongside the Stripe
+                    payment link. Not a secret — these details are shown to stallholders so they can pay by
+                    bank transfer instead of by card.
+                </p>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                    <div>
+                        <label for="bank-transfer-account-name" class="block text-xs font-semibold text-gray-500 mb-1">ACCOUNT NAME</label>
+                        <input type="text" id="bank-transfer-account-name" class="w-full p-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:outline-none">
+                    </div>
+                    <div>
+                        <label for="bank-transfer-sort-code" class="block text-xs font-semibold text-gray-500 mb-1">SORT CODE</label>
+                        <input type="text" id="bank-transfer-sort-code" placeholder="12-34-56" class="w-full p-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:outline-none">
+                    </div>
+                    <div>
+                        <label for="bank-transfer-account-number" class="block text-xs font-semibold text-gray-500 mb-1">ACCOUNT NUMBER</label>
+                        <input type="text" id="bank-transfer-account-number" class="w-full p-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:outline-none">
+                    </div>
+                </div>
+                <p class="text-xs text-gray-400 mt-3">
+                    The payment reference (the booking ID) is added automatically — stallholders don't need to
+                    be told a separate reference here.
+                </p>
+                <button id="btn-save-bank-transfer-details" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded transition text-xs tracking-wider uppercase mt-4 cursor-pointer shadow-sm">
+                    Save Bank Transfer Details
+                </button>
+            </div>
+
             <!-- Stall Costs Manager Card -->
             <div class="bg-white p-6 rounded-xl border border-gray-200 shadow-sm hover-card">
                 <div class="flex items-start justify-between mb-4">

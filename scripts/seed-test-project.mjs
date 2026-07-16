@@ -46,7 +46,12 @@ async function ensureAdminUser() {
     console.log('Test admin auth user already exists:', user.id);
   }
 
-  const { error: roleErr } = await admin.from('user_roles').upsert({ id: user.id, role: 'admin' });
+  // email is set here to match how a real admin account actually looks
+  // (manage_users.html's createUser() always sets it — js/page-manage-users.js)
+  // — several RPCs (e.g. rpc_record_bank_transfer_payment) read this column
+  // to stamp who performed an action, and a NULL-email test fixture doesn't
+  // reflect any real account.
+  const { error: roleErr } = await admin.from('user_roles').upsert({ id: user.id, role: 'admin', email: adminEmail });
   if (roleErr) throw new Error(`Failed to upsert user_roles: ${roleErr.message}`);
   console.log('Ensured user_roles admin row for:', user.id);
 
@@ -58,6 +63,9 @@ async function ensureSettings() {
     { key: 'cancel_url', value: 'https://example.test/cancel_booking.html' },
     { key: 'bucket_name', value: 'esf-documents' },
     { key: 'booking_prefix', value: 'ESF26' },
+    { key: 'bank_account_name', value: 'Ella Street Festival' },
+    { key: 'bank_sort_code', value: '12-34-56' },
+    { key: 'bank_account_number', value: '12345678' },
   ];
 
   const testStripeKey = process.env.TEST_STRIPE_SECRET_KEY;
@@ -93,7 +101,7 @@ async function ensureEmailTemplates() {
     {
       id: 'payment_requested',
       subject: 'Payment required (Ref: {{booking_id}})',
-      body_html: 'Dear {{owner_name}}, please pay {{cost}} for {{business_name}} ({{booking_id}}) using this link: {{payment_link}}. Cancel: {{cancel_link}}',
+      body_html: 'Dear {{owner_name}}, please pay {{cost}} for {{business_name}} ({{booking_id}}) using this link: {{payment_link}}. Or pay by bank transfer - Account Name: {{bank_account_name}}, Sort Code: {{bank_sort_code}}, Account Number: {{bank_account_number}}, Payment Reference: {{payment_reference}}. Your booking will not be confirmed until payment has been received and verified by an administrator. Cancel: {{cancel_link}}',
     },
   ];
   const { error } = await admin.from('email_templates').upsert(rows, { onConflict: 'id' });
