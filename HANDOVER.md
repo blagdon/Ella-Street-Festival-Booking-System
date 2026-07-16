@@ -600,7 +600,11 @@ migration/SQL, as `payment_requested` was.
 
 ### `audit_logs`
 Append-only. Every admin mutation writes here via `api.js → auditLog()`:
-`action`, `target_id`, `user_email`, `details` (JSON), `instance`.
+`action`, `target_id`, `user_email`, `details` (JSON), `instance`. Three columns
+(`user_name`, `action_type`, `booking_id`) were dropped 2026-07-16 — dead weight,
+never written by `auditLog()` and never read anywhere (there's no admin page in this
+repo that browses `audit_logs` back out at all — it's write-only from the app's
+perspective, a gap worth building a viewer for someday, not fixed here).
 
 ### `hcc_checks`
 Created when a booking's status moves to `HCC Checks` (client-side, in
@@ -1237,6 +1241,23 @@ tested live, and deployed. In order, what was just finished:
     `DROP INDEX` needed. Pure cleanup, no application code changed since nothing used
     the column; all 52 tests still pass, including the location-assignment steps in
     `tests/workflow.test.mjs`.
+34. **Audited the whole schema for other dead columns, at the owner's request right
+    after item 33.** Pulled every table/column from the baseline migration and
+    cross-checked each against actual reads/writes across `js/*.js` and the Edge
+    Functions — same technique as item 33, just applied schema-wide instead of to one
+    column. Found three more genuinely dead ones, all on `audit_logs`: `user_name`,
+    `action_type`, `booking_id` — none ever written by `auditLog()` (the only writer),
+    and none ever read (no admin page browses `audit_logs` at all). Dropped in
+    `20260716053659_drop_dead_audit_logs_columns.sql`. **Explicitly did NOT touch**
+    `performers`/`schedules`/`location_power` despite zero references anywhere in this
+    repo's code — that's because that whole feature is managed by a separate Vercel
+    deployment (`ellafestperformersadmin.vercel.app`), not because those columns are
+    actually dead; "no references in this repo" and "dead" are not the same thing when
+    a different live codebase owns the table. Also surfaced, while checking a
+    third-party review's claim that `schedules.location` lacked a foreign key: it
+    doesn't lack one — `schedules_location_fkey` already references
+    `locations(id, dataset)` — so that specific review point was simply wrong, not
+    unverified.
 
 **Explicitly deferred, not started:** Slack/Discord/Sentry-style alerting for Edge
 Function errors — the project owner said "I'll do it later," don't assume it's wanted
