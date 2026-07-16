@@ -289,6 +289,11 @@ export function populateDetailPane(item) {
     setTxt('d-id', item.id);
     setTxt('d-business', item.business || item.business_name);
 
+    const auditLogLink = document.getElementById('btn-open-audit-log');
+    if (auditLogLink) {
+        auditLogLink.href = `audit_log.html?target=${encodeURIComponent(item.id)}`;
+    }
+
     const regBusinessEl = document.getElementById('d-registered-business');
     const regBusinessContainer = document.getElementById('registered-business-container');
     if (regBusinessEl && regBusinessContainer) {

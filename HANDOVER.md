@@ -490,6 +490,8 @@ for this security fix.
 - Booking cancellation (public self-service link) with automatic confirmation email
 - Bulk email to all confirmed bookings — queues server-side first, survives the admin
   closing their browser mid-send, drains in the background (fixed and verified this session)
+- Audit log viewer (`audit_log.html`, admin-only) — search/browse every recorded
+  `auditLog()` action across all instances; see item 40 in [Next Steps](#8-next-steps)
 
 ### Partially built / not integrated into this repo
 - **Performer booking feature**: `performers` and `schedules` tables exist in the same
@@ -618,11 +620,12 @@ migration/SQL, as `payment_requested` was.
 
 ### `audit_logs`
 Append-only. Every admin mutation writes here via `api.js → auditLog()`:
-`action`, `target_id`, `user_email`, `details` (JSON), `instance`. Three columns
-(`user_name`, `action_type`, `booking_id`) were dropped 2026-07-16 — dead weight,
-never written by `auditLog()` and never read anywhere (there's no admin page in this
-repo that browses `audit_logs` back out at all — it's write-only from the app's
-perspective, a gap worth building a viewer for someday, not fixed here).
+`action`, `target_id`, `user_email`, `details` (JSON, stored as a JSON-stringified
+value in this `text` column — confirmed empirically, not just assumed), `instance`.
+Three columns (`user_name`, `action_type`, `booking_id`) were dropped 2026-07-16 —
+dead weight, never written by `auditLog()` and never read anywhere. That second half
+is no longer true: `audit_log.html` (see Next Steps item 40) now browses this table
+back out, searchable by `target_id`/`user_email`/`action`/`details`, admin-only.
 
 ### `hcc_checks`
 Created when a booking's status moves to `HCC Checks` (client-side, in
@@ -1417,6 +1420,53 @@ tested live, and deployed. In order, what was just finished:
     to call `rpc_set_booking_locations` through an authenticated admin client (matching
     real app usage) instead of a direct table insert, since that's the path the fix
     actually protects — full 53-test suite green afterward.
+40. **Built `audit_log.html`, a new admin-only page to browse/search recorded
+    `auditLog()` actions**, requested after a recovery-testing review raised four
+    questions (backup restore, accidental deletion, failed Stripe webhooks, corrupted
+    location assignments). The first three were investigation/opinion only (see the
+    review response); this one — "corrupted location assignments are only
+    reconstructable via a raw SQL query today" — got a real fix, since the data to
+    reconstruct history already existed in `audit_logs` (every `allocate_location` call
+    logs the full `location_ids`; every status change is logged separately as
+    `update_status`) but nothing in the app ever read it back out.
+
+    New page (`audit_log.html` + `js/page-audit-log.js`), admin-only via
+    `initAdminPage()`'s default `requiredRole`, matching the existing "Admin view audit"
+    RLS SELECT policy exactly (a steward session would just see an empty table, not an
+    error, since RLS silently filters rather than rejecting). Search box does a
+    server-side `.or()` ILIKE across `target_id`/`user_email`/`action`/`details`
+    (debounced 400ms) rather than the client-side-filter-the-loaded-page pattern
+    `summary.js` uses elsewhere — deliberately, since the whole point is finding
+    *old* entries well past whatever small "recent" page would otherwise be loaded.
+    Commas/parens are stripped from the search term first, since PostgREST's `.or()`
+    filter string uses both as syntax (comma = OR-separator, parens = grouping) — not a
+    security issue (PostgREST's filter parser can't execute arbitrary SQL), just avoids
+    a malformed-filter 400 on ordinary punctuation in a search term. `details` is
+    stored as a JSON-stringified value in a `text` column (confirmed by inserting a
+    real row on the test project and reading it back: `"{\"location_ids\":[...]}"`,
+    `typeof` `string`) — rendered via a `<details>` disclosure per row (short one-line
+    preview, click to expand the pretty-printed JSON) so a long details blob doesn't
+    blow out row height by default. Action-type filter dropdown is a hardcoded list of
+    every `auditLog()` call site's action string as of today (not queried from the DB
+    live) purely to populate friendly-labeled options — the search box itself matches
+    on the raw column regardless, so a newly added action type still shows up via
+    search even before someone remembers to add it to this list.
+
+    **Wired into the existing booking detail pane**: a new "History" link next to
+    "Send Email" in both `kanban_m.html` and `summary.html` (identical markup in both,
+    since both share `js/shared.js`'s single `populateDetailPane()` — the link's `href`
+    is set once there: `audit_log.html?target=<bookingId>`, opened in a new tab) opens
+    the viewer pre-filtered to that exact booking. Clicking any target-id cell in the
+    viewer itself re-filters to that target too, for drilling from one booking's
+    history into a related one (e.g. an email action logged against a different id).
+
+    Re-added `idx_audit_logs_target_id` (`20260716074357_add_audit_logs_target_id_index_for_viewer.sql`)
+    — dropped only hours earlier the same day in item 36 on the grounds that nothing
+    read `audit_logs` back out; that's no longer true now that this page's primary
+    lookup is exactly `target_id`. Full 53-test suite green on the test project after
+    the migration (this page has no automated test — there's no existing pattern in
+    this repo for testing frontend page JS/DOM rendering, only DB/RPC/Edge-Function
+    integration tests — verified instead by hand against the live site).
 
 **Explicitly deferred, not started:** Slack/Discord/Sentry-style alerting for Edge
 Function errors — the project owner said "I'll do it later," don't assume it's wanted
