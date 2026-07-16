@@ -1482,6 +1482,29 @@ tested live, and deployed. In order, what was just finished:
     this repo for testing frontend page JS/DOM rendering, only DB/RPC/Edge-Function
     integration tests — verified instead by hand against the live site).
 
+41. **Ran a real disaster-recovery restore drill** against the disposable test project,
+    prompted by a follow-up review ("a backup that's never been restored is a
+    hypothesis, not a safety net"). Downloaded a real artifact from the
+    `blagdon/Stall_Booking` backup workflow (item 39/Known Gaps) and actually restored
+    it, rather than reasoning about it in the abstract. Full method, findings, and the
+    resulting step-by-step procedure are written up in
+    [Disaster Recovery Runbook](#10-disaster-recovery-runbook) below — summary here:
+
+    Real production data restores completely and correctly (row counts and content
+    both verified) once two blockers are worked around: `supabase db query -f` (the
+    only tool available without a real `psql` client) silently drops every `COPY
+    FROM STDIN` block with no error, and the dump's `--no-privileges` flag means
+    every `GRANT`/`REVOKE` this schema depends on for its actual security posture is
+    entirely absent, so a naive restore silently reopens **every** anon/authenticated
+    access restriction this project has ever added — including this session's own
+    bookings-PII fix. Also confirmed `auth.users` genuinely is captured (7 rows) and
+    `public.user_roles` cannot be restored in isolation from it (hard FK). Diagnosed
+    and fixed by diffing a fresh `supabase db dump` against the already-tracked
+    `rls_grants_snapshot.txt` (item 46) rather than hand-guessing — that snapshot
+    turned out to be the single most useful tool for this entire drill. Cleaned up
+    afterward: truncated the real data back out, re-ran `scripts/seed-test-project.mjs`,
+    full 53-test suite green.
+
 **Explicitly deferred, not started:** Slack/Discord/Sentry-style alerting for Edge
 Function errors — the project owner said "I'll do it later," don't assume it's wanted
 now without asking.
@@ -1722,3 +1745,144 @@ stay in the separate `ellafestperformersadmin.vercel.app` codebase.
   `schedules` schema, RLS, or grants, check actual row recency
   (`SELECT max(created_at) FROM performers`) — don't infer "dead" from an
   in-repo grep alone.
+
+---
+
+## 10. Disaster Recovery Runbook
+
+Written 2026-07-16 after actually performing a restore drill against the disposable
+test project — not a theoretical procedure. Every step below reflects something that
+was either directly observed to work, directly observed to fail and require a
+workaround, or explicitly flagged as untested. **A backup that has never been
+restored is a hypothesis, not a safety net** — the drill exists precisely to turn
+"we think this works" into "we know exactly what this does and doesn't recover."
+
+### Where the backup comes from
+
+A separate, private companion repo, `blagdon/Stall_Booking` (not this repo), runs
+`.github/workflows/backup.yml` daily at 02:00 UTC: `pg_dump "$SUPABASE_DB_URL"
+--clean --if-exists --no-owner --no-privileges`, uploaded as a GitHub Actions
+artifact named `supabase-backup`, 30-day retention. `SUPABASE_DB_URL` targets the
+**live** project (`rsnxhuhibglieofikkpo`). Confirmed via that repo's own Actions run
+history (not just the file existing) that this has been running successfully daily
+for months. Download the latest one with:
+
+```
+gh run list --repo blagdon/Stall_Booking --workflow=backup.yml --limit 1 --json databaseId
+gh run download <run-id> --repo blagdon/Stall_Booking --name supabase-backup
+```
+
+### What's actually in it, and what isn't
+
+- **Full `public` schema (this app's own tables/functions/views/policies) and its
+  data** — restores completely and correctly. Verified: exact row counts matched the
+  source (178 bookings, 36 settings, 53 payments, 1503 audit_logs, etc.) and spot-
+  checked real content came back correctly.
+- **`auth.users`** (real login accounts) — genuinely captured, confirmed by direct
+  inspection of the dump (7 rows, full column set including `encrypted_password`).
+  Not restored during the drill itself (see scoping decision below), but present.
+- **`storage.objects`/`storage.buckets`** — only the *metadata* rows (file paths,
+  bucket, size, mime type) are captured. **The actual uploaded file bytes are not
+  in this backup at all** — they live in Supabase's separate S3-compatible object
+  store, which `pg_dump` never touches. Restoring this backup alone leaves every
+  `bookings.documents` path pointing at a file that doesn't exist. If document
+  recovery is ever required, it needs a completely separate backup strategy
+  (e.g. periodically syncing the bucket to external storage) — nothing here provides
+  it.
+- **Zero `GRANT`/`REVOKE` statements anywhere in the dump** (the `--no-privileges`
+  flag). This is the single most important finding of the drill — see below.
+
+### The `--no-privileges` problem (read this before ever restoring for real)
+
+Supabase's own schema-level default-privilege configuration automatically re-grants
+full table-level CRUD to `anon`/`authenticated` on any table a migration (or a raw
+restore) (re)creates — this is *why* the restore doesn't outright break table access.
+But it means restoring this dump **silently reopens every deliberate access
+restriction** this project has ever added, because those were all implemented as
+`REVOKE`s layered on top of that default, and `REVOKE` is exactly what
+`--no-privileges` strips. Confirmed by actually doing it: after restoring, anon could
+freely read `stripe_webhook_events`, `user_roles`, and `email_queue` (all meant to be
+completely inaccessible to anon), and both `bookings` and `performers` reverted from
+their intended narrow **column-level allow-lists** to full table-level access minus
+nothing — i.e. this session's own anon-bookings-PII security fix would come back
+*undone* by a naive restore.
+
+**None of this is optional to fix — a "successfully restored" system with these
+regressions is measurably less secure than before the disaster.** The reliable way
+to detect and fix it (used during the drill, not hand-guessed): dump the restored
+project's current grants and diff against the checked-in `rls_grants_snapshot.txt`
+(see [Testing](#testing), item 46) —
+
+```
+supabase db dump --schema public,storage --linked -f /tmp/current.sql
+grep -E "^(CREATE POLICY|GRANT|REVOKE)" /tmp/current.sql | sort > /tmp/current_snapshot.txt
+diff -u rls_grants_snapshot.txt /tmp/current_snapshot.txt
+```
+
+— then replay every `REVOKE`/narrow `GRANT` the diff shows as missing. A handful of
+these load-bearing `REVOKE`s (e.g. `user_roles`, `email_queue`, the `bookings`/
+`performers`/`schedules` dormant-grant cleanups) live **only** in
+`supabase/sql-archive/*.sql` — one-time fixes applied before the migration workflow
+existed, never captured as tracked migrations at all. `supabase db push` alone will
+not restore these; they must be replayed from that archive by hand (or, more
+reliably, just use the snapshot-diff method above, which doesn't care where a given
+grant originally came from).
+
+### `public.user_roles` has a hard dependency on `auth.users`
+
+`user_roles.id` is a foreign key into `auth.users.id`. Restoring `user_roles`' data
+against any project whose `auth.users` rows don't have matching UUIDs (e.g. the test
+project's own different admin account) fails outright with a foreign-key violation
+— confirmed directly. This means restore order matters: `auth.users` must be
+restored (or already match) before `user_roles` can be.
+
+### The tooling gap: nothing here can execute `COPY FROM STDIN`
+
+`pg_dump`'s default plain-SQL output uses `COPY table FROM stdin; <data> \.` blocks
+to load data, plus a `\restrict`/`\unrestrict` psql-only meta-command pair (new in
+pg_dump 17.x). Neither is real SQL — both require an actual `psql`/libpq client to
+execute correctly. **This machine has no `psql` installed**, and the only other tool
+available (`supabase db query -f <file>`, which goes through the Management API) was
+tested directly: it ran the schema DDL fine and reported success, but silently
+loaded **zero rows** from every `COPY` block, no error at all. Confirmed by checking
+row counts after — all zero, despite a clean "success" response. The only way this
+drill got real data restored was converting every `COPY` block into `INSERT`
+statements first (a Python script; see the session transcript for the exact
+conversion, which handles COPY's `\N`-is-NULL and backslash-escape rules). **Anyone
+attempting this restore for real should install a real Postgres 17 client (`psql`)
+first** — trying to restore through `supabase db query -f` alone will appear to
+succeed while silently doing nothing to the actual data.
+
+### Recommended procedure (informed by the above, only partially drilled end-to-end)
+
+For **data loss/corruption on the existing live project** (the scenario actually
+drilled, against the test project as a stand-in):
+1. Get the latest backup artifact (see above).
+2. Install a real `psql` (Postgres 17 client) if at all possible — don't rely on
+   `supabase db query -f` for the data-loading step.
+3. Strip the dump down to the `public` schema only before restoring against an
+   already-provisioned project — do **not** replay `DROP`/`CREATE` for `auth`,
+   `storage`, `realtime`, `vault`, `pgbouncer`, `graphql`, `extensions`, or
+   `supabase_migrations`; these are Supabase-platform-owned, and the connecting role
+   isn't their owner (confirmed: attempting this fails immediately with `must be
+   owner of event trigger pgrst_drop_watch` / `must be owner of table
+   vector_indexes`, and touching them risks breaking the project's actual Auth/
+   Storage services, not just this app's own tables).
+4. Restore the filtered `public`-schema dump (schema + data).
+5. Run `supabase db push` to replay every tracked migration on top — this restores
+   most, but not all, of the correct grants (see the sql-archive gap above).
+6. Diff against `rls_grants_snapshot.txt` (method above) and manually replay
+   whatever's still missing.
+7. Run the full test suite (`npm run test:integration`) and confirm green before
+   considering the restore complete.
+
+For **total project loss, rebuilding on a genuinely fresh Supabase project** —
+**not drilled, treat the following as informed inference, not verified fact**: a
+fresh project's own `auth`/`storage`/`realtime` schemas are already correctly
+provisioned by Supabase itself, so the backup's DDL for those schemas should likely
+be skipped entirely (same reasoning as step 3 above, for the same reason); only the
+actual `auth.users` *data* would need importing (after schema recreation, matching
+`user_roles`' FK dependency), followed by `supabase db push` for the full `public`
+schema, then the data restore and grant-diff steps as above. This path has not been
+tested — if it's ever actually needed, drill it the same way this document's method
+does, don't assume it works.
