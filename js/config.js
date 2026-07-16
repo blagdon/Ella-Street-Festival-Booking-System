@@ -31,9 +31,13 @@ export const CONFIG = {
         PORTAL_URL: ESF_PUBLIC_CONFIG.PORTAL_URL
     },
 
-    // Bank account details used in confirmation emails
-    // Update here if account details change — this is the single source of truth
-    BANK_DETAILS: ESF_PUBLIC_CONFIG.BANK_DETAILS,
+    // Structured bank-transfer details used to build the {{bank_details}}
+    // email placeholder — single source of truth is the settings table
+    // (bank_account_name/bank_sort_code/bank_account_number), the same
+    // fields shown on the Bank Transfer Payment Details settings card.
+    BANK_ACCOUNT_NAME: '',
+    BANK_SORT_CODE: '',
+    BANK_ACCOUNT_NUMBER: '',
 
     // Limits
     EMAIL_RATE_LIMIT: 10,
@@ -125,9 +129,12 @@ export function applySettingsToConfig(data) {
             if (!isNaN(num)) CONFIG.UI.STALL_COST.DEV = num;
         } else if (item.key === 'turnstile_site_key') {
             ESF_PUBLIC_CONFIG.TURNSTILE_SITE_KEY = val;
-        } else if (item.key === 'bank_details') {
-            ESF_PUBLIC_CONFIG.BANK_DETAILS = val;
-            CONFIG.BANK_DETAILS = val;
+        } else if (item.key === 'bank_account_name') {
+            CONFIG.BANK_ACCOUNT_NAME = val;
+        } else if (item.key === 'bank_sort_code') {
+            CONFIG.BANK_SORT_CODE = val;
+        } else if (item.key === 'bank_account_number') {
+            CONFIG.BANK_ACCOUNT_NUMBER = val;
         } else if (item.key === 'base_url') {
             ESF_PUBLIC_CONFIG.BASE_URL = val;
             CONFIG.URLS.BASE = val;

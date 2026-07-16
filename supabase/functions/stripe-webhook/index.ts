@@ -50,7 +50,7 @@ async function sendConfirmationEmail(supabaseAdmin: ReturnType<typeof createClie
   const { data: settingsRows } = await supabaseAdmin
     .from('settings')
     .select('key, value')
-    .in('key', ['cancel_url', 'bank_details'])
+    .in('key', ['cancel_url', 'bank_account_name', 'bank_sort_code', 'bank_account_number'])
   const settingsMap: Record<string, string> = {}
   ;(settingsRows || []).forEach((r: any) => { settingsMap[r.key] = r.value })
 
@@ -61,7 +61,10 @@ async function sendConfirmationEmail(supabaseAdmin: ReturnType<typeof createClie
   const cancelLink = (booking.cancel_token && cancelBase)
     ? `${cancelBase}?token=${encodeURIComponent(booking.cancel_token)}`
     : (cancelBase || '')
-  const bankDetails = settingsMap['bank_details'] || ''
+  // Built from the same structured settings used for the payment_requested
+  // template's bank-transfer instructions (create-checkout-session) — no
+  // separate freeform 'bank_details' setting anymore, it duplicated this.
+  const bankDetails = `Account Name: ${escapeHtml(settingsMap['bank_account_name'] || '')}, Sort Code: ${escapeHtml(settingsMap['bank_sort_code'] || '')}, Account Number: ${escapeHtml(settingsMap['bank_account_number'] || '')}`
 
   const replaceVars = (str: string) =>
     (str || '')

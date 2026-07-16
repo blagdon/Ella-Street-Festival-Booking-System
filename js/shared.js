@@ -125,7 +125,10 @@ export async function getEmailFromTemplate(templateId, booking, id, extraVars = 
     const cancelLink = (cancelToken && cancelBase)
         ? `${cancelBase}?token=${encodeURIComponent(cancelToken)}`
         : (cancelBase || '');
-    const bankDetails = CONFIG.BANK_DETAILS;
+    // Built from the same structured settings shown on the Bank Transfer
+    // Payment Details settings card — no separate freeform "bank details"
+    // setting anymore (it duplicated this same information).
+    const bankDetails = `Account Name: ${CONFIG.BANK_ACCOUNT_NAME}, Sort Code: ${CONFIG.BANK_SORT_CODE}, Account Number: ${CONFIG.BANK_ACCOUNT_NUMBER}`;
     const locationId = escapeHtml(booking.location_display || 'TBA');
     const reason = escapeHtml(extraVars.reason || 'Oversubscribed / Category Full');
 

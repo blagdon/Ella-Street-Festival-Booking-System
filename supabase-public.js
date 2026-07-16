@@ -16,7 +16,6 @@ export const ESF_PUBLIC_CONFIG = {
     SUPABASE_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJzbnhodWhpYmdsaWVvZmlra3BvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk2Nzg5MjcsImV4cCI6MjA4NTI1NDkyN30.QNrMVCc9FFdIAR4wRv6g4V4p2JA8pbCoaf8zLRuu0fw",
     BUCKET_NAME: "esf-documents",
     TURNSTILE_SITE_KEY: "0x4AAAAAACZTfDIHzMhGqnER",
-    BANK_DETAILS: "",
     BASE_URL: "https://app.ellastreet.co.uk",
     CANCEL_URL: "https://app.ellastreet.co.uk/cancel_booking.html",
     PORTAL_URL: "https://www.ellastreet.co.uk/fest26/portal",
@@ -58,8 +57,6 @@ export function applyPublicSettings(data) {
         const val = item.value;
         if (item.key === 'turnstile_site_key') {
             ESF_PUBLIC_CONFIG.TURNSTILE_SITE_KEY = val;
-        } else if (item.key === 'bank_details') {
-            ESF_PUBLIC_CONFIG.BANK_DETAILS = val;
         } else if (item.key === 'base_url') {
             ESF_PUBLIC_CONFIG.BASE_URL = val;
         } else if (item.key === 'cancel_url') {

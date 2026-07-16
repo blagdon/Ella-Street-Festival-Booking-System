@@ -411,7 +411,7 @@ Everything environment-specific lives here. **If you change the Vercel URL or Su
 CONFIG.SUPABASE.URL / KEY      ← Supabase project credentials
 CONFIG.URLS.BASE               ← Vercel deployment URL
 CONFIG.URLS.CANCEL_URL         ← Direct link to cancel_booking.html
-CONFIG.BANK_DETAILS            ← Bank account info printed in emails
+CONFIG.BANK_ACCOUNT_NAME/SORT_CODE/ACCOUNT_NUMBER ← Bank details printed in emails (loaded from the settings table, not hardcoded)
 CONFIG.UI.STATUS_LIST          ← Valid status values
 CONFIG.INSTANCE_MAP            ← Maps instance keys to DB prefixes
 ```
@@ -432,7 +432,7 @@ This file contains hardcoded email template strings as a fallback. The primary t
 3. Re-deploy to Vercel
 
 ### Changing the bank account details
-Update `CONFIG.BANK_DETAILS` in `js/config.js`. This is automatically used in all email templates via the `{{bank_details}}` placeholder.
+Update the "Bank Transfer Payment Details" card on `settings.html` (writes `bank_account_name`/`bank_sort_code`/`bank_account_number` to the `settings` table). These are automatically composed into the `{{bank_details}}` placeholder used by confirmation emails, and individually available as `{{bank_account_name}}`/`{{bank_sort_code}}`/`{{bank_account_number}}` for the payment-request email.
 
 ### Changing stall prices
 Update the Stall Costs section on `settings.html` (writes `stall_cost_food`/`stall_cost_general`/`stall_cost_dev` to the `settings` table). There are no hardcoded defaults in code — `getStallCost()` reads entirely from the settings table (falling back to 0 with a console warning if a value hasn't loaded).

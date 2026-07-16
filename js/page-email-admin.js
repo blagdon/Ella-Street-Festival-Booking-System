@@ -147,7 +147,7 @@ function previewEmail() {
         '{{booking_id}}': 'ESF26-FOOD-0042',
         '{{cancel_link}}': 'https://example.com/cancel/abc123',
         '{{cost}}': '£50.00',
-        '{{bank_details}}': 'Sort Code: 12-34-56, Account: 12345678',
+        '{{bank_details}}': 'Account Name: Ella Street Festival, Sort Code: 12-34-56, Account Number: 12345678',
         '{{payment_link}}': 'https://checkout.stripe.com/c/pay/cs_test_example',
         '{{payment_reference}}': 'ESF26-FOOD-0042',
         '{{bank_account_name}}': 'Ella Street Festival',

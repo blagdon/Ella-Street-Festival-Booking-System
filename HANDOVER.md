@@ -661,16 +661,23 @@ role-check policy in the database, via the `check_user_role()` / `get_is_admin()
 ### `settings`
 Generic key/value config table (see [Settings-driven config](#settings-driven-config)
 above). Keys currently in use include `stall_cost_food/general/dev`,
-`allowed_stall_types`, `festival_display_name`, `base_url`, `cancel_url`, `bank_details`,
+`allowed_stall_types`, `festival_display_name`, `base_url`, `cancel_url`,
 `map_center_lat/lng`, `hcc_council_email`, `stripe_test_mode` (boolean as text,
 Food/General Stripe test-mode override), `stripe_secret_key_test/live`,
 `stripe_webhook_secret_test/live` (the actual Stripe credentials themselves — see
 [Stripe Payment Collection](#stripe-payment-collection)), plus all `zoho_*`
 credentials/cached tokens. **2026-07-16**: `bank_account_name`, `bank_sort_code`,
 `bank_account_number` — the manual bank-transfer payment details shown in the
-`payment_requested` email, editable via settings.html's own card, deliberately
-separate from the pre-existing `bank_details` key (a single free-text blob used only
-by the unrelated `confirmed_chargeable` template) rather than repurposing it.
+`payment_requested` email, editable via settings.html's own card. Originally added
+deliberately separate from the pre-existing `bank_details` key (a single free-text
+blob used only by the unrelated `confirmed_chargeable` template) — but since both
+held the same real-world information, `bank_details` was removed the same day
+(migration `20260716150000_drop_redundant_bank_details_setting.sql`) and the
+`{{bank_details}}` template placeholder is now composed from these three
+structured fields wherever it's used (`js/shared.js`'s `getEmailFromTemplate`,
+`stripe-webhook`'s post-payment confirmation email), rather than reading a
+separate freeform setting. The "BANK DETAILS FOR CONFIRMATIONS" field was
+removed from settings.html's System Constants card accordingly.
 
 ### `performers` / `schedules` — separate feature, same database
 `performers`: application data (`name`, `email`, `phone`, `cost_per_30min`, `status`
