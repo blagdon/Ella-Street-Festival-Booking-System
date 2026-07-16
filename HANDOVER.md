@@ -537,8 +537,10 @@ PK, e.g. `ESF26-FOOD-0042`), `status` (`Pending`/`Payment Requested`/
 [Stripe Payment Collection](#stripe-payment-collection) for `Payment Requested`), `business_name`,
 `owner_name`, `email`, `stall_cost`, `cancel_token`, `rejection_reason`,
 `stripe_checkout_session_id`, `stripe_payment_intent_id`, `stripe_payment_requested_at`
-(all nullable, added 2026-07-15). **`bookings.location_id` still exists as a column
-but is deprecated** — see below. `documents` (`text[]`) stores **storage paths into
+(all nullable, added 2026-07-15). **`bookings.location_id` (the old deprecated CSV
+column) was dropped 2026-07-16** — see Next Steps for the removal writeup; location
+assignment lives entirely in `booking_locations` now, see below. `documents` (`text[]`)
+stores **storage paths into
 the (private) `esf-documents` bucket**, not public URLs — resolved to a signed URL on
 demand by the `get-booking-documents` Edge Function. **Anon has zero direct access to
 this table** (no RLS policy, no column grants) — public/unauthenticated consumers must
@@ -1220,6 +1222,21 @@ tested live, and deployed. In order, what was just finished:
     documented `Payment Requested` at all), so a partial On-Hold-only edit wouldn't
     have made either one accurate — needs a full pass if this repo ever prioritizes
     user-facing docs again.
+33. **Dropped the deprecated `bookings.location_id` column** — flagged during a
+    third-party schema review (correctly: it was genuinely dead, superseded by
+    `booking_locations` well before this session even started). Verified empirically
+    before touching anything, same discipline as every other schema change this
+    session: grepped every `location_id` reference across `js/*.js` and
+    `supabase/functions/*/index.ts` — every hit was either `booking_locations
+    .location_id` (the real join table) or a JS-side property derived from it
+    (`location_ids`, `location_display`); nothing anywhere read or wrote
+    `bookings.location_id` directly, including the `submit-booking` INSERT path. New
+    migration `20260716052837_drop_deprecated_bookings_location_id.sql`. Also drops
+    `idx_bookings_location_id` as an automatic side effect (Postgres drops indexes that
+    depend solely on a column when the column itself is dropped) — no separate
+    `DROP INDEX` needed. Pure cleanup, no application code changed since nothing used
+    the column; all 52 tests still pass, including the location-assignment steps in
+    `tests/workflow.test.mjs`.
 
 **Explicitly deferred, not started:** Slack/Discord/Sentry-style alerting for Edge
 Function errors — the project owner said "I'll do it later," don't assume it's wanted
@@ -1247,8 +1264,10 @@ stay in the separate `ellafestperformersadmin.vercel.app` codebase.
   containing `-DEV-` maps to dataset `DEV`; everything else (`FOOD`, `NONFOOD`, `MISC`)
   maps to `LIVE`. Don't assume a 1:1 mapping between instance and dataset.
 
-- **`bookings.location_id` (the old CSV text column) still exists but is dead** — don't
-  read or write it; use `booking_locations` + `rpc_set_booking_locations()` exclusively.
+- **`bookings.location_id` no longer exists — dropped 2026-07-16.** Use
+  `booking_locations` + `rpc_set_booking_locations()` exclusively (this was already the
+  only real mechanism; the column was long-dead, unread/unwritten by any code path, and
+  is gone now rather than just documented-as-dead).
 
 - **`stall_cost === 0` is the actual free/skip-Stripe rule**, not the admin's
   Free/Chargeable toggle by itself — an explicit `£0` chargeable override is treated as

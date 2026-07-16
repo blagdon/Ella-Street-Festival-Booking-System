@@ -1,0 +1,15 @@
+-- Drops the deprecated bookings.location_id column, flagged during a schema
+-- review. It was superseded by the booking_locations join table (a booking
+-- can have multiple locations) and rpc_set_booking_locations() well before
+-- this migration - HANDOVER.md already documented it as deprecated dead
+-- weight. Verified empirically before writing this: grepped every
+-- location_id reference across js/*.js and supabase/functions/*/index.ts -
+-- every single one is either booking_locations.location_id (the real join
+-- table) or a JS-side property derived from it (location_ids,
+-- location_display); nothing anywhere reads or writes bookings.location_id
+-- directly, including the booking-submission INSERT path.
+--
+-- This also drops idx_bookings_location_id as an automatic side effect
+-- (Postgres drops indexes that depend solely on a column when that column
+-- is dropped) - no separate DROP INDEX needed.
+ALTER TABLE "public"."bookings" DROP COLUMN IF EXISTS "location_id";
