@@ -1504,6 +1504,53 @@ tested live, and deployed. In order, what was just finished:
     turned out to be the single most useful tool for this entire drill. Cleaned up
     afterward: truncated the real data back out, re-ran `scripts/seed-test-project.mjs`,
     full 53-test suite green.
+42. **Full permission audit across every major table** (`bookings`, `payments`,
+    `locations`, `performers`, `schedules`, `user_roles`, `audit_logs`), requested
+    after the owner flagged access control as the most likely source of future
+    issues as the system grows. Read the actual current policies/grants directly
+    (`supabase db dump --schema public,storage` against the **test** project, never
+    live — a full schema dump pulls real data too, and auditing access-control
+    *rules* doesn't need real PII) rather than reasoning from memory. Two real,
+    pre-existing findings (both predate this session, undocumented anywhere):
+
+    - **`performers`**: two SELECT policies for anon both matched
+      `status IN ('Scheduled','Paid')`, but only one also required
+      `deleted_at IS NULL`. RLS policies are OR'd together, so the policy missing
+      that check fully neutralized the other's restriction — a soft-deleted
+      performer (that column is owned entirely by the separate
+      `ellafestperformersadmin.vercel.app` app; this repo never writes it, but that
+      app has real, active soft-delete usage per the Gotchas entry below) stayed
+      publicly visible if it was ever marked Scheduled/Paid. Fixed
+      (`20260716105038_fix_permission_audit_rls_gaps.sql`) by folding the
+      `deleted_at` check into the policy that actually covers both `authenticated`
+      and `anon`, then dropping the now-fully-redundant anon-only policy. Added a
+      regression test (`tests/security.test.mjs`, a soft-deleted Scheduled performer
+      fixture) — this class of bug (two overlapping policies where the broader one
+      silently defeats the narrower one's extra restriction) doesn't show up in a
+      grants-snapshot diff at all, only in a real behavioral test.
+    - **`audit_logs`**: three separate INSERT policies all landed on the same
+      outcome (two were byte-for-byte identical; the third was a no-op for anon
+      since `auth.uid()` is null for a genuine unauthenticated request). Not a
+      security hole on its own, but exactly the shape of thing that causes a
+      *future* mistake — dropping one policy while believing you've tightened
+      access, not realizing two others still allow it. Consolidated to the one
+      with the clearest name.
+
+    Also confirmed, without needing a fix: `payments`/`locations`/`location_power`/
+    `booking_locations` all carry a blanket table-level `GRANT ALL` to
+    `anon`/`authenticated` with RLS as the only real gate (correctly enforced
+    everywhere checked) — a deliberate, common Supabase pattern, not a mistake, but
+    worth naming as this schema's single biggest systemic risk: if RLS is ever
+    disabled on any of these tables, even briefly during a migration or a debugging
+    session, that table becomes immediately and fully open to anon, with nothing
+    else standing in the way. `user_roles` has no self-escalation path (writes
+    gated by `get_is_admin()` in both `USING` and `WITH CHECK`); `schedules` uses
+    `FORCE ROW LEVEL SECURITY` (stronger than every other table — applies even to
+    the table owner). Verified on the test project (54-test suite, including the
+    new regression test), deployed to live, `rls_grants_snapshot.txt` regenerated
+    (which also picked up the unrelated pre-existing staleness from the July 16
+    operator cleanup — that snapshot hadn't been regenerated since before that
+    migration shipped).
 
 **Explicitly deferred, not started:** Slack/Discord/Sentry-style alerting for Edge
 Function errors — the project owner said "I'll do it later," don't assume it's wanted

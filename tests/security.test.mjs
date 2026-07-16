@@ -26,13 +26,14 @@ const confirmedBookingId = 'ESF26-TESTSEC-CONFIRMED';
 const pendingBookingId = 'ESF26-TESTSEC-PENDING';
 const scheduledPerformerId = '11111111-2222-3333-4444-555555555501';
 const appliedPerformerId = '11111111-2222-3333-4444-555555555502';
+const deletedScheduledPerformerId = '11111111-2222-3333-4444-555555555503';
 const devLocationId = 'TESTSECLOC-DEV';
 const liveLocationId = 'TESTSECLOC-LIVE';
 
 before(async () => {
   await service.from('booking_locations').delete().in('booking_id', [confirmedBookingId, pendingBookingId]);
   await service.from('bookings').delete().in('id', [confirmedBookingId, pendingBookingId]);
-  await service.from('performers').delete().in('id', [scheduledPerformerId, appliedPerformerId]);
+  await service.from('performers').delete().in('id', [scheduledPerformerId, appliedPerformerId, deletedScheduledPerformerId]);
   await service.from('locations').delete().in('id', [devLocationId, liveLocationId]);
 
   const { error: bookingsInsertErr } = await service.from('bookings').insert([
@@ -60,6 +61,16 @@ before(async () => {
       email: 'performer-secret2@example.test', phone: '07000000003', address: '2 Secret St',
       description: 'Test performer', performance_type: 'Music', cost_per_30min: 0,
     },
+    {
+      // Regression fixture for the 2026-07-16 permission-audit fix: a
+      // Scheduled performer that's also soft-deleted (deleted_at set, as
+      // the separate ellafestperformersadmin.vercel.app app does) must not
+      // be visible to anon despite matching the Scheduled/Paid status filter.
+      id: deletedScheduledPerformerId, name: 'Sec Test Deleted Scheduled Performer', status: 'Scheduled',
+      email: 'performer-secret3@example.test', phone: '07000000004', address: '3 Secret St',
+      description: 'Test performer', performance_type: 'Music', cost_per_30min: 0,
+      deleted_at: new Date().toISOString(),
+    },
   ]);
   if (performersInsertErr) throw new Error(`Fixture setup failed (performers): ${performersInsertErr.message}`);
 
@@ -81,7 +92,7 @@ before(async () => {
 after(async () => {
   await service.from('booking_locations').delete().in('booking_id', [confirmedBookingId, pendingBookingId]);
   await service.from('bookings').delete().in('id', [confirmedBookingId, pendingBookingId]);
-  await service.from('performers').delete().in('id', [scheduledPerformerId, appliedPerformerId]);
+  await service.from('performers').delete().in('id', [scheduledPerformerId, appliedPerformerId, deletedScheduledPerformerId]);
   await service.from('locations').delete().in('id', [devLocationId, liveLocationId]);
 });
 
@@ -212,6 +223,22 @@ describe('anon access to performers', () => {
       .eq('id', appliedPerformerId);
     assert.equal(error, null, error?.message);
     assert.equal(data.length, 0, 'expected RLS to hide non-Scheduled/Paid performers from anon entirely');
+  });
+
+  // 2026-07-16 permission-audit fix: "Public can view scheduled" (TO
+  // authenticated, anon) had no deleted_at check, while a separate anon-only
+  // policy did - but RLS policies are OR'd, so the first policy's gap fully
+  // neutralized the second's restriction. A soft-deleted Scheduled performer
+  // (deleted_at is owned by the separate ellafestperformersadmin.vercel.app
+  // app, not this repo) stayed publicly visible regardless. Fixed by folding
+  // the deleted_at check into the one policy that actually matters.
+  test('a soft-deleted Scheduled performer is not visible to anon', async () => {
+    const { data, error } = await anon
+      .from('performers')
+      .select('id, name, description, performance_type, performance_type_other, status')
+      .eq('id', deletedScheduledPerformerId);
+    assert.equal(error, null, error?.message);
+    assert.equal(data.length, 0, 'expected RLS to hide a soft-deleted performer from anon even though status is Scheduled');
   });
 });
 
