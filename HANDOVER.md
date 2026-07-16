@@ -1258,6 +1258,42 @@ tested live, and deployed. In order, what was just finished:
     doesn't lack one — `schedules_location_fkey` already references
     `locations(id, dataset)` — so that specific review point was simply wrong, not
     unverified.
+35. **Audited every function/RPC in the schema for unused ones, at the owner's request
+    right after item 34.** Cross-checked every function against `.rpc(...)` calls,
+    trigger attachments, and RLS policy references. `rpc_set_booking_locations`,
+    `cancel_booking_secure`, `get_next_booking_id`, `finalize_stripe_payment`,
+    `claim_pending_emails` are all directly RPC'd and alive. Trigger functions
+    (`booking_locations_check_conflict`, `is_booking_confirmed`, plus the
+    performers/schedules-only ones) fire automatically and are alive too — not calling
+    them by name doesn't mean unused. `get_is_admin()` turned out to be used (exactly
+    one policy, `user_roles`'s own `policy_allow_all_admin`) — redundant with
+    `check_user_role('admin')` doing the same job elsewhere, but not dead, so left
+    alone; flagged for whoever next touches admin-role logic.
+
+    The real, subtler finding: this schema registers custom `=`/`<>` operators between
+    `text` and `user_role` (four backing functions: `eq_text_user_role`,
+    `eq_user_role_text`, `neq_text_user_role`, `neq_user_role_text`). Tracing
+    `check_user_role()`'s body — `role = required_role`, where `role` (`user_roles.role`)
+    is `text` and `required_role` is `user_role` — that expression is what silently
+    invokes `eq_text_user_role` on **every** RLS check across this schema (Postgres
+    picks the exact-type-match operator; there's no explicit call to the function name
+    anywhere in the SQL text, which is exactly why a naive grep would have missed this
+    entirely). That one function/operator pair is essential and was left untouched. The
+    other three were never invoked anywhere: `public.user_role` is never used as a
+    column type (only as a function parameter), nothing anywhere reverses the
+    comparison order, and nothing anywhere negates it with `<>`. Dropped
+    `eq_user_role_text`, `neq_text_user_role`, `neq_user_role_text`, and their two
+    `<>`/`=` operator registrations in
+    `20260716054553_drop_unused_user_role_operators.sql`. Given how central
+    `check_user_role()` is (it gates `bookings`, `email_queue`, `locations`, `payments`,
+    `audit_logs`, `hcc_checks`), this one was treated with more caution than a flat
+    dead-column drop: tested on the disposable project first, full 52-test suite run
+    (exercises `check_user_role` via RLS on nearly every admin action — all green),
+    then re-verified directly on live after deploying there too: anon still fully
+    blocked from `bookings`/`user_roles`, `public_bookings_info` still works for anon,
+    and the admin Kanban board still loads normally (75 bookings, all columns) with the
+    real admin session, confirming the surviving `eq_text_user_role` operator is intact
+    and doing its job.
 
 **Explicitly deferred, not started:** Slack/Discord/Sentry-style alerting for Edge
 Function errors — the project owner said "I'll do it later," don't assume it's wanted
@@ -1272,6 +1308,17 @@ stay in the separate `ellafestperformersadmin.vercel.app` codebase.
 ---
 
 ## 9. Gotchas
+
+- **`check_user_role()` invokes a custom operator with no textual call site anywhere —
+  grepping for a function name is not enough to prove it's unused.** Its body does
+  `role = required_role` (`text` = `user_role`); Postgres resolves that to the custom
+  `eq_text_user_role` operator by exact type match, invisibly — the function name never
+  appears in any policy or query text. This schema also defines three sibling
+  operators/functions (`eq_user_role_text`, `neq_text_user_role`, `neq_user_role_text`)
+  that really were dead (reversed argument order / negation, never actually exercised
+  anywhere) and were removed 2026-07-16 — but figure out *which* of a set of
+  operator-support functions is actually load-bearing by tracing the expressions that
+  use the types involved, not by searching for the function's name as a string.
 
 - **`locations`' primary key is `(id, dataset)`, not `id`.** Never assume a bare
   `location_id` is globally unique. `booking_locations.location_id` deliberately has no
