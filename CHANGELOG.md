@@ -2,6 +2,45 @@
 
 All notable changes to this project are documented in this file.
 
+## [v5.0] - 2026-07-16 - "Bank Transfers Supported"
+
+### Manual bank-transfer payments (new)
+
+- Admins can now record a bank-transfer payment directly in the Payments Tracker (reference + notes), which atomically confirms the booking and mirrors a successful Stripe payment — no second manual status change needed
+- The `payment_requested` email now offers both a Stripe payment link and bank-transfer instructions (account name/sort code/account number), pulled from the settings table
+- A confirmation email now sends automatically after a bank-transfer payment is recorded, same as a completed Stripe payment
+- Consolidated the old freeform "bank details" setting into the same structured account fields used for bank transfers, removing the duplicate field from the Settings page
+- Fixed dragging a booking onto "Payment Requested" on the Kanban board, which previously snapped back to Pending instead of opening the confirm dialog
+- Widened the Payments dashboard so action buttons are no longer scrolled off-screen
+
+### Stripe Checkout payment collection
+
+- Added Stripe Checkout payment collection — confirming a chargeable booking immediately creates a Checkout Session and emails the stallholder a payment link
+- Simplified the confirm workflow: removed the separate "Pre-Confirmed" step and the "Paid" status; a successful Stripe payment now atomically confirms the booking in one RPC
+- Removed the "On Hold" booking status
+- Hardened Stripe RPC/table grants against `anon`/`authenticated` access
+
+### Security
+
+- Removed `anon`'s direct access to `bookings`; added a `public_bookings_info` view exposing only what the visitor map needs
+- Closed permission-audit RLS gaps in `performers` and `audit_logs`
+- Closed a check-then-act race condition in booking-location conflict checking
+
+### Admin tools
+
+- Added an audit log viewer for reconstructing booking history
+- Converted `bookings.is_charity` to a native enum and fixed a related `submit-booking` gap
+
+### Cleanup
+
+- Removed dead code left over from the Stripe restructuring: an unreachable chargeable-confirmation email path and an unused resend-confirmation function
+- Dropped deprecated/unused columns, indexes, and functions (`bookings.location_id`, dead `audit_logs` columns, unused comparison operators)
+
+### Documentation
+
+- Wrote a disaster-recovery runbook based on a real restore drill
+- Corrected HANDOVER.md's backup documentation
+
 ## [v4.0] - 2026-07-15
 
 ### Security
