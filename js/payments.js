@@ -150,15 +150,19 @@ function renderTable() {
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     ${escapeHtml(r.editor || '-')}
                 </td>
-                <td class="px-6 py-4 pr-12 whitespace-nowrap text-right text-sm font-medium space-x-3">
+                <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                     ${r.awaitingPayment
                     ? (r.status === 'Payment Requested' ? `
-                        <button data-id="${escapeHtml(r.id)}" class="btn-resend-payment text-indigo-600 hover:text-indigo-900 font-bold">Resend Payment Link</button>
-                        <button data-id="${escapeHtml(r.id)}" class="btn-record-bank-transfer text-green-600 hover:text-green-900 font-bold">Record Bank Transfer</button>
+                        <div class="flex flex-col items-end gap-1.5">
+                            <button data-id="${escapeHtml(r.id)}" class="btn-resend-payment text-indigo-600 hover:text-indigo-900 font-bold">Resend Payment Link</button>
+                            <button data-id="${escapeHtml(r.id)}" class="btn-record-bank-transfer text-green-600 hover:text-green-900 font-bold">Record Bank Transfer</button>
+                        </div>
                     ` : '')
                     : `
-                        ${!r.paid ? `<button data-id="${escapeHtml(r.id)}" class="btn-reminder text-purple-600 hover:text-purple-900 font-bold">Reminder</button>` : ''}
-                        <button data-id="${escapeHtml(r.id)}" class="btn-edit text-blue-600 hover:text-blue-900">Edit</button>
+                        <div class="flex items-center justify-end gap-3">
+                            ${!r.paid ? `<button data-id="${escapeHtml(r.id)}" class="btn-reminder text-purple-600 hover:text-purple-900 font-bold">Reminder</button>` : ''}
+                            <button data-id="${escapeHtml(r.id)}" class="btn-edit text-blue-600 hover:text-blue-900">Edit</button>
+                        </div>
                     `}
                 </td>
             </tr>
