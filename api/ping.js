@@ -5,8 +5,13 @@
  * Called by Vercel Cron on the schedule defined in vercel.json.
  *
  * Performs a lightweight REST query against the Supabase REST API
- * (select 1 row from bookings) which counts as API activity and
+ * (select 1 row from locations) which counts as API activity and
  * resets the Supabase free-tier inactivity timer (7-day limit).
+ * Queries `locations`, not `bookings` - anon lost all direct access to
+ * `bookings` in the 2026-07-16 security fix (see HANDOVER.md's "Public
+ * visitor-facing data access" section), but `locations` still has an
+ * unconditional `USING (true)` anon SELECT policy, so it works regardless
+ * of whether any rows exist.
  *
  * Required Vercel Environment Variables:
  *   SUPABASE_URL      - e.g. https://rsnxhuhibglieofikkpo.supabase.co
@@ -40,7 +45,7 @@ export default async function handler(req, res) {
   try {
     console.log("PING: Sending keep-alive request to Supabase...");
 
-    const queryUrl = supabaseUrl + "/rest/v1/bookings?select=id" + "&limit=1";
+    const queryUrl = supabaseUrl + "/rest/v1/locations?select=id" + "&limit=1";
     const response = await fetch(queryUrl, {
       method: "GET",
       headers: {

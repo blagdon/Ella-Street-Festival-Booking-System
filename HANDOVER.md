@@ -512,6 +512,21 @@ for this security fix.
   `payments` has no `refund_status`/`refund_amount` columns. Flagged 2026-07-15
   during a schema review; deliberately not built speculatively — add the columns
   alongside the actual refund feature/code when this is prioritized, not before.
+- **No database backup coverage of any kind** — checked directly in the Supabase
+  dashboard 2026-07-16 (project `rsnxhuhibglieofikkpo`, "ESRA"): it's on the **Free**
+  plan, which excludes both scheduled backups ("Free Plan does not include project
+  backups. Upgrade to the Pro Plan for up to 7 days of scheduled backups") and
+  Point-in-Time Recovery (a separate Pro-Plan add-on, $100/mo). There is also no
+  backup workflow anywhere in this repo's `.github/workflows/` — a third-party review
+  described one (`backup.yml`, with `pg_dump`/encryption/compression advice) that
+  never existed here; checking confirmed it was fabricated/about a different project,
+  not something that regressed. Net effect either way: if live data were ever
+  destroyed or corrupted (bad migration, accidental mass delete, etc.), there is
+  currently no way to recover it. Two independent fixes, not mutually exclusive:
+  upgrade to Supabase Pro for automatic daily backups, and/or build a scheduled
+  GitHub Actions job that dumps the DB to a private, encrypted location. Neither has
+  been built — flagged, not actioned, pending a decision on which approach (or both)
+  to take.
 - ~~No real automated test suite~~ — **resolved 2026-07-14**. All three steps of
   the original plan (grep guard → RLS snapshot test → real integration tests)
   are done, and CI runs all of them on every push — see
@@ -1352,6 +1367,22 @@ tested live, and deployed. In order, what was just finished:
     admin edit form already uses a fixed `<select>` with the three exact values, so
     that path needed no change. Verified: full 52-test suite green on the test project
     after the fix.
+38. **Fixed `api/ping.js` (the daily Vercel Cron keep-alive), a real regression from the
+    2026-07-16 security fix in item 31.** The owner asked whether this repo performs a
+    database backup — investigation found none exists anywhere (no workflow, no script,
+    no Supabase-side scheduled backup or PITR; the project is on the Free plan, which
+    excludes both — see the "Known gaps" note above), and the likely source of the
+    question was the disposable Supabase project's dashboard display name, **"test
+    backup"** — just this repo's name for its disposable CI-testing project, not an
+    actual backup of live data. While checking, found that `api/ping.js` — the cron that
+    exists specifically to stop the Supabase free-tier project auto-pausing after 7
+    days of inactivity — queries `bookings` directly with the anon key
+    (`select=id&limit=1`), which has returned `permission denied for table bookings`
+    silently (caught, logged, 500 returned) every single day since item 31 shipped,
+    since that's exactly the access anon lost. Fixed by pointing it at `locations`
+    instead, which still has an unconditional `USING (true)` anon SELECT policy —
+    verified directly with a real anon-key REST call (`200`, real row returned) before
+    considering this done.
 
 **Explicitly deferred, not started:** Slack/Discord/Sentry-style alerting for Edge
 Function errors — the project owner said "I'll do it later," don't assume it's wanted
