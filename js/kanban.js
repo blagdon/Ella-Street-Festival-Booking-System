@@ -180,11 +180,9 @@ function initDragula() {
         });
 }
 
-function updateStatus(id, status, reason = null, isChargeable = null, overrideCost = null) {
+function updateStatus(id, status, reason = null) {
     sharedUpdateStatus(id, status, allBookings, {
         reason: reason,
-        isChargeable: isChargeable,
-        overrideCost: overrideCost,
         onSuccess: (newStatus) => {
             draggedItem = null;
             sourceStatus = null;
@@ -537,7 +535,7 @@ export function finalizeConfirm(isChargeable) {
     // between anymore.
     const isFree = !isChargeable || overrideCost === 0;
     if (isFree) {
-        updateStatus(id, 'Confirmed', null, false, overrideCost);
+        updateStatus(id, 'Confirmed');
     } else {
         confirmChargeableAndRequestPayment(id, overrideCost);
     }

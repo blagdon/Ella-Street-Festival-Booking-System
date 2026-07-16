@@ -1,5 +1,5 @@
 import { getSupabaseClient } from './supabase.js';
-import { CONFIG, getStallCost } from './config.js';
+import { CONFIG } from './config.js';
 import { validateString, validateEmail, validateBookingId, validateStatus, escapeHtml, parseEdgeFunctionError, MAX_FIELD_LENGTHS } from './utils.js';
 
 const TBL_BOOKINGS = 'bookings';
@@ -227,60 +227,26 @@ export async function sendEmail(id, subject, body) {
 }
 
 /**
- * Finalizes a confirmation (handles payments logic).
+ * Finalizes a free confirmation. Only ever called for a free confirmation
+ * (js/shared.js's sharedUpdateStatus) — a chargeable confirm never reaches
+ * this function, it goes through Stripe (finalize_stripe_payment) or a
+ * manually recorded bank transfer (rpc_record_bank_transfer_payment)
+ * instead, each managing its own payments row. Deletes any stale payments
+ * row so a free booking never has one.
  * @param {string} id
- * @param {boolean} isChargeable
- * @param {object|null} providedSnapshot - Optional booking snapshot to avoid redundant DB call
- * @param {number|null} overrideCost - Optional admin-specified cost override
  */
-export async function finalizeConfirmation(id, isChargeable, providedSnapshot = null, overrideCost = null) {
+export async function finalizeConfirmation(id) {
     validateBookingId(id);
     const sb = getSupabaseClient();
 
-    let bSnapshot = providedSnapshot;
-
-    if (!bSnapshot) {
-        const { data, error: snapError } = await sb
-            .from(TBL_BOOKINGS)
-            .select('instance_prefix, business_name, owner_name, email, phone, stall_type, stall_cost')
-            .eq('id', id)
-            .single();
-
-        if (snapError || !data) {
-            throw new Error(`Failed to fetch booking snapshot for ID ${id}: ${snapError ? snapError.message : 'Record not found'}`);
-        }
-        bSnapshot = data;
-    }
-
-    const prefix = bSnapshot.instance_prefix || "GENERAL";
     const confirmDate = new Date().toISOString();
 
     // Ensure status is confirmed (redundant safety)
     await sb.from(TBL_BOOKINGS).update({ status: 'Confirmed', date_confirmed: confirmDate }).eq('id', id);
 
-    if (isChargeable) {
-        // Priority: 1. Admin override, 2. Booking's stored cost, 3. Config default
-        let cost = 0;
-        if (overrideCost !== null && !isNaN(overrideCost)) {
-            cost = overrideCost;
-        } else if (bSnapshot.stall_cost !== undefined && bSnapshot.stall_cost !== null) {
-            cost = parseFloat(bSnapshot.stall_cost);
-        } else {
-            cost = getStallCost(prefix);
-        }
+    await sb.from(TBL_PAYMENTS).delete().eq('booking_id', id);
 
-        // Save the final cost back to the booking record
-        await sb.from(TBL_BOOKINGS).update({ stall_cost: cost }).eq('id', id);
-
-        await sb.from(TBL_PAYMENTS).upsert({
-            booking_id: id,
-            paid: false
-        }, { onConflict: 'booking_id', ignoreDuplicates: false });
-    } else {
-        await sb.from(TBL_PAYMENTS).delete().eq('booking_id', id);
-    }
-
-    await auditLog('finalize_confirmation', id, { is_chargeable: isChargeable });
+    await auditLog('finalize_confirmation', id);
     return { status: 'success' };
 }
 

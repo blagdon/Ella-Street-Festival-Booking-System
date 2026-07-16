@@ -1648,9 +1648,8 @@ tested live, and deployed. In order, what was just finished:
     break the Stripe flow), then deployed to live.
 
     **Follow-up fix, same day**: a check of whether `bank_details`/`confirmed_chargeable`
-    were still in use (they are — `stripe-webhook`, `sharedUpdateStatus()`'s manual-
-    confirm path, and `manualResendConfirmation()` all still send that template)
-    surfaced a real gap: `recordBankTransferPayment()` calls the RPC directly and
+    were still in use (they are — `stripe-webhook`) surfaced a real gap:
+    `recordBankTransferPayment()` calls the RPC directly and
     never sent any confirmation email at all, unlike the Stripe path, which always
     sends `confirmed_chargeable` from the webhook after a successful payment — the
     spec's "mirror the outcome of a successful Stripe payment" was only half done
@@ -1665,6 +1664,33 @@ tested live, and deployed. In order, what was just finished:
     Function) — not covered by the Node test suite, which has no browser-level
     tests anywhere in this repo; verified by reading the existing, already-proven
     `sharedUpdateStatus()` code path it reuses rather than duplicating logic.
+
+    **2026-07-16, later same day — dead-code cleanup**: asked "when is
+    `confirmed_chargeable` used?", tracing every caller found only **two** genuinely
+    live send sites — `stripe-webhook`'s post-Stripe-payment confirmation email, and
+    `js/payments.js`'s `saveBankTransferPayment()` (the fix directly above). Two
+    other things referenced the template but were unreachable: `js/shared.js`'s
+    `sharedUpdateStatus()` had a `chargeable ? 'confirmed_chargeable' : 'confirmed_free'`
+    branch, but every real caller (`js/kanban.js`/`js/summary.js`'s `finalizeConfirm`,
+    reached via the drag-drop/button/swipe Free-Chargeable modal) only ever passes
+    `isChargeable=false` for a direct-to-`Confirmed` transition — a chargeable
+    confirmation always redirects to Stripe (`Payment Requested`) instead, so the
+    `true` branch was leftover from before that redirect existed. `manualResendConfirmation()`
+    in `js/shared.js` was exported but never imported or wired to any button anywhere
+    — fully dead. Removed both: `manualResendConfirmation()` deleted outright;
+    `sharedUpdateStatus()`'s `Confirmed` handling simplified to always be the free
+    path (zero behavior change, since that was the only reachable outcome);
+    `js/api.js`'s `finalizeConfirmation(id, isChargeable, providedSnapshot, overrideCost)`
+    correspondingly simplified to `finalizeConfirmation(id)` — it's only ever called
+    for a free confirmation now, so the chargeable branch (cost/payments-row creation)
+    and the now-unread booking-snapshot fetch were removed too, along with the
+    resulting unused `getStallCost` import in `js/api.js`. `tests/workflow.test.mjs`'s
+    comment describing a simulated chargeable-confirm DB state was reworded to stop
+    citing the now-removed `finalizeConfirmation(id, isChargeable=true)` signature —
+    the test's assertions were untouched, since it already worked at the DB level
+    rather than importing browser JS. No migration, no Edge Function change; verified
+    via the existing 64-test suite (client-side-only change, same testing limitation
+    as the fix above).
 
 **Explicitly deferred, not started:** Slack/Discord/Sentry-style alerting for Edge
 Function errors — the project owner said "I'll do it later," don't assume it's wanted

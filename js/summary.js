@@ -422,7 +422,7 @@ window.finalizeConfirm = function (isChargeable) {
     // Session and moves to Payment Requested — no separate step in between.
     const isFree = !isChargeable || overrideCost === 0;
     if (isFree) {
-        updateStatus(id, 'Confirmed', null, false, overrideCost);
+        updateStatus(id, 'Confirmed');
     } else {
         confirmChargeableAndRequestPayment(id, overrideCost);
     }
@@ -485,11 +485,9 @@ window.confirmRejection = function () {
     updateStatus(id, 'Rejected', reason);
 }
 
-async function updateStatus(id, status, reason = null, isChargeable = null, overrideCost = null) {
+async function updateStatus(id, status, reason = null) {
     await sharedUpdateStatus(id, status, allBookings, {
         reason: reason,
-        isChargeable: isChargeable,
-        overrideCost: overrideCost,
         onSuccess: () => { window.filterTable(); },
         onError: () => { }
     });

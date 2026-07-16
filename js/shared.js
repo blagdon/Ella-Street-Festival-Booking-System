@@ -5,43 +5,6 @@ import { escapeHtml, sanitizeUrl } from './utils.js';
 import { getStallCost, CONFIG } from './config.js';
 
 /**
- * Manually resends a confirmation email to a trader.
- */
-export async function manualResendConfirmation(id) {
-    try {
-        const sb = getSupabaseClient();
-        // 1. Fetch current booking data
-        const { data: booking, error: fetchErr } = await sb
-            .from('bookings')
-            .select('*')
-            .eq('id', id)
-            .single();
-
-        if (fetchErr || !booking) throw new Error("Could not find booking data.");
-
-        // 2. Determine template
-        // Check if there is a payment record to see if it's chargeable
-        const { data: payData } = await sb.from('payments').select('booking_id').eq('booking_id', id).maybeSingle();
-        const chargeable = !!payData;
-
-        const templateId = chargeable ? 'confirmed_chargeable' : 'confirmed_free';
-
-        // 3. Generate content
-        const { subject, body } = await getEmailFromTemplate(templateId, booking, id);
-
-        // 4. Queue Email
-        await sendEmail(id, subject, body);
-
-        // 5. Audit Log
-        await auditLog('resend_confirmation', id, { template: templateId });
-
-        showToast("Confirmation email resent!");
-    } catch (err) {
-        showToast("Failed to resend: " + err.message, 'error');
-    }
-}
-
-/**
  * Manually sends a payment reminder.
  */
 export async function manualSendPaymentReminder(id) {
@@ -190,7 +153,7 @@ export async function queueLocationEmail(id) {
  * Shared logic to update a booking status.
  */
 export async function sharedUpdateStatus(id, status, allBookings, options = {}) {
-    const { reason = null, isChargeable = null, overrideCost = null, onSuccess, onError } = options;
+    const { reason = null, onSuccess, onError } = options;
 
     try {
         // 1. Update DB Status
@@ -198,16 +161,16 @@ export async function sharedUpdateStatus(id, status, allBookings, options = {}) 
 
         // 2. Handle Confirmation specific logic
         if (status === 'Confirmed') {
-            const chargeable = (isChargeable === null) ? true : isChargeable;
-
-            // A. Finalize Payments
+            // Only reachable for a free confirmation — a chargeable confirm
+            // never lands on 'Confirmed' directly, it always goes through
+            // Stripe (Payment Requested) or a manually recorded bank
+            // transfer instead, each of which sends its own confirmation
+            // email (stripe-webhook / js/payments.js's saveBankTransferPayment).
             const booking = allBookings.find(b => b.id === id);
-            await finalizeConfirmation(id, chargeable, booking, overrideCost);
+            await finalizeConfirmation(id);
 
-            // B. Auto-send Confirmation Email
             if (booking) {
-                const templateId = chargeable ? 'confirmed_chargeable' : 'confirmed_free';
-                const { subject, body } = await getEmailFromTemplate(templateId, booking, id);
+                const { subject, body } = await getEmailFromTemplate('confirmed_free', booking, id);
                 await sendEmail(id, subject, body);
                 showToast('Booking confirmed and email queued');
             } else {

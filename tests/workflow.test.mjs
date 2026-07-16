@@ -74,8 +74,12 @@ describe('critical admin workflow: create -> confirm -> assign -> move -> pay ->
     const { error: statusErr } = await admin.from('bookings').update({ status: 'Confirmed' }).eq('id', bookingId);
     assert.equal(statusErr, null, statusErr?.message);
 
-    // Mirrors finalizeConfirmation(id, isChargeable=true): stamp date_confirmed,
-    // save the final cost, and upsert a payments row.
+    // Mirrors the DB-level effect of a chargeable confirmation: stamp
+    // date_confirmed, save the final cost, and upsert a payments row.
+    // Reached today via Stripe (finalize_stripe_payment) or a manually
+    // recorded bank transfer (rpc_record_bank_transfer_payment), not via
+    // js/api.js's finalizeConfirmation() — that function now only ever
+    // handles the free-confirm path (see js/shared.js's sharedUpdateStatus).
     const { error: confirmErr } = await admin
       .from('bookings')
       .update({ status: 'Confirmed', date_confirmed: new Date().toISOString(), stall_cost: 50 })
