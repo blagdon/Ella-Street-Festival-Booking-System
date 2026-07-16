@@ -161,6 +161,64 @@ describe('booking_locations_check_conflict trigger', () => {
     const { error: devErr } = await service.from('booking_locations').insert({ booking_id: devBooking, location_id: locationId });
     assert.equal(devErr, null, `DEV booking assigning the same location id should NOT be blocked (different dataset): ${devErr?.message}`);
   });
+
+  // The two tests above only prove the trigger catches an ALREADY-COMMITTED
+  // conflict - assign first, then try again, sequentially. A prior version
+  // of this test tried the harder question via Promise.all() on two direct
+  // service-role inserts, bypassing rpc_set_booking_locations() entirely to
+  // hit the trigger's plain SELECT-then-RAISE check directly. It passed,
+  // but that turned out to be a false negative: forcing a real overlap with
+  // an injected delay (a one-off diagnostic against the trigger, not
+  // checked in) proved the race genuinely exists at the trigger level - two
+  // concurrent inserts that both pass the check both commit, and the pitch
+  // ends up double-booked. Two HTTP round trips through PostgREST just
+  // don't reliably land in that microsecond-scale window on their own.
+  //
+  // The fix (see migration 20260716064846_lock_booking_locations_against_race)
+  // was deliberately placed in rpc_set_booking_locations() - the sole write
+  // path this table has from application code - via LOCK TABLE ... IN SHARE
+  // ROW EXCLUSIVE MODE, mirroring get_next_booking_id()'s existing fix for
+  // the identical class of bug. So this test now goes through that RPC
+  // (matching how js/api.js and js/page-steward.js actually call it),
+  // not a direct table insert, since that's the path the fix protects.
+  test('two concurrent rpc_set_booking_locations calls for the same location never both succeed', async () => {
+    const locationId = 'TESTLOC-RACE';
+    await service.from('locations').insert({ id: locationId, dataset: 'LIVE', lat: 0, lng: 0 });
+
+    const bookingA = 'ESF26-TESTCONFLICT-RACE-A';
+    const bookingB = 'ESF26-TESTCONFLICT-RACE-B';
+    createdBookingIds.push(bookingA, bookingB);
+
+    for (const id of [bookingA, bookingB]) {
+      await service.from('bookings').insert({
+        id,
+        status: 'Confirmed',
+        business_name: `Race Test ${id}`,
+        owner_name: 'Test',
+        email: 'test@example.test',
+        instance_prefix: 'ESF26-FOOD-',
+        stall_type: 'Food',
+      });
+    }
+
+    const [resA, resB] = await Promise.all([
+      anon.rpc('rpc_set_booking_locations', { p_booking_id: bookingA, p_location_ids: [locationId] }),
+      anon.rpc('rpc_set_booking_locations', { p_booking_id: bookingB, p_location_ids: [locationId] }),
+    ]);
+
+    const succeeded = [resA, resB].filter((r) => r.error === null);
+    const failed = [resA, resB].filter((r) => r.error !== null);
+
+    // Ground truth: however many calls *reported* success, the table
+    // itself must only actually hold one row for this location - two
+    // concurrent successes would mean the pitch is genuinely double-booked.
+    const { data: finalRows } = await service.from('booking_locations').select('booking_id').eq('location_id', locationId);
+
+    assert.equal(finalRows.length, 1,
+      `expected exactly one booking_locations row for ${locationId} after concurrent assignment, got ${finalRows.length} ` +
+      `(${succeeded.length} concurrent call(s) reported success, ${failed.length} reported an error) - ` +
+      `a count of 2 here means the check-then-act race is real and this pitch is double-booked`);
+  });
 });
 
 describe('claim_pending_emails self-heal (claimed_at, not created_at)', () => {

@@ -1383,6 +1383,40 @@ tested live, and deployed. In order, what was just finished:
     instead, which still has an unconditional `USING (true)` anon SELECT policy —
     verified directly with a real anon-key REST call (`200`, real row returned) before
     considering this done.
+39. **Fixed a genuine, empirically-proven race condition in `booking_locations_check_conflict()`,
+    raised by the owner during the schema review series ("does the database itself
+    prevent two active bookings from occupying the same pitch under a race
+    condition?").** The trigger only ever ran a plain `SELECT ... INTO v_conflict_id`
+    before `RAISE EXCEPTION` — no `SELECT ... FOR UPDATE`, no table lock — a classic
+    check-then-act race, structurally identical to the `get_next_booking_id()` bug
+    already fixed once in this schema.
+
+    **A first concurrency test (`Promise.all()` on two direct service-role inserts,
+    bypassing `rpc_set_booking_locations()` to hit the trigger directly) passed —
+    but this was a false negative**, not proof of safety. Two HTTP round trips through
+    PostgREST don't reliably land in the same microsecond-scale window a single-row
+    `INSERT` + trigger takes to run. To get a real answer, ran a one-off diagnostic
+    (not committed): temporarily patched the trigger on the disposable test project
+    only, via `supabase db query --linked` (no tracked migration file), to add
+    `PERFORM pg_sleep(1)` after the conflict check, gated to a magic
+    `location_id = 'TESTLOC-RACE-FORCED'` so it could never fire on real data. This
+    forces two concurrent calls to genuinely overlap regardless of network timing.
+    Result: **both concurrent inserts succeeded, no errors, and the table ended up
+    with 2 rows for the same location** — a real double-booked pitch. The diagnostic
+    patch was reverted immediately after (confirmed via `pg_proc.prosrc` containing no
+    `pg_sleep`), and the full 53-test suite was re-run clean to confirm the test
+    project was back to its true migration-tracked state before touching anything else.
+
+    **Fix** (`20260716064846_lock_booking_locations_against_race.sql`): added
+    `LOCK TABLE booking_locations IN SHARE ROW EXCLUSIVE MODE;` inside
+    `rpc_set_booking_locations()` — deliberately in the RPC, not the trigger, mirroring
+    exactly where `get_next_booking_id()`'s fix lives, and because `rpc_set_booking_locations()`
+    is the *only* place application code ever writes to `booking_locations`
+    (`js/api.js` and `js/page-steward.js` both call only this RPC; nothing writes to
+    the table directly). `tests/integration.test.mjs`'s concurrency test was rewritten
+    to call `rpc_set_booking_locations` through an authenticated admin client (matching
+    real app usage) instead of a direct table insert, since that's the path the fix
+    actually protects — full 53-test suite green afterward.
 
 **Explicitly deferred, not started:** Slack/Discord/Sentry-style alerting for Edge
 Function errors — the project owner said "I'll do it later," don't assume it's wanted
