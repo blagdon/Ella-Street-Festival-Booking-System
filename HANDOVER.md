@@ -1,7 +1,10 @@
 # HANDOVER — Ella Street Festival Booking System
 
 > Written for an AI coding agent picking this up cold. No prior context assumed.
-> Last updated: 2026-07-15.
+> Last updated: 2026-07-16.
+> Current release: **v5.0.0 "Bank Transfers Supported"** (tagged 2026-07-16) — see
+> `CHANGELOG.md` for the full release notes and the repo's GitHub Releases page for the
+> tagged version.
 > `ARCHITECTURE.md` and `USER_GUIDE.md` also exist in this repo and are more exhaustive on
 > some points, but **both contain stale information** — see [Gotchas](#9-gotchas) for the
 > specific claims to distrust. Where this document and `ARCHITECTURE.md` disagree, trust
@@ -485,6 +488,10 @@ for this security fix.
   immediately on a chargeable confirm, one atomic RPC on successful payment), test/live
   mode via `instance_prefix`, idempotent webhook — see
   [Stripe Payment Collection](#stripe-payment-collection) above
+- Manual bank-transfer payment recording (Payments Tracker) — atomically confirms the
+  booking via `rpc_record_bank_transfer_payment()`, same confirmation-email path as a
+  completed Stripe payment; `payment_requested` email offers both a Stripe link and
+  bank-transfer instructions — see Next Steps item 43
 - HCC (Hull City Council food safety) check workflow — manual, environment-aware email send
 - Email template admin (`more.html`), user role management, steward mobile view
 - Booking cancellation (public self-service link) with automatic confirmation email
