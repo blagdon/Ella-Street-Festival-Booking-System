@@ -1,5 +1,5 @@
-import { fetchPayments, updatePayment, resendPaymentRequest, recordBankTransferPayment } from './api.js';
-import { manualSendPaymentReminder } from './shared.js';
+import { fetchPayments, updatePayment, resendPaymentRequest, recordBankTransferPayment, sendEmail } from './api.js';
+import { manualSendPaymentReminder, getEmailFromTemplate } from './shared.js';
 import { showToast } from './ui.js';
 import { escapeHtml } from './utils.js';
 import { CONFIG } from './config.js';
@@ -311,6 +311,24 @@ async function saveBankTransferPayment() {
 
         closeBankTransferModal();
         showToast('Bank transfer recorded — booking confirmed.');
+
+        // Mirrors the outcome of a successful Stripe payment, which always
+        // sends this same template from stripe-webhook after confirming —
+        // a bank-transfer confirmation should look identical to the
+        // stallholder. Wrapped separately: the payment/confirmation itself
+        // already succeeded by this point, so an email failure here is a
+        // lesser, distinct problem and must not read as "the payment wasn't
+        // recorded."
+        try {
+            const booking = allRecords.find(item => item.id === id);
+            if (booking) {
+                const { subject, body } = await getEmailFromTemplate('confirmed_chargeable', booking, id);
+                await sendEmail(id, subject, body);
+            }
+        } catch (emailErr) {
+            showToast('Payment recorded, but the confirmation email failed to send: ' + emailErr.message, 'error');
+        }
+
         await loadData();
     } catch (err) {
         showToast('Error recording payment: ' + err.message, 'error');

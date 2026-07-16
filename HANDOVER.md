@@ -1640,6 +1640,25 @@ tested live, and deployed. In order, what was just finished:
     `finalize_stripe_payment` happy-path test proving the additive change didn't
     break the Stripe flow), then deployed to live.
 
+    **Follow-up fix, same day**: a check of whether `bank_details`/`confirmed_chargeable`
+    were still in use (they are — `stripe-webhook`, `sharedUpdateStatus()`'s manual-
+    confirm path, and `manualResendConfirmation()` all still send that template)
+    surfaced a real gap: `recordBankTransferPayment()` calls the RPC directly and
+    never sent any confirmation email at all, unlike the Stripe path, which always
+    sends `confirmed_chargeable` from the webhook after a successful payment — the
+    spec's "mirror the outcome of a successful Stripe payment" was only half done
+    (the status change, not the email). Fixed in `js/payments.js`'s
+    `saveBankTransferPayment()`: after the RPC succeeds, sends `confirmed_chargeable`
+    via the same client-side `getEmailFromTemplate()`/`sendEmail()` pair
+    `sharedUpdateStatus()` already uses for a manual confirm — reusing already-proven
+    infrastructure rather than adding a new send path. Deliberately wrapped in its
+    own try/catch: the payment/confirmation has already succeeded by that point, so
+    an email failure is a lesser, distinct problem and must not read as "the payment
+    wasn't recorded." This is a client-side-only change (no migration, no Edge
+    Function) — not covered by the Node test suite, which has no browser-level
+    tests anywhere in this repo; verified by reading the existing, already-proven
+    `sharedUpdateStatus()` code path it reuses rather than duplicating logic.
+
 **Explicitly deferred, not started:** Slack/Discord/Sentry-style alerting for Edge
 Function errors — the project owner said "I'll do it later," don't assume it's wanted
 now without asking.
