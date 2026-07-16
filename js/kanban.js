@@ -121,14 +121,15 @@ function initDragula() {
 
     const instance = localStorage.getItem('ESF_INSTANCE') || 'DEV';
 
-    // 'Payment Requested' is deliberately NOT a drag target — it only ever
-    // changes via "Request Payment"/the Stripe webhook, never a plain drag
-    // (which would fake a transition with no real Checkout Session or
-    // payment behind it). Cards can still leave that column via the
-    // detail-pane buttons (Reject/HCC Checks/etc), just not by dragging.
+    // Dropping onto 'Payment Requested' goes through the exact same
+    // Free/Chargeable confirm modal as dropping onto 'Confirmed' — there's
+    // no plain drag-triggered status write for either; the modal's choice
+    // decides whether the booking ends up Confirmed directly or gets a
+    // Stripe Checkout Session and lands on Payment Requested instead.
     const containers = [
         document.getElementById('col-Pending'),
         instance !== 'GENERAL' ? document.getElementById('col-HCC Checks') : null,
+        document.getElementById('col-Payment Requested'),
         document.getElementById('col-Confirmed'),
         document.getElementById('col-Rejected'),
         document.getElementById('col-Cancelled')
@@ -136,7 +137,15 @@ function initDragula() {
 
     const validContainers = containers.filter(c => c !== null);
 
-    drake = dragula(validContainers)
+    drake = dragula(validContainers, {
+        // 'Payment Requested' is a valid drop *target* (see INTERCEPT below)
+        // but still not a drag *source* — a card already awaiting payment
+        // only ever leaves via the detail-pane buttons (Reject/HCC
+        // Checks/Resend/etc), never a plain drag out.
+        moves: function (el, source) {
+            return source.dataset.status !== 'Payment Requested';
+        }
+    })
         .on('drag', function (el, source) {
             draggedItem = el;
             sourceStatus = source.dataset.status;
@@ -156,11 +165,13 @@ function initDragula() {
             }
 
             // INTERCEPT: Confirmation (Chargeable check) — dropping onto
-            // 'Confirmed' opens the same modal as clicking the Confirm
-            // button; the admin's Free/Chargeable choice (and £0 override)
-            // decides whether it lands on Confirmed directly or immediately
-            // fires a Stripe payment request (landing on Payment Requested).
-            if (newStatus === 'Confirmed') {
+            // 'Confirmed' OR 'Payment Requested' opens the same modal as
+            // clicking the Confirm button; the admin's Free/Chargeable choice
+            // (and £0 override) decides whether it lands on Confirmed
+            // directly or immediately fires a Stripe payment request
+            // (landing on Payment Requested). Cancelling the modal reverts
+            // the card to its source column via cancelDrag(), same as today.
+            if (newStatus === 'Confirmed' || newStatus === 'Payment Requested') {
                 showConfirmModalLocal(bookingId);
                 return;
             }
