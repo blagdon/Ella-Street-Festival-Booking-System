@@ -32,7 +32,6 @@ const MAX_FIELD_LENGTHS: Record<string, number> = {
   other_requirements: 500,
   category: 200,
   docs_checklist: 500,
-  is_charity: 30,
   power_required: 60,
 }
 
@@ -50,6 +49,20 @@ const SAFE_FILENAME_PATTERN = /^[a-zA-Z0-9.\-_]{1,255}$/
 function sanitizeString(val: unknown, maxLen: number): string {
   const str = (val === null || val === undefined) ? '' : String(val).trim()
   return str.length > maxLen ? str.slice(0, maxLen) : str
+}
+
+// is_charity is a fixed tri-state (Postgres enum booking_fee_type), not
+// free text — matches the fallback already used everywhere else this
+// value is read (js/api.js, js/details.js, js/shared.js all do
+// `x.is_charity || 'Commercial'`). Unlike sanitizeString, this rejects any
+// value outside the three real labels rather than storing it verbatim —
+// a blank/missing selection on the public form used to silently become an
+// empty string (harmless only because every read site already defaulted
+// falsy values back to 'Commercial'); now that the column is a real enum,
+// storing '' outright fails the insert instead of being silently masked.
+const VALID_CHARITY_STATUSES = ['Commercial', 'Charity', 'Not for profit']
+function sanitizeCharityStatus(val: unknown): string {
+  return VALID_CHARITY_STATUSES.includes(val as string) ? (val as string) : 'Commercial'
 }
 
 /**
@@ -86,7 +99,7 @@ function sanitizeBookingInput(raw: Record<string, any>, bookingPrefix: string): 
     other_requirements: sanitizeString(raw.other_requirements, MAX_FIELD_LENGTHS.other_requirements),
     category: sanitizeString(raw.category, MAX_FIELD_LENGTHS.category),
     docs_checklist: sanitizeString(raw.docs_checklist, MAX_FIELD_LENGTHS.docs_checklist),
-    is_charity: sanitizeString(raw.is_charity, MAX_FIELD_LENGTHS.is_charity),
+    is_charity: sanitizeCharityStatus(raw.is_charity),
     is_resident: raw.is_resident === true,
     power_required: sanitizeString(raw.power_required, MAX_FIELD_LENGTHS.power_required),
   }

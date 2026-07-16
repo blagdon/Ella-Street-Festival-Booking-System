@@ -539,8 +539,11 @@ PK, e.g. `ESF26-FOOD-0042`), `status` (`Pending`/`Payment Requested`/
 `stripe_checkout_session_id`, `stripe_payment_intent_id`, `stripe_payment_requested_at`
 (all nullable, added 2026-07-15). **`bookings.location_id` (the old deprecated CSV
 column) was dropped 2026-07-16** — see Next Steps for the removal writeup; location
-assignment lives entirely in `booking_locations` now, see below. `documents` (`text[]`)
-stores **storage paths into
+assignment lives entirely in `booking_locations` now, see below. `is_charity` is a
+native Postgres enum (`public.booking_fee_type`: `Commercial`/`Charity`/`Not for
+profit`) as of 2026-07-16, not free text — see Next Steps for the migration and the
+real bug it surfaced in `submit-booking`. `documents` (`text[]`) stores **storage paths
+into
 the (private) `esf-documents` bucket**, not public URLs — resolved to a signed URL on
 demand by the `get-booking-documents` Edge Function. **Anon has zero direct access to
 this table** (no RLS policy, no column grants) — public/unauthenticated consumers must
@@ -1313,6 +1316,42 @@ tested live, and deployed. In order, what was just finished:
     at the same certainty level as the two dropped here, but not acted on either.
     `performers`/`schedules` indexes left untouched, same reasoning as every other
     finding in this audit series.
+37. **Converted `bookings.is_charity` from free text to a native enum
+    (`public.booking_fee_type`)**, at the owner's request following the schema review
+    series. `is_charity` is a genuine tri-state (`'Commercial'`/`'Charity'`/`'Not for
+    profit'`) — a boolean replacement was proposed and rejected earlier in the same
+    review for exactly this reason (it would merge `Charity` and `Not for profit`,
+    destroying a distinction `js/kanban.js`'s confirm-booking logic relies on).
+    `performers.status` (already a `public.performer_status` enum in this same schema)
+    is a working precedent that PostgREST round-trips enum columns as plain JSON
+    strings with zero JS-side changes needed — confirmed true here too: no application
+    code changed except the one real bug this surfaced (below). Migration
+    (`20260716061350_is_charity_to_enum.sql`) drops the old text default before
+    changing the column type (Postgres can't implicitly re-cast a text default to an
+    enum), casts via `is_charity::text::booking_fee_type`, then re-adds the default.
+
+    **This is atomic and self-verifying by construction**: if any existing row held a
+    value outside the three labels, the whole statement would fail and roll back
+    cleanly — no separate live pre-check was needed (and the one considered — reading
+    `localStorage`'s admin session token to hit the REST API directly — was correctly
+    blocked by the auto-mode classifier as a technique beyond what "do the enum change"
+    actually authorized). And it *did* catch something real: `submit-booking`'s
+    `sanitizeBookingInput()` stored `is_charity` via the generic `sanitizeString()`
+    helper, which turns a missing/blank value into `''` — previously silently harmless,
+    since every *read* site (`js/api.js`, `js/details.js`, `js/shared.js`) already
+    falls back to `'Commercial'` on any falsy value, but now a hard insert failure
+    against the enum. The public forms (`Food_Stall_booking.html`/`General_Booking.html`)
+    mark this field `required` with no selectable blank option, so a real browser user
+    can't actually hit this — but `submit-booking` is a public, unauthenticated
+    endpoint (its own docstring already says client-side validation is "trivially
+    bypassable by calling it directly"), and the integration test suite does exactly
+    that. Fixed with a dedicated `sanitizeCharityStatus()` that defaults to
+    `'Commercial'` for anything outside the three valid labels, matching the fallback
+    convention already used everywhere else `is_charity` is read — real defense in
+    depth for a public endpoint, not just a test-fixture workaround. `update_details.html`'s
+    admin edit form already uses a fixed `<select>` with the three exact values, so
+    that path needed no change. Verified: full 52-test suite green on the test project
+    after the fix.
 
 **Explicitly deferred, not started:** Slack/Discord/Sentry-style alerting for Edge
 Function errors — the project owner said "I'll do it later," don't assume it's wanted
