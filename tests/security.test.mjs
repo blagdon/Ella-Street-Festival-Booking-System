@@ -14,6 +14,8 @@ process.loadEnvFile('.env.test');
 const url = process.env.TEST_SUPABASE_URL;
 const anonKey = process.env.TEST_SUPABASE_ANON_KEY;
 const serviceRoleKey = process.env.TEST_SUPABASE_SERVICE_ROLE_KEY;
+const adminEmail = process.env.TEST_ADMIN_EMAIL;
+const adminPassword = process.env.TEST_ADMIN_PASSWORD;
 
 if (!url || !url.includes('qeplpcnrkgpaawfyliap')) {
   throw new Error(`Refusing to run integration tests against a non-test project: ${url}`);
@@ -22,6 +24,13 @@ if (!url || !url.includes('qeplpcnrkgpaawfyliap')) {
 const anon = createClient(url, anonKey);
 const service = createClient(url, serviceRoleKey, { auth: { autoRefreshToken: false, persistSession: false } });
 
+// Mirrors workflow.test.mjs's admin client - a real authenticated admin
+// session, subject to the same RLS as the live app. Only a "does the admin
+// role boundary actually admit admin" check exists below (no steward test
+// user exists in this project's fixtures yet to prove the negative case
+// too - see email_queue.html's own admin-only gate in js/page-email-queue.js).
+let admin;
+
 const confirmedBookingId = 'ESF26-TESTSEC-CONFIRMED';
 const pendingBookingId = 'ESF26-TESTSEC-PENDING';
 const scheduledPerformerId = '11111111-2222-3333-4444-555555555501';
@@ -29,12 +38,18 @@ const appliedPerformerId = '11111111-2222-3333-4444-555555555502';
 const deletedScheduledPerformerId = '11111111-2222-3333-4444-555555555503';
 const devLocationId = 'TESTSECLOC-DEV';
 const liveLocationId = 'TESTSECLOC-LIVE';
+const emailQueueTestRecipient = 'sectest-emailqueue@example.test';
 
 before(async () => {
+  admin = createClient(url, anonKey);
+  const { error: signInErr } = await admin.auth.signInWithPassword({ email: adminEmail, password: adminPassword });
+  if (signInErr) throw new Error(`Failed to sign in as test admin (run scripts/seed-test-project.mjs first): ${signInErr.message}`);
+
   await service.from('booking_locations').delete().in('booking_id', [confirmedBookingId, pendingBookingId]);
   await service.from('bookings').delete().in('id', [confirmedBookingId, pendingBookingId]);
   await service.from('performers').delete().in('id', [scheduledPerformerId, appliedPerformerId, deletedScheduledPerformerId]);
   await service.from('locations').delete().in('id', [devLocationId, liveLocationId]);
+  await service.from('email_queue').delete().eq('recipient', emailQueueTestRecipient);
 
   const { error: bookingsInsertErr } = await service.from('bookings').insert([
     {
@@ -87,6 +102,12 @@ before(async () => {
     { booking_id: confirmedBookingId, location_id: liveLocationId },
   ]);
   if (bookingLocationsInsertErr) throw new Error(`Fixture setup failed (booking_locations): ${bookingLocationsInsertErr.message}`);
+
+  const { error: emailQueueInsertErr } = await service.from('email_queue').insert({
+    recipient: emailQueueTestRecipient, subject: 'Sec test email', body: '<p>test</p>',
+    status: 'Error', error_message: 'Sec test induced failure', instance_prefix: 'ESF26-FOOD-',
+  });
+  if (emailQueueInsertErr) throw new Error(`Fixture setup failed (email_queue): ${emailQueueInsertErr.message}`);
 });
 
 after(async () => {
@@ -94,6 +115,7 @@ after(async () => {
   await service.from('bookings').delete().in('id', [confirmedBookingId, pendingBookingId]);
   await service.from('performers').delete().in('id', [scheduledPerformerId, appliedPerformerId, deletedScheduledPerformerId]);
   await service.from('locations').delete().in('id', [devLocationId, liveLocationId]);
+  await service.from('email_queue').delete().eq('recipient', emailQueueTestRecipient);
 });
 
 describe('anon access to bookings', () => {
@@ -268,5 +290,23 @@ describe('anon access to admin-only tables', () => {
   test('email_queue is completely inaccessible to anon', async () => {
     const { error } = await anon.from('email_queue').select('*');
     assert.ok(error, 'expected anon SELECT on email_queue to be rejected outright');
+  });
+});
+
+describe('admin access to email_queue', () => {
+  // email_queue.html (js/page-email-queue.js) is admin-only end-to-end: the
+  // page itself gates on requireAuth('admin'), and this is what actually
+  // backs that - the "Admin manage email" RLS policy. The anon-rejection
+  // case above only proves the door is locked; this proves the key admins
+  // are handed actually opens it.
+  test('admin can read email_queue rows, including the error_message on a failed send', async () => {
+    const { data, error } = await admin
+      .from('email_queue')
+      .select('recipient, status, error_message')
+      .eq('recipient', emailQueueTestRecipient)
+      .single();
+    assert.equal(error, null, error?.message);
+    assert.equal(data.status, 'Error');
+    assert.equal(data.error_message, 'Sec test induced failure');
   });
 });
