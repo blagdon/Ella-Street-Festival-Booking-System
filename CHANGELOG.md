@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [v5.1.2] - 2026-07-17
+
+### Fixed
+
+- Password-reset and new-user invite emails now build their redirect link from the canonical production domain instead of `window.location.origin`. Requesting a reset while the admin panel happened to be loaded from a stale domain (an old Vercel preview/default-alias, for example) baked that dead domain into the emailed link, which then 404s.
+
 ## [v5.1.1] - 2026-07-17
 
 ### Security
