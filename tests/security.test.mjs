@@ -310,3 +310,20 @@ describe('admin access to email_queue', () => {
     assert.equal(data.error_message, 'Sec test induced failure');
   });
 });
+
+describe('anon access to privileged RPCs', () => {
+  test('anon cannot call claim_pending_emails', async () => {
+    // claim_pending_emails() uses the same `REVOKE ALL ... FROM PUBLIC`
+    // pattern as the Stripe RPCs did before
+    // 20260715123703_fix_stripe_anon_authenticated_grants.sql - on this
+    // project, ALTER DEFAULT PRIVILEGES grants new functions directly to
+    // anon/authenticated at creation time, so a PUBLIC-only revoke doesn't
+    // necessarily block anon. Verified live here rather than assumed from
+    // the grant statements alone: anon gets a real
+    // "permission denied for function" (42501), confirming this one was
+    // never actually exposed, unlike the Stripe RPCs.
+    const { data, error } = await anon.rpc('claim_pending_emails', { p_batch_size: 1 });
+    assert.ok(error, 'expected anon RPC call to claim_pending_emails to be rejected outright');
+    assert.equal(data, null);
+  });
+});

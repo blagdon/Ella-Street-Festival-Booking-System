@@ -1705,6 +1705,28 @@ tested live, and deployed. In order, what was just finished:
     rather than importing browser JS. No migration, no Edge Function change; verified
     via the existing 64-test suite (client-side-only change, same testing limitation
     as the fix above).
+44. Verified `claim_pending_emails()` isn't exposed to anon the same way the Stripe RPCs
+    briefly were (2026-07-15). While testing the new Stripe RPCs
+    (`mark_stripe_payment_received`, `finalize_stripe_confirmation`, on the
+    `stripe_integration` branch), it turned out `REVOKE ALL ON FUNCTION ... FROM PUBLIC`
+    alone did **not** block anon from calling them — this project's schema-level `ALTER
+    DEFAULT PRIVILEGES` grants new functions directly to `anon`/`authenticated` at
+    creation time, so revoking `PUBLIC`'s blanket grant doesn't touch a role's own
+    separate direct grant (fixed there via
+    `20260715123703_fix_stripe_anon_authenticated_grants.sql`, which revokes explicitly
+    `FROM "anon", "authenticated"` by name). `claim_pending_emails()`
+    (`supabase/migrations/20260714132316_baseline_schema.sql`, ~line 1124) uses the
+    exact same `REVOKE ALL ... FROM PUBLIC` pattern and had never actually been
+    live-tested for anon-rejection — this document's own "Testing" section previously
+    described it as covered based on the grant statements alone, not a real call.
+    Live-tested directly against the disposable test project
+    (`qeplpcnrkgpaawfyliap`): `anon.rpc('claim_pending_emails', { p_batch_size: 1 })`
+    returns a real `42501 permission denied for function` error, not a silent success —
+    **this one is fine as-is**, no migration needed. Added a permanent regression test
+    (`tests/security.test.mjs`, "anon access to privileged RPCs" describe block) to lock
+    this in going forward. Lesson: don't infer anon-rejection from `REVOKE ... FROM
+    PUBLIC` grant text alone on this project — always verify live, per the Stripe RPC
+    finding above.
 
 **Explicitly deferred, not started:** Slack/Discord/Sentry-style alerting for Edge
 Function errors — the project owner said "I'll do it later," don't assume it's wanted
