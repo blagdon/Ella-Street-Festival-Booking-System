@@ -2,6 +2,20 @@
 
 All notable changes to this project are documented in this file.
 
+## [v5.1.4] - 2026-07-17
+
+### Fixed
+
+- Password-reset links now work end-to-end. The v5.1.2 client-side fix was necessary but insufficient: the hosted Supabase Auth **Site URL** and **redirect allowlist** (dashboard config, not in this repo) still pointed at the deleted `feststallbookingsystem.vercel.app` deployment, so Supabase rejected the (correct) client-supplied redirect and fell back to the dead domain. Both now point at `https://app.ellastreet.co.uk`; verified end-to-end — the recovery link redirects to the live admin panel and the "Set New Password" flow renders. If the domain ever migrates again, Authentication → URL Configuration in the Supabase dashboard must be updated by hand.
+
+### Security
+
+- Narrowed the `settings` table grants from `GRANT ALL` to what each role's RLS policy can actually allow through: `anon` is now SELECT-only, `authenticated` SELECT/INSERT/UPDATE (all the admin UI uses). Previously the RLS policy was the single point of failure standing between `anon` and write access to the table holding the Zoho/Stripe/SerpAPI credentials. Applied and verified on both the live and disposable test projects.
+
+### CI
+
+- Bumped `actions/checkout` and `actions/setup-node` to v5, clearing the Node 20 deprecation warnings on every run.
+
 ## [v5.1.3] - 2026-07-17
 
 ### Security
