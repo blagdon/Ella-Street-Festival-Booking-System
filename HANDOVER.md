@@ -1726,6 +1726,29 @@ tested live, and deployed. In order, what was just finished:
     this in going forward. Lesson: don't infer anon-rejection from `REVOKE ... FROM
     PUBLIC` grant text alone on this project — always verify live, per the Stripe RPC
     finding above.
+45. Dead-code deletion + worktree cleanup (2026-07-17). PR #6 (merge 878a7db) deleted
+    `js/page-food-booking-dev.js` and `Food_Booking_DEV.html`: no HTML file loaded the
+    module (the DEV page was a static "Bookings Closed" placeholder with zero `<script>`
+    tags), a repo-wide grep found no other reference beyond a historical comment in
+    `20260717080000_revoke_vestigial_anon_function_grants.sql`, `vercel.json` had no
+    route/rewrite for the page, and the bootstrap refactor (item 44's sibling work,
+    PR #5) had already flagged the module as a deletion candidate. The HTML removal is
+    its own commit in case the bare URL should go back to serving the "closed" notice
+    instead of a 404. Then all leftover `.claude\worktrees\*` worktrees were removed —
+    and **two of them held real uncommitted work**, salvaged rather than deleted:
+    PR #7 (item 44's regression test, from `fervent-mirzakhani-71111d`) and PR #8 (the
+    dead `visitor-map` Edge Function fallback removal in `js/api.js` from
+    `kind-cartwright-8df7d2` — that fallback fetched a function that never existed in
+    `supabase/functions/`, always failed, and silently fell through to the direct
+    query). Lesson: check `git status --porcelain` in every worktree before removing
+    it. Gotchas hit: (a) branches parked at old commits fail the pre-commit hook
+    because `scripts/check-unescaped-innerhtml.mjs` doesn't exist there — fast-forward
+    the branch onto main first rather than `--no-verify`; (b) deleting a remote branch
+    leaves stale local `origin/*` refs until `git fetch --prune`, making the branch
+    look alive; (c) with `cancel-in-progress: false`, GitHub still allows only ONE
+    pending run per concurrency group, so simultaneous pushes to multiple PRs get
+    their queued `integration-tests` runs cancelled — just `gh run rerun --failed`
+    once the queue drains, nothing is actually broken.
 
 **Explicitly deferred, not started:** Slack/Discord/Sentry-style alerting for Edge
 Function errors — the project owner said "I'll do it later," don't assume it's wanted
