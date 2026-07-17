@@ -39,10 +39,6 @@ export const CONFIG = {
     BANK_SORT_CODE: '',
     BANK_ACCOUNT_NUMBER: '',
 
-    // Limits
-    EMAIL_RATE_LIMIT: 10,
-    EMAIL_RATE_WINDOW_MS: 60000,
-
     // UI Configuration
     UI: {
         // No hardcoded defaults — populated entirely from the settings table
@@ -152,12 +148,6 @@ export function applySettingsToConfig(data) {
             CONFIG.FESTIVAL_DISPLAY_NAME = val;
         } else if (item.key === 'allowed_stall_types') {
             CONFIG.UI.ALLOWED_TYPES = val.split(',').map(s => s.trim()).filter(Boolean);
-        } else if (item.key === 'email_rate_limit') {
-            const num = parseInt(val, 10);
-            if (!isNaN(num)) CONFIG.EMAIL_RATE_LIMIT = num;
-        } else if (item.key === 'email_rate_window_ms') {
-            const num = parseInt(val, 10);
-            if (!isNaN(num)) CONFIG.EMAIL_RATE_WINDOW_MS = num;
         } else if (item.key === 'booking_prefix') {
             ESF_PUBLIC_CONFIG.BOOKING_PREFIX = val;
         }

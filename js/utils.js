@@ -118,25 +118,3 @@ export async function parseEdgeFunctionError(error, defaultMsg = "Request failed
     }
     return errMsg;
 }
-
-// ===================================================================
-// === SECURITY: Bulk Email Rate Limiter ===
-// ===================================================================
-const _emailRateLog = [];
-
-export function checkEmailRateLimit() {
-    const now = Date.now();
-    const limit = (CONFIG && CONFIG.EMAIL_RATE_LIMIT) || 10;
-    const windowMs = (CONFIG && CONFIG.EMAIL_RATE_WINDOW_MS) || 60000;
-
-    // Remove entries older than the window
-    while (_emailRateLog.length > 0 && _emailRateLog[0] < now - windowMs) {
-        _emailRateLog.shift();
-    }
-    if (_emailRateLog.length >= limit) {
-        const minutes = windowMs / 60000;
-        const timeStr = minutes === 1 ? 'minute' : `${minutes} minutes`;
-        throw new Error(`Rate limit: max ${limit} emails per ${timeStr}. Please wait and try again.`);
-    }
-    _emailRateLog.push(now);
-}

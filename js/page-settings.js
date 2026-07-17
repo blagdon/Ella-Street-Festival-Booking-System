@@ -460,11 +460,9 @@ async function initSystemConstants() {
     const txtCouncilEmail = document.getElementById('council-email');
     const txtBucket = document.getElementById('bucket-name');
     const txtPrefix = document.getElementById('booking-prefix');
-    const txtLimit = document.getElementById('rate-limit');
-    const txtWindow = document.getElementById('rate-window');
     const btnSave = document.getElementById('btn-save-constants');
 
-    if (!txtFestivalName || !txtTurnstile || !txtBaseUrl || !txtCancelUrl || !txtPortalUrl || !txtCouncilEmail || !txtBucket || !txtPrefix || !txtLimit || !txtWindow || !btnSave) return;
+    if (!txtFestivalName || !txtTurnstile || !txtBaseUrl || !txtCancelUrl || !txtPortalUrl || !txtCouncilEmail || !txtBucket || !txtPrefix || !btnSave) return;
 
     // Load active settings from public config and CONFIG
     txtFestivalName.value = CONFIG.FESTIVAL_DISPLAY_NAME || '';
@@ -475,8 +473,6 @@ async function initSystemConstants() {
     txtBucket.value = ESF_PUBLIC_CONFIG?.BUCKET_NAME || '';
     txtPrefix.value = ESF_PUBLIC_CONFIG?.BOOKING_PREFIX || '';
     txtCouncilEmail.value = CONFIG.HCC_COUNCIL_EMAIL || '';
-    txtLimit.value = CONFIG.EMAIL_RATE_LIMIT || '';
-    txtWindow.value = CONFIG.EMAIL_RATE_WINDOW_MS || '';
 
     btnSave.addEventListener('click', async () => {
         const valFestivalName = txtFestivalName.value.trim();
@@ -487,11 +483,9 @@ async function initSystemConstants() {
         const valCouncilEmail = txtCouncilEmail.value.trim();
         const valBucket = txtBucket.value.trim();
         const valPrefix = txtPrefix.value.trim().toUpperCase();
-        const valLimit = parseInt(txtLimit.value, 10);
-        const valWindow = parseInt(txtWindow.value, 10);
 
-        if (!valFestivalName || !valTurnstile || !valBaseUrl || !valCancelUrl || !valPortalUrl || !valCouncilEmail || !valBucket || !valPrefix || isNaN(valLimit) || valLimit < 1 || isNaN(valWindow) || valWindow < 1000) {
-            showToast("All fields are required and rate limits must be valid positive numbers", "error");
+        if (!valFestivalName || !valTurnstile || !valBaseUrl || !valCancelUrl || !valPortalUrl || !valCouncilEmail || !valBucket || !valPrefix) {
+            showToast("All fields are required", "error");
             return;
         }
 
@@ -516,9 +510,7 @@ async function initSystemConstants() {
                 { key: 'portal_url', value: valPortalUrl, updated_at: now, updated_by: userEmail },
                 { key: 'hcc_council_email', value: valCouncilEmail, updated_at: now, updated_by: userEmail },
                 { key: 'bucket_name', value: valBucket, updated_at: now, updated_by: userEmail },
-                { key: 'booking_prefix', value: valPrefix, updated_at: now, updated_by: userEmail },
-                { key: 'email_rate_limit', value: valLimit.toString(), updated_at: now, updated_by: userEmail },
-                { key: 'email_rate_window_ms', value: valWindow.toString(), updated_at: now, updated_by: userEmail }
+                { key: 'booking_prefix', value: valPrefix, updated_at: now, updated_by: userEmail }
             ];
 
             const { error } = await sb.from('settings').upsert(updates);
@@ -535,8 +527,6 @@ async function initSystemConstants() {
             }
             CONFIG.HCC_COUNCIL_EMAIL = valCouncilEmail;
             CONFIG.FESTIVAL_DISPLAY_NAME = valFestivalName;
-            CONFIG.EMAIL_RATE_LIMIT = valLimit;
-            CONFIG.EMAIL_RATE_WINDOW_MS = valWindow;
 
             showToast("System constants saved successfully");
             if (typeof sessionStorage !== 'undefined') {
