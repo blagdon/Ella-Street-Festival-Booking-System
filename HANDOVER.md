@@ -471,13 +471,12 @@ location assignment still succeeds. `tests/security.test.mjs`'s `anon access to
 bookings`/`anon access to public_bookings_info`/`anon access to booking_locations`
 describe blocks codify all of this permanently.
 
-**Not touched, deliberately out of scope**: `js/api.js`'s `fetchMapData()` also
-references a `visitor-map` Edge Function URL as an unauthenticated fallback path — that
-function does not exist in `supabase/functions/`, so the `fetch` always fails and the
-code silently falls through to the (now-secured) direct view query. This is dead/
-aspirational code, not a security issue (it never returns anything, safe or otherwise),
-but it's misleading — worth a follow-up cleanup, not fixed here since it was out of scope
-for this security fix.
+**Follow-up cleanup (done)**: `js/api.js`'s `fetchMapData()` used to also reference a
+`visitor-map` Edge Function URL as an unauthenticated fallback path — that function never
+existed in `supabase/functions/`, so the `fetch` always failed and the code silently fell
+through to the direct view query below it. It was dead/aspirational code, not a security
+issue, but misleading. It has since been removed; `fetchMapData()` now goes straight to
+the direct query path (`locations` + `public_bookings_info`).
 
 ---
 
