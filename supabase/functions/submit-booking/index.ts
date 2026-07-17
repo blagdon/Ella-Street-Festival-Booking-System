@@ -2,24 +2,12 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { getBucketName } from '../_shared/bucket.ts'
 import { sendViaZoho } from '../_shared/zoho.ts'
 import { ALLOWED_ORIGIN } from '../_shared/cors.ts'
+import { escapeHtml } from '../_shared/format.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
-}
-
-// Mirrors js/utils.js's escapeHtml() exactly — user-supplied booking fields
-// (owner_name, business_name) must never be substituted into email HTML
-// unescaped.
-function escapeHtml(str: unknown): string {
-  if (str === null || str === undefined) return ''
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#x27;')
 }
 
 const MAX_FIELD_LENGTHS: Record<string, number> = {

@@ -2,17 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import Stripe from 'https://esm.sh/stripe@17.5.0?target=deno'
 import { sendViaZoho } from '../_shared/zoho.ts'
 import { getStripeWebhookSecret, loadStripeSettings } from '../_shared/stripe.ts'
-
-// Mirrors js/utils.js's escapeHtml() exactly (same reason cancel-booking has its own copy).
-function escapeHtml(str: unknown): string {
-  if (str === null || str === undefined) return ''
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#x27;')
-}
+import { escapeHtml } from '../_shared/format.ts'
 
 /**
  * Best-effort confirmation email after a successful Stripe payment — reuses

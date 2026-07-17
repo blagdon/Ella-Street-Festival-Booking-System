@@ -2,22 +2,12 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { sendViaZoho } from '../_shared/zoho.ts'
 import { resolveStripeMode, getStripeClient, loadStripeSettings } from '../_shared/stripe.ts'
 import { ALLOWED_ORIGIN } from '../_shared/cors.ts'
+import { escapeHtml } from '../_shared/format.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
-}
-
-// Mirrors js/utils.js's escapeHtml() exactly (same reason cancel-booking has its own copy).
-function escapeHtml(str: unknown): string {
-  if (str === null || str === undefined) return ''
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#x27;')
 }
 
 // A second "Request Payment"/"Resend" click within this window reuses the
