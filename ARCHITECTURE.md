@@ -88,7 +88,6 @@ Fills in booking form           ──►  Booking appears in Kanban board
 │
 ├── General_Booking.html        ← PUBLIC: General/Non-Food booking form
 ├── Food_Stall_booking.html     ← PUBLIC: Food stall booking form
-├── Food_Booking_DEV.html       ← DEV version of food form
 ├── cancel_booking.html         ← PUBLIC: Self-service cancellation page
 │
 ├── supabase-public.js          ← Supabase credentials for public pages
