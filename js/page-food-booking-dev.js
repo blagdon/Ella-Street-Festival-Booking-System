@@ -1,14 +1,12 @@
-// Wait for DOM to load
-document.addEventListener('DOMContentLoaded', function () {
+import { getPublicSupabaseClient, initPublicPage } from '../supabase-public.js';
+
+// initPublicPage has already awaited loadPublicSettings() (cache-first,
+// DB on cold cache) before this callback runs.
+initPublicPage(async function () {
 
     // --- CONFIGURATION ---
     const PREFIX = "ESF26-DEV-"; // <--- CHANGED TO DEV
-    const sb = typeof getPublicSupabaseClient === 'function' ? getPublicSupabaseClient() : null;
-
-    if (!sb) {
-        console.error("Public Supabase Client not found!");
-        return;
-    }
+    const sb = getPublicSupabaseClient();
 
     // --- BTN START NEW ---
     const btnStartNew = document.getElementById('btn-start-new');

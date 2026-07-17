@@ -1,7 +1,7 @@
 import { getSupabaseClient } from './supabase.js';
 import { safeError, escapeHtml } from './utils.js';
 import { auditLog } from './api.js';
-import { ESF_PUBLIC_CONFIG } from '../supabase-public.js';
+import { ESF_PUBLIC_CONFIG, initPublicPage } from '../supabase-public.js';
 
 // --- UTILITIES ---
 let loginAttempts = 0;
@@ -30,7 +30,10 @@ function toggleView(view) {
 }
 
 // --- INITIALIZATION ---
-document.addEventListener('DOMContentLoaded', async () => {
+// loadSettings: false — the reset-link redirect below must keep using the
+// compiled-in canonical BASE_URL, not a DB-loaded override (see the comment
+// on resetPasswordForEmail).
+initPublicPage(async () => {
     // Attach event listeners
     document.getElementById('link-forgot-password')?.addEventListener('click', () => toggleView('reset'));
     document.getElementById('link-back-login')?.addEventListener('click', () => toggleView('login'));
@@ -56,94 +59,94 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     } catch (e) { /* not logged in, show form */ }
 
+    // --- LOGIN HANDLER ---
+    document.getElementById('loginForm')?.addEventListener('submit', async function (e) {
+        e.preventDefault();
+        const btn = document.getElementById('loginBtn');
+        const errEl = document.getElementById('loginError');
+
+        // Check lockout
+        const now = Date.now();
+        if (now < lockoutUntil) {
+            const secsLeft = Math.ceil((lockoutUntil - now) / 1000);
+            errEl.innerText = `Too many attempts. Try again in ${secsLeft}s.`;
+            errEl.classList.remove('hidden');
+            return;
+        }
+
+        btn.disabled = true;
+        btn.innerText = 'Signing in...';
+        errEl.classList.add('hidden');
+
+        try {
+            const sb = getSupabaseClient();
+            const { error } = await sb.auth.signInWithPassword({
+                email: document.getElementById('loginEmail').value.trim(),
+                password: document.getElementById('loginPassword').value
+            });
+
+            if (error) throw error;
+
+            // Log the successful sign-in
+            await auditLog('admin_login', 'system', { email: document.getElementById('loginEmail').value.trim() });
+
+            loginAttempts = 0; // Reset on success
+            window.location.href = 'index.html';
+
+        } catch (err) {
+            loginAttempts++;
+            if (loginAttempts >= 5) {
+                lockoutUntil = Date.now() + 30000; // 30 second lockout
+                errEl.innerText = 'Too many failed attempts. Please wait 30 seconds.';
+            } else {
+                errEl.innerText = (typeof safeError === 'function') ? safeError(err) : 'Invalid email or password.';
+            }
+            errEl.classList.remove('hidden');
+            btn.disabled = false;
+            btn.innerText = 'Sign In';
+        }
+    });
+
+    // --- RESET PASSWORD HANDLER ---
+    document.getElementById('resetForm')?.addEventListener('submit', async function (e) {
+        e.preventDefault();
+        const btn = document.getElementById('resetBtn');
+        const msgEl = document.getElementById('resetMessage');
+        const email = document.getElementById('resetEmail').value.trim();
+
+        btn.disabled = true;
+        btn.innerText = 'Sending...';
+        msgEl.classList.add('hidden');
+
+        try {
+            const sb = getSupabaseClient();
+
+            // Send the password reset email
+            // Redirects user to index.html after they click the email link.
+            // Uses the canonical production domain rather than window.location.origin -
+            // requesting a reset while on a stale/non-canonical domain (an old Vercel
+            // preview alias, e.g.) would otherwise bake that dead domain into the link.
+            const { error } = await sb.auth.resetPasswordForEmail(email, {
+                redirectTo: ESF_PUBLIC_CONFIG.BASE_URL + "/index.html"
+            });
+
+            if (error) throw error;
+
+            msgEl.className = "mt-4 p-3 bg-green-50 border border-green-200 text-green-700 rounded-lg text-sm text-center";
+            msgEl.innerHTML = "<b>Check your email!</b><br>We've sent a password reset link to " + escapeHtml(email);
+            msgEl.classList.remove('hidden');
+
+        } catch (err) {
+            msgEl.className = "mt-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm text-center";
+            msgEl.innerText = (typeof safeError === 'function') ? safeError(err) : "Failed to send reset email. Please check your email address and try again.";
+            msgEl.classList.remove('hidden');
+        } finally {
+            btn.disabled = false;
+            btn.innerText = 'Send Reset Link';
+        }
+    });
+
     document.getElementById('loadingState').classList.add('hidden');
     document.getElementById('loginCard').classList.remove('hidden');
     document.getElementById('loginEmail').focus();
-});
-
-// --- LOGIN HANDLER ---
-document.getElementById('loginForm')?.addEventListener('submit', async function (e) {
-    e.preventDefault();
-    const btn = document.getElementById('loginBtn');
-    const errEl = document.getElementById('loginError');
-
-    // Check lockout
-    const now = Date.now();
-    if (now < lockoutUntil) {
-        const secsLeft = Math.ceil((lockoutUntil - now) / 1000);
-        errEl.innerText = `Too many attempts. Try again in ${secsLeft}s.`;
-        errEl.classList.remove('hidden');
-        return;
-    }
-
-    btn.disabled = true;
-    btn.innerText = 'Signing in...';
-    errEl.classList.add('hidden');
-
-    try {
-        const sb = getSupabaseClient();
-        const { error } = await sb.auth.signInWithPassword({
-            email: document.getElementById('loginEmail').value.trim(),
-            password: document.getElementById('loginPassword').value
-        });
-
-        if (error) throw error;
-
-        // Log the successful sign-in
-        await auditLog('admin_login', 'system', { email: document.getElementById('loginEmail').value.trim() });
-
-        loginAttempts = 0; // Reset on success
-        window.location.href = 'index.html';
-
-    } catch (err) {
-        loginAttempts++;
-        if (loginAttempts >= 5) {
-            lockoutUntil = Date.now() + 30000; // 30 second lockout
-            errEl.innerText = 'Too many failed attempts. Please wait 30 seconds.';
-        } else {
-            errEl.innerText = (typeof safeError === 'function') ? safeError(err) : 'Invalid email or password.';
-        }
-        errEl.classList.remove('hidden');
-        btn.disabled = false;
-        btn.innerText = 'Sign In';
-    }
-});
-
-// --- RESET PASSWORD HANDLER ---
-document.getElementById('resetForm')?.addEventListener('submit', async function (e) {
-    e.preventDefault();
-    const btn = document.getElementById('resetBtn');
-    const msgEl = document.getElementById('resetMessage');
-    const email = document.getElementById('resetEmail').value.trim();
-
-    btn.disabled = true;
-    btn.innerText = 'Sending...';
-    msgEl.classList.add('hidden');
-
-    try {
-        const sb = getSupabaseClient();
-
-        // Send the password reset email
-        // Redirects user to index.html after they click the email link.
-        // Uses the canonical production domain rather than window.location.origin -
-        // requesting a reset while on a stale/non-canonical domain (an old Vercel
-        // preview alias, e.g.) would otherwise bake that dead domain into the link.
-        const { error } = await sb.auth.resetPasswordForEmail(email, {
-            redirectTo: ESF_PUBLIC_CONFIG.BASE_URL + "/index.html"
-        });
-
-        if (error) throw error;
-
-        msgEl.className = "mt-4 p-3 bg-green-50 border border-green-200 text-green-700 rounded-lg text-sm text-center";
-        msgEl.innerHTML = "<b>Check your email!</b><br>We've sent a password reset link to " + escapeHtml(email);
-        msgEl.classList.remove('hidden');
-
-    } catch (err) {
-        msgEl.className = "mt-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm text-center";
-        msgEl.innerText = (typeof safeError === 'function') ? safeError(err) : "Failed to send reset email. Please check your email address and try again.";
-        msgEl.classList.remove('hidden');
-    } finally {
-        btn.disabled = false;
-        btn.innerText = 'Send Reset Link';
-    }
-});
+}, { loadSettings: false });

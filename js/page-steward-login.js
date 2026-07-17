@@ -1,11 +1,14 @@
 import { getSupabaseClient } from './supabase.js';
 import { safeError } from './utils.js';
+import { initPublicPage } from '../supabase-public.js';
 
 // Fix #6: Login rate limiting
 let loginAttempts = 0;
 let lockoutUntil = 0;
 
-document.addEventListener('DOMContentLoaded', async () => {
+// loadSettings: false — this page reads no public settings; keep it free of
+// the DB round-trip.
+initPublicPage(async () => {
     // Check for unauthorized access error from RBAC redirect
     const params = new URLSearchParams(window.location.search);
     const isUnauthorized = params.get('error') === 'unauthorized';
@@ -33,7 +36,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (loginForm) {
         loginForm.addEventListener('submit', handleLogin);
     }
-});
+}, { loadSettings: false });
 
 async function handleLogin(e) {
     e.preventDefault();

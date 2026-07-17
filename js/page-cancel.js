@@ -1,9 +1,8 @@
-import { getPublicSupabaseClient, loadPublicSettings } from '../supabase-public.js';
+import { getPublicSupabaseClient, initPublicPage } from '../supabase-public.js';
 import { safeError } from './utils.js';
 
-document.addEventListener('DOMContentLoaded', async () => {
+initPublicPage(async () => {
     const sb = getPublicSupabaseClient(); // From supabase-public.js
-    await loadPublicSettings();
 
     // Bind Turnstile Key from database dynamically
     const siteKey = window.ESF_PUBLIC_CONFIG?.TURNSTILE_SITE_KEY;

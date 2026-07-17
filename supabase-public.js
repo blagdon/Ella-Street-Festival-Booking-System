@@ -123,3 +123,42 @@ if (typeof window !== 'undefined') {
     window.loadPublicSettings = loadPublicSettings;
     window.initPublicSettingsSync = initPublicSettingsSync;
 }
+
+/**
+ * Shared bootstrap for public (unauthenticated) page entry modules — the
+ * public-page counterpart of initAdminPage() in js/supabase.js.
+ *
+ * Rule: new page-*.js entry files must bootstrap via initAdminPage() or
+ * initPublicPage() — never a bare DOMContentLoaded listener. A bare listener
+ * only works because module scripts are deferred; this helper also runs the
+ * callback when the script executes after DOMContentLoaded has already fired
+ * (e.g. via dynamic import), and captures init errors uniformly instead of
+ * letting a throw leave the page half-initialized silently.
+ *
+ * Settings idiom — there is exactly one: loadPublicSettings() is awaited
+ * before the page callback runs. It applies the sessionStorage cache
+ * synchronously when present (no network round-trip) and only queries the
+ * database on a cold cache, so by the time the callback runs
+ * ESF_PUBLIC_CONFIG already reflects the configured values. Pages that must
+ * not apply DB-loaded settings opt out explicitly with
+ * { loadSettings: false } — a deviation is a visible choice, not drift.
+ *
+ * @param {Function} initCallback - The page-specific initialization function.
+ * @param {{ loadSettings?: boolean }} [options]
+ */
+export function initPublicPage(initCallback, { loadSettings = true } = {}) {
+    const runInit = async () => {
+        try {
+            if (loadSettings) await loadPublicSettings();
+            if (typeof initCallback === 'function') await initCallback();
+        } catch (e) {
+            console.error(`[Init Failed] Error loading ${window.location.pathname}:`, e);
+        }
+    };
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', runInit);
+    } else {
+        runInit();
+    }
+}
