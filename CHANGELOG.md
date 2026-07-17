@@ -2,6 +2,27 @@
 
 All notable changes to this project are documented in this file.
 
+## [v5.1.3] - 2026-07-17
+
+### Security
+
+- Revoked vestigial `anon`/`authenticated` grants on `cancel_booking_secure` and `get_next_booking_id` — both are only ever called server-side with the service-role key, so the anon/authenticated grants let a direct PostgREST caller skip the Turnstile check and generate booking IDs respectively. Also flipped this project's schema-level default privileges so new functions/tables/sequences no longer auto-grant `anon` access by default, closing a gap that had already been patched object-by-object twice before.
+- Filtered `public_schedule_info` to match its sibling `public_performer_info` (`status IN ('Scheduled','Paid') AND deleted_at IS NULL`) — it previously had no filter at all, so every schedule slot was publicly visible regardless of the performer's status, including soft-deleted performers.
+- Added baseline security headers via `vercel.json` (`X-Frame-Options`, a `frame-ancestors 'none'` CSP, `X-Content-Type-Options`, `Referrer-Policy`, `Strict-Transport-Security`, `Permissions-Policy`) — closes a clickjacking gap the existing per-page meta-tag CSPs couldn't cover, since `frame-ancestors` is ignored when set via `<meta>`.
+
+### Testing
+
+- Added admin-access coverage for the Email Queue viewer and behavioral CORS tests confirming the Edge Functions never regress to a wildcard origin.
+
+### Cleanup
+
+- Extracted the `escapeHtml` helper duplicated across four Edge Functions into a shared `_shared/format.ts`.
+- Added a pre-commit/CI guard flagging `innerHTML` assignments with unescaped dynamic content, mirroring the existing sibling-Edge-Function-call guard.
+
+### Documentation
+
+- Warned in the Disaster Recovery Runbook that the database backup dump is itself a full credential store (live API secrets, bank details, stallholder PII) and should be handled accordingly.
+
 ## [v5.1.2] - 2026-07-17
 
 ### Fixed
