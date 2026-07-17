@@ -8,6 +8,7 @@
     "watch:css": "npx @tailwindcss/cli -i ./css/input.css -o ./css/output.css --watch",
     "postinstall": "git config core.hooksPath .githooks || true",
     "check:rls-grants": "bash scripts/check-rls-grants-snapshot.sh",
+    "check:innerhtml-escaping": "node scripts/check-unescaped-innerhtml.mjs",
     "test:setup": "node scripts/seed-test-project.mjs",
     "test:integration": "node --test --test-concurrency=1"
   },

@@ -27,4 +27,9 @@ if [ -n "$matches" ]; then
   exit 1
 fi
 
+# Guards against innerHTML assignments that interpolate dynamic content
+# without escapeHtml() — see scripts/check-unescaped-innerhtml.mjs for the
+# full rationale and the four real XSS gaps that motivated it.
+node scripts/check-unescaped-innerhtml.mjs || exit 1
+
 exit 0

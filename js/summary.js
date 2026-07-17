@@ -380,7 +380,7 @@ function showConfirmModalLocal(id) {
         if (booking.is_resident) reasons.push('Resident');
         if (booking.is_charity === 'Charity') reasons.push('Charity');
         if (booking.is_charity === 'Not for profit') reasons.push('Not for profit');
-        recEl.innerHTML = "💡 Recommendation: <b>Free</b> (" + reasons.join(' & ') + ")";
+        recEl.innerHTML = "💡 Recommendation: <b>Free</b> (" + escapeHtml(reasons.join(' & ')) + ")";
         recEl.className = "mb-4 p-3 bg-blue-50 text-blue-800 text-sm rounded border border-blue-200";
     } else {
         recEl.innerHTML = "💡 Recommendation: <b>Chargeable</b> (Standard Trading Stall)";

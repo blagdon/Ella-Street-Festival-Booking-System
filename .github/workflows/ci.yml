@@ -6,16 +6,20 @@ on:
   workflow_dispatch:
 
 jobs:
-  # Same check as .githooks/pre-commit, run here too since a local git hook
+  # Same checks as .githooks/pre-commit, run here too since a local git hook
   # can be bypassed (--no-verify, a fresh clone that never ran `npm install`,
-  # etc.) - this is the one guard that must never be skippable. See
-  # HANDOVER.md's sibling-function-HTTP-call Gotcha: this exact pattern
-  # caused three real production bugs in one session.
+  # etc.) - these are the guards that must never be skippable. See
+  # HANDOVER.md's sibling-function-HTTP-call Gotcha (three real production
+  # bugs in one session) and scripts/check-unescaped-innerhtml.mjs's own
+  # header (four real XSS gaps) for what each one is guarding against.
   grep-guard:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: No sibling Edge Function HTTP calls
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Sibling-call and innerHTML-escaping guards
         run: bash .githooks/pre-commit
 
   # Read-only schema dump against the LIVE project, diffed against the
