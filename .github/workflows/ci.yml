@@ -58,6 +58,14 @@ jobs:
   # it doesn't redo it on every run.
   integration-tests:
     runs-on: ubuntu-latest
+    # All runs share the one test Supabase project, so two runs executing this
+    # job at once corrupt each other's fixtures (seen 2026-07-17: two pushes
+    # ~3s apart caused spurious "Booking not found" 404s and a missing
+    # email_queue row). Queue this job globally instead of overlapping;
+    # grep-guard and rls-grants-check stay parallel.
+    concurrency:
+      group: integration-tests-shared-db
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
