@@ -1,5 +1,6 @@
 import { initAdminPage, getSupabaseClient } from './supabase.js';
 import { showToast } from './ui.js';
+import { escapeHtml } from './utils.js';
 
 const sb = getSupabaseClient();
 let allTemplates = [];
@@ -54,7 +55,7 @@ function renderSidebar() {
 
         div.innerHTML = `
                 <div class="font-bold text-gray-800 text-sm truncate">${formatName(t.id)}</div>
-                <div class="text-xs text-gray-500 mt-1 truncate">${t.subject}</div>
+                <div class="text-xs text-gray-500 mt-1 truncate">${escapeHtml(t.subject)}</div>
             `;
         listEl.appendChild(div);
     });

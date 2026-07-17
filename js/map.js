@@ -20,7 +20,7 @@ function showToast(message, type = 'info') {
 
     toast.innerHTML = `
         ${iconSVG}
-        <div class="toast-content">${message}</div>
+        <div class="toast-content">${escapeHtml(message)}</div>
         <svg class="toast-close" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
         </svg>

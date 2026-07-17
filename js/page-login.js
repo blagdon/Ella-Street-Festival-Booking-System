@@ -1,5 +1,5 @@
 import { getSupabaseClient } from './supabase.js';
-import { safeError } from './utils.js';
+import { safeError, escapeHtml } from './utils.js';
 import { auditLog } from './api.js';
 
 // --- UTILITIES ---
@@ -132,7 +132,7 @@ document.getElementById('resetForm')?.addEventListener('submit', async function 
         if (error) throw error;
 
         msgEl.className = "mt-4 p-3 bg-green-50 border border-green-200 text-green-700 rounded-lg text-sm text-center";
-        msgEl.innerHTML = "<b>Check your email!</b><br>We've sent a password reset link to " + email;
+        msgEl.innerHTML = "<b>Check your email!</b><br>We've sent a password reset link to " + escapeHtml(email);
         msgEl.classList.remove('hidden');
 
     } catch (err) {

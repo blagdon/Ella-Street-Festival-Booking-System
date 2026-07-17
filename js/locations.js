@@ -98,7 +98,7 @@ function renderTable() {
         </select>`;
 
         row.innerHTML = `
-        <td class="px-6 py-4 text-xs font-mono text-gray-400">${b.id}</td>
+        <td class="px-6 py-4 text-xs font-mono text-gray-400">${escapeHtml(b.id)}</td>
         <td class="px-6 py-4">
             <p class="text-sm md:text-sm text-xs font-bold text-gray-800">${escapeHtml(b.business || b.business_name)}</p>
             <p class="text-xs text-gray-500">${escapeHtml(b.owner || b.owner_name)}</p>
