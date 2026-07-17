@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [v5.1.1] - 2026-07-17
+
+### Security
+
+- Restricted `Access-Control-Allow-Origin` on all seven browser-facing Edge Functions (`submit-booking`, `cancel-booking`, `get-reviews`, `get-booking-documents`, `create-checkout-session`, `queue-bulk-email`, `send-email`) to the production app origin, via a new shared `_shared/cors.ts` constant, instead of a `'*'` wildcard — including on functions that require an admin Bearer token. Not exploitable today, since the JWT is attached explicitly by JS rather than auto-sent like a cookie, but tightens things for defense-in-depth. `stripe-webhook` is unaffected — it's called server-to-server by Stripe, not from a browser.
+
 ## [v5.1.0] - 2026-07-17
 
 ### Admin tools
