@@ -1,10 +1,17 @@
 # HANDOVER — Ella Street Festival Booking System
 
 > Written for an AI coding agent picking this up cold. No prior context assumed.
-> Last updated: 2026-07-16.
-> Current release: **v5.0.0 "Bank Transfers Supported"** (tagged 2026-07-16) — see
-> `CHANGELOG.md` for the full release notes and the repo's GitHub Releases page for the
-> tagged version.
+> Last updated: 2026-07-17.
+> Current release: **v5.1.2** (tagged 2026-07-17, itself building on v5.0.0 "Bank
+> Transfers Supported") — see `CHANGELOG.md` for the full release notes and the repo's
+> GitHub Releases page for the tagged versions. Since v5.1.2 was tagged, further
+> untagged fixes have landed on `main`: an Edge Function `escapeHtml` de-duplication, a
+> pre-commit/CI guard against unescaped `innerHTML`, baseline security headers via
+> `vercel.json`, admin-access/CORS test coverage, and two RLS/grants migrations
+> (revoking vestigial `anon`/`authenticated` grants on `cancel_booking_secure` and
+> `get_next_booking_id`, and filtering `public_schedule_info` to match
+> `public_performer_info`) — both migrations applied live and verified, not just
+> committed.
 > `ARCHITECTURE.md` and `USER_GUIDE.md` also exist in this repo and are more exhaustive on
 > some points, but **both contain stale information** — see [Gotchas](#9-gotchas) for the
 > specific claims to distrust. Where this document and `ARCHITECTURE.md` disagree, trust
@@ -1965,6 +1972,21 @@ for months. Download the latest one with:
 gh run list --repo blagdon/Stall_Booking --workflow=backup.yml --limit 1 --json databaseId
 gh run download <run-id> --repo blagdon/Stall_Booking --name supabase-backup
 ```
+
+### The dump file itself is a credential store — handle it accordingly
+
+Worth saying plainly, because it's easy to treat a database backup as "just data": this
+`pg_dump` output contains the `settings` table's rows in full, unencrypted — the live Zoho
+client secret, refresh token, and current access token; the SerpApi key; the Stripe
+Test-mode secret key; and the association's bank account details — plus every
+stallholder's name, email, phone, and address from `bookings`, and `auth.users`' full
+column set (`encrypted_password` included, per the drill above). That's normal for a
+full dump, not a bug in the backup process, but it means **the file itself is as
+sensitive as the live database it came from**. Whenever you pull one down: encrypt it at
+rest, never let a copy land in this repo or any other git history, and be deliberate
+about where copies end up (a synced folder like Dropbox/OneDrive/iCloud silently
+proliferates copies you won't be tracking) — delete local copies once you're done with
+whatever you downloaded it for.
 
 ### What's actually in it, and what isn't
 
