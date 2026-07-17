@@ -130,8 +130,10 @@ async function createUser() {
             email: email,
             password: password,
             options: {
-                // Prevent auto-redirect on confirm — admin manages the URL
-                emailRedirectTo: window.location.origin + '/login.html'
+                // Prevent auto-redirect on confirm — admin manages the URL.
+                // Canonical production domain, not window.location.origin - same
+                // stale-domain bug as page-login.js's password reset link.
+                emailRedirectTo: CONFIG.URLS.BASE + '/login.html'
             }
         });
 

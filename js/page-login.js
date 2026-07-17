@@ -1,6 +1,7 @@
 import { getSupabaseClient } from './supabase.js';
 import { safeError, escapeHtml } from './utils.js';
 import { auditLog } from './api.js';
+import { ESF_PUBLIC_CONFIG } from '../supabase-public.js';
 
 // --- UTILITIES ---
 let loginAttempts = 0;
@@ -123,10 +124,12 @@ document.getElementById('resetForm')?.addEventListener('submit', async function 
         const sb = getSupabaseClient();
 
         // Send the password reset email
-        // Redirects user to index.html after they click the email link
-        // Use dynamic origin instead of hardcoded production domain
+        // Redirects user to index.html after they click the email link.
+        // Uses the canonical production domain rather than window.location.origin -
+        // requesting a reset while on a stale/non-canonical domain (an old Vercel
+        // preview alias, e.g.) would otherwise bake that dead domain into the link.
         const { error } = await sb.auth.resetPasswordForEmail(email, {
-            redirectTo: window.location.origin + "/index.html"
+            redirectTo: ESF_PUBLIC_CONFIG.BASE_URL + "/index.html"
         });
 
         if (error) throw error;
