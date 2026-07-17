@@ -273,9 +273,10 @@ export async function fetchPayments(currentInstance) {
         .in('instance_prefix', instanceFilter);
     if (bErr) throw bErr;
 
-    const { data: payments, error: pErr } = await sb
-        .from(TBL_PAYMENTS)
-        .select('*');
+    const bookingIds = bookings.map(b => b.id);
+    const { data: payments, error: pErr } = bookingIds.length
+        ? await sb.from(TBL_PAYMENTS).select('*').in('booking_id', bookingIds)
+        : { data: [], error: null };
     if (pErr) throw pErr;
 
     const payMap = new Map(payments.map(p => [p.booking_id, p]));
@@ -636,61 +637,15 @@ export async function getSignedBookingDocuments(bookingId) {
 }
 
 /**
- * Automatically generates the next available ESF26-MISC-XXXX ID
- * @param {object} sb - Supabase client
- * @returns {Promise<string>}
- */
-export async function generateMiscEntryId(sb) {
-    const prefix = CONFIG.INSTANCE_MAP['MISC'];
-
-    // Fetch the single highest ID matching the prefix
-    const { data, error } = await sb
-        .from(TBL_BOOKINGS)
-        .select('id')
-        .like('id', `${prefix}%`)
-        .order('id', { ascending: false })
-        .limit(1);
-
-    if (error) {
-        throw new Error(`Failed to query existing Misc IDs: ${error.message}`);
-    }
-
-    if (!data || data.length === 0) {
-        return `${prefix}0001`; // First entry
-    }
-
-    // data[0].id is expected to be like "ESF26-MISC-0042"
-    const lastId = data[0].id;
-    const parts = lastId.split('-');
-
-    // Safety check just in case the format is strange
-    if (parts.length < 3) {
-        return `${prefix}0001`;
-    }
-
-    const lastNumStr = parts[parts.length - 1];
-    const lastNum = parseInt(lastNumStr, 10);
-
-    if (isNaN(lastNum)) {
-        return `${prefix}0001`;
-    }
-
-    const nextNum = lastNum + 1;
-    // Pad to 4 digits (e.g., 0043)
-    const nextNumPadded = String(nextNum).padStart(4, '0');
-
-    return `${prefix}${nextNumPadded}`;
-}
-
-/**
  * Inserts a new Misc booking.
  * @param {object} payload 
  */
 export async function insertMiscBooking(payload) {
     const sb = getSupabaseClient();
 
-    // Auto-generate the correct ID
-    const newId = await generateMiscEntryId(sb);
+    // Fetch the correct next ID atomically via RPC
+    const { data: newId, error: idErr } = await sb.rpc('rpc_get_next_misc_id');
+    if (idErr) throw idErr;
 
     const { error } = await sb.from(TBL_BOOKINGS).insert({
         id: newId,

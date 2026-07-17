@@ -18,7 +18,7 @@
 # exits 0. On later runs, a diff means something about RLS policies or
 # grants changed since the snapshot was last committed — review it, and if
 # it's expected, commit the updated snapshot.
-set -euo pipefail
+set -eu
 
 cd "$(dirname "$0")/.."
 

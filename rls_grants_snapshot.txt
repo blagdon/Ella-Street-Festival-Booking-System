@@ -47,6 +47,8 @@ GRANT ALL ON FUNCTION "public"."get_next_booking_id"("p_prefix" "text") TO "serv
 GRANT ALL ON FUNCTION "public"."is_booking_confirmed"("p_booking_id" "text") TO "anon";
 GRANT ALL ON FUNCTION "public"."is_booking_confirmed"("p_booking_id" "text") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."is_booking_confirmed"("p_booking_id" "text") TO "service_role";
+GRANT ALL ON FUNCTION "public"."rpc_get_next_misc_id"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."rpc_get_next_misc_id"() TO "service_role";
 GRANT ALL ON FUNCTION "public"."rpc_record_bank_transfer_payment"("p_booking_id" "text", "p_payment_reference" "text", "p_notes" "text") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rpc_record_bank_transfer_payment"("p_booking_id" "text", "p_payment_reference" "text", "p_notes" "text") TO "service_role";
 GRANT ALL ON FUNCTION "public"."rpc_set_booking_locations"("p_booking_id" "text", "p_location_ids" "text"[]) TO "anon";
