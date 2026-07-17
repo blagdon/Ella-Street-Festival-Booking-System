@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [v5.1.0] - 2026-07-17
+
+### Admin tools
+
+- Added an Email Queue browse view (`email_queue.html`) — admin-only, reusing the audit-log page's search/filter/pagination pattern. Best-effort email sends (booking confirmations, payment requests, cancellations) already logged their outcome to `email_queue` with an error message on failure, but nothing surfaced it short of querying the table directly or digging through Edge Function logs. Linked from the admin hub's "More Tools" page.
+
 ## [v5.0.1] - 2026-07-17
 
 ### Security
