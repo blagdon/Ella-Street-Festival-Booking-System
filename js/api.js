@@ -500,38 +500,6 @@ export async function fetchMapData(currentInstance) {
     const sb = getSupabaseClient();
     const mapDataset = (currentInstance === 'DEV') ? 'DEV' : 'LIVE';
 
-    // Try Edge Function fallback for unauthenticated users on the LIVE dataset
-    const { data: { session } } = await sb.auth.getSession();
-    if (!session && mapDataset === 'LIVE') {
-        try {
-            const response = await fetch(`${CONFIG.SUPABASE.URL}/functions/v1/visitor-map`, {
-                headers: {
-                    "apikey": CONFIG.SUPABASE.KEY,
-                    "Authorization": `Bearer ${CONFIG.SUPABASE.KEY}`
-                }
-            });
-            if (response.ok) {
-                const html = await response.text();
-                const match = html.match(/window\.SERVER_DATA\s*=\s*(\[[\s\S]*?\])\s*;/);
-                if (match) {
-                    const data = JSON.parse(match[1]);
-                    return data.map(item => ({
-                        location_id: item.id,
-                        lat: item.lat,
-                        lng: item.lng,
-                        business: item.biz,
-                        description: "",
-                        stall_type: item.type,
-                        category: item.cat,
-                        is_active: true
-                    }));
-                }
-            }
-        } catch (e) {
-            console.warn("Failed to fetch map data from Edge Function, falling back to direct DB queries:", e);
-        }
-    }
-
     // 1. Get Locations
     const { data: mapLocs } = await sb.from(TBL_LOCATIONS).select('*').eq('dataset', mapDataset);
     const safeMapLocs = normalizeLocationIds(mapLocs);
