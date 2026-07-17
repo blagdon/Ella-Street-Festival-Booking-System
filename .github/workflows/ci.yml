@@ -35,7 +35,9 @@ jobs:
       - uses: actions/checkout@v5
       - uses: supabase/setup-cli@v1
         with:
-          version: latest
+          # Pinned (rather than "latest") so reruns are reproducible; bump
+          # deliberately when a newer CLI is needed.
+          version: 2.109.1
       - name: Link to the live project
         run: supabase link --project-ref rsnxhuhibglieofikkpo
       - name: Check RLS policies/grants match the committed snapshot

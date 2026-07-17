@@ -25,7 +25,22 @@ cd "$(dirname "$0")/.."
 TMPFILE=$(mktemp)
 trap 'rm -f "$TMPFILE"' EXIT
 
-supabase db dump --schema public,storage --linked -f "$TMPFILE" >/dev/null
+# The dump's ephemeral CLI login role intermittently fails pooler auth in CI
+# ("password authentication failed for user cli_login_postgres"), so retry the
+# dump itself a few times. Only the dump is retried — a real snapshot diff is
+# handled below and still fails immediately.
+DUMP_ATTEMPTS=3
+for attempt in $(seq 1 "$DUMP_ATTEMPTS"); do
+  if supabase db dump --schema public,storage --linked -f "$TMPFILE" >/dev/null; then
+    break
+  fi
+  if [ "$attempt" -eq "$DUMP_ATTEMPTS" ]; then
+    echo "supabase db dump failed after $DUMP_ATTEMPTS attempts." >&2
+    exit 1
+  fi
+  echo "supabase db dump failed (attempt $attempt/$DUMP_ATTEMPTS), retrying in $((attempt * 5))s..." >&2
+  sleep $((attempt * 5))
+done
 
 NEW_SNAPSHOT=$(grep -E "^(CREATE POLICY|GRANT|REVOKE)" "$TMPFILE" | sort)
 
