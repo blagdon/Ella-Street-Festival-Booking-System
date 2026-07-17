@@ -1,6 +1,6 @@
 {
   "name": "test-deploy-tailwinds-change",
-  "version": "5.0.0",
+  "version": "5.0.1",
   "description": "",
   "main": "config.js",
   "scripts": {

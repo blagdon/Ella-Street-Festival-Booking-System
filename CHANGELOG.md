@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented in this file.
 
+## [v5.0.1] - 2026-07-17
+
+### Security
+
+- Fixed four `innerHTML` call sites that interpolated dynamic values without escaping them, found during a periodic audit of the project's `escapeHtml()` convention:
+  - The public visitor map's toast reflected the raw search-box term unescaped (XSS via the search input, no authentication required)
+  - The login page's password-reset confirmation reflected the raw email input unescaped
+  - The email template admin sidebar rendered a template's subject line unescaped (stored XSS between admins via a saved template subject)
+  - The Location Manager's desktop table left the booking ID unescaped in one place while escaping it everywhere else
+
 ## [v5.0] - 2026-07-16 - "Bank Transfers Supported"
 
 ### Manual bank-transfer payments (new)
