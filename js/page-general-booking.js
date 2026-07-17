@@ -1,12 +1,10 @@
-import { getPublicSupabaseClient, loadPublicSettings, initPublicSettingsSync } from '../supabase-public.js';
+import { getPublicSupabaseClient, initPublicPage, ESF_PUBLIC_CONFIG } from '../supabase-public.js';
 import { escapeHtml } from './utils.js';
 
-// Wait for DOM to load
-document.addEventListener('DOMContentLoaded', async function () {
+// initPublicPage has already awaited loadPublicSettings() (cache-first,
+// DB on cold cache) before this callback runs.
+initPublicPage(async function () {
     const sb = getPublicSupabaseClient();
-
-    // Load public settings synchronously from cache if available
-    initPublicSettingsSync();
 
     // Bind Turnstile Key from database dynamically
     const siteKey = window.ESF_PUBLIC_CONFIG?.TURNSTILE_SITE_KEY;
@@ -22,9 +20,6 @@ document.addEventListener('DOMContentLoaded', async function () {
     script.async = true;
     script.defer = true;
     document.head.appendChild(script);
-
-    // Refresh settings asynchronously in background
-    await loadPublicSettings();
 
     const PREFIX = (ESF_PUBLIC_CONFIG?.BOOKING_PREFIX || "ESF26") + "-NONFOOD-";
 
