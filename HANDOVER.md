@@ -1,7 +1,7 @@
 # HANDOVER — Ella Street Festival Booking System
 
 > Written for an AI coding agent picking this up cold. No prior context assumed.
-> Last updated: 2026-07-17.
+> Last updated: 2026-07-18.
 > Current release: **v5.1.2** (tagged 2026-07-17, itself building on v5.0.0 "Bank
 > Transfers Supported") — see `CHANGELOG.md` for the full release notes and the repo's
 > GitHub Releases page for the tagged versions. Since v5.1.2 was tagged, further
@@ -11,7 +11,10 @@
 > (revoking vestigial `anon`/`authenticated` grants on `cancel_booking_secure` and
 > `get_next_booking_id`, and filtering `public_schedule_info` to match
 > `public_performer_info`) — both migrations applied live and verified, not just
-> committed.
+> committed. Also since then: a `submit-booking` fix so a failed document-storage
+> move keeps the still-valid `temp/` path in `bookings.documents` instead of
+> recording a destination that was never created (PR #20, deployed live — see
+> [Next Steps](#8-next-steps) item 51).
 > `ARCHITECTURE.md` and `USER_GUIDE.md` also exist in this repo and are more exhaustive on
 > some points, but **both contain stale information** — see [Gotchas](#9-gotchas) for the
 > specific claims to distrust. Where this document and `ARCHITECTURE.md` disagree, trust
@@ -783,8 +786,10 @@ with a real run via `gh run watch` — all three green.
   the change is expected.
 - `npm run test:integration` (`node --test --test-concurrency=1`, Node's
   built-in `node:test`) runs three test files:
-  - `tests/integration.test.mjs` — the deployed `submit-booking`,
-    `cancel-booking`, and `queue-bulk-email` Edge Functions, plus the
+  - `tests/integration.test.mjs` — the deployed `submit-booking` (including
+    its temp→booking-folder document moves and the failed-move temp-path
+    fallback, see [Next Steps](#8-next-steps) item 51), `cancel-booking`, and
+    `queue-bulk-email` Edge Functions, plus the
     `get_next_booking_id`/`booking_locations_check_conflict`/
     `claim_pending_emails` database logic. This is where the retry-on-conflict
     fix for the booking-ID race (see [Next Steps](#8-next-steps) item 18) came
@@ -1939,6 +1944,28 @@ sequences specifically were never separately audited beyond what item 49 already
 covers — worth a glance if this area comes up again, but nothing currently flags
 it as a live concern.
 
+51. **Fixed `submit-booking` recording nonexistent document paths when a storage
+    move fails (2026-07-18, PR #20).** When moving an uploaded file from
+    `temp/<uuid>/<file>` into the booking's folder failed, the code only
+    `console.warn`-ed but still wrote the destination path into
+    `bookings.documents` — a path that was never created, so
+    `get-booking-documents` couldn't sign it and the admin silently lost access
+    to the trader's uploaded document (e.g. the required insurance certificate).
+    A stale comment described a "fallback to the original temp URL" that had
+    never actually been implemented. That fallback now exists: a failed move
+    stores the `temp/` source path instead. The reasoning for "keep the temp
+    path" over "omit the file": nothing ever cleans up `temp/`, so the file is
+    still sitting there, and `get-booking-documents` signs whatever path is
+    stored — the document stays viewable by admins, just under its temp path
+    rather than the booking's folder. Two new integration tests
+    (`tests/integration.test.mjs`, "submit-booking document moves" describe
+    block) cover the success path (real upload → moved into the booking folder,
+    object verified to actually exist at the recorded path) and the failed-move
+    fallback (never-uploaded filename → the temp path is recorded, not the
+    phantom destination). Verified per convention: function deployed to the
+    disposable test project first, full 91-test suite green there, then merged
+    and deployed to production with a CORS-preflight smoke check.
+
 **Explicitly deferred, not started:** Slack/Discord/Sentry-style alerting for Edge
 Function errors — the project owner said "I'll do it later," don't assume it's wanted
 now without asking.
@@ -2158,7 +2185,10 @@ stay in the separate `ellafestperformersadmin.vercel.app` codebase.
   temp-upload UUID and filenames server-side against strict patterns
   (`SAFE_TEMP_UUID_PATTERN`, `SAFE_FILENAME_PATTERN`) before moving them into the final
   storage path — never trust the client-sanitized values verbatim, they're trivially
-  bypassable by calling the public endpoint directly.
+  bypassable by calling the public endpoint directly. If the temp→booking-folder move
+  fails, `bookings.documents` deliberately keeps the `temp/` source path (nothing
+  cleans up `temp/`, so the file is still there and signable) rather than recording a
+  destination that doesn't exist — see [Next Steps](#8-next-steps) item 51.
 
 - **The performer-application public form** (`ellafestperformersadmin.vercel.app/public/apply.html`)
   writes directly to this same project's `performers` table from a **separate**
