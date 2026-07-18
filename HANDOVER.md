@@ -1872,8 +1872,8 @@ tested live, and deployed. In order, what was just finished:
     `authenticated` and the three sequence grants.
 49. `ALTER DEFAULT PRIVILEGES` fix for `authenticated` (2026-07-18,
     `20260718120000_revoke_default_authenticated_privileges.sql`, mirrors
-    20260717080000's anon fix, closing one of the two items item 48 deferred).
-    Confirmed live via `pg_default_acl` that objects created as `postgres` (how every
+    20260717080000's anon fix, closing one of the two things item 48 deferred). Confirmed
+    live via `pg_default_acl` that objects created as `postgres` (how every
     migration in this project creates objects) were still auto-granting
     `authenticated` essentially everything at CREATE time: `X` (EXECUTE) on new
     functions, `arwdDxtm` (all table privileges) on new tables, `rwU` (all) on new
@@ -1897,9 +1897,47 @@ tested live, and deployed. In order, what was just finished:
     unchanged by this migration (it only captures `CREATE POLICY`/`GRANT`/
     `REVOKE` lines from a schema dump; `ALTER DEFAULT PRIVILEGES` isn't a current
     grant on anything, so there's nothing for it to capture — same reason the
-    anon fix never touched the snapshot either). The three `anon` sequence grants
-    (`audit_logs_id_seq`/`booking_locations_id_seq`/`email_queue_id_seq`) remain
-    the one piece of the original interrupted brief not yet done.
+    anon fix never touched the snapshot either).
+50. Revoked `anon`'s sequence grants (2026-07-18,
+    `20260718130000_revoke_anon_sequence_grants.sql`) — the last piece of the
+    original interrupted table-grant-narrowing brief. `anon` held `rwU` (full ALL:
+    SELECT/currval, UPDATE/nextval+setval, USAGE) on the three id sequences behind
+    `audit_logs`/`booking_locations`/`email_queue`. No PostgREST surface exposes a
+    sequence directly, so this was never a live exploit path — pure hygiene, closed
+    because it could be closed cleanly, not because anything was actively wrong.
+    Confirmed `anon` has zero legitimate reason to ever trigger `nextval()` on any
+    of the three: `audit_logs` was narrowed to `REVOKE ALL` for `anon` in item 47
+    (no INSERT/UPDATE/DELETE policy exists for `anon` on it at all);
+    `booking_locations` was narrowed to `SELECT`-only in the same item;
+    `email_queue` already had zero `anon` access from work predating this session.
+    None of the three tables `anon` can INSERT into, so none of the three
+    sequences ever has `nextval()` invoked on `anon`'s behalf through any
+    legitimate path. `authenticated`'s grants on the same sequences are
+    untouched — unlike `anon`, `authenticated` genuinely does INSERT into
+    `audit_logs` and `email_queue` directly (confirmed in item 48's own trace), so
+    its sequence usage is real. Applied to the test project first — a re-run was
+    needed after the first attempt hit unrelated stale fixture data
+    (`duplicate key value violates unique constraint "bookings_pkey"` from an
+    earlier interrupted run, nothing to do with sequences since `bookings.id`
+    doesn't use any of the three) — clean re-run was full 89-test suite green,
+    then applied to production; independently re-verified via `pg_class.relacl`
+    on both that `anon` is absent from all three sequence ACLs, `authenticated`/
+    `service_role` unaffected. No regression test added — sequences aren't
+    exposed as a PostgREST resource at all, so there's no REST-level way to even
+    attempt calling `nextval()`/`currval()` as `anon` to prove rejection; the live
+    `pg_class.relacl` query is the verification. `rls_grants_snapshot.txt` DID
+    change this time (unlike item 49's `ALTER DEFAULT PRIVILEGES` fix) — sequence
+    grants are current-state `GRANT`/`REVOKE` statements the snapshot script
+    captures, unlike a default-privilege rule.
+
+This closes every item from the original interrupted table-grant-narrowing brief
+(items 46-50): `payments`, the rest of `anon`'s table/view grants, `authenticated`'s
+table grants, both roles' `ALTER DEFAULT PRIVILEGES` posture (well — `anon`'s from
+20260717080000, `authenticated`'s from item 49), and the `anon` sequence grants.
+`authenticated`'s own sequence grants and its default-privilege posture on
+sequences specifically were never separately audited beyond what item 49 already
+covers — worth a glance if this area comes up again, but nothing currently flags
+it as a live concern.
 
 **Explicitly deferred, not started:** Slack/Discord/Sentry-style alerting for Edge
 Function errors — the project owner said "I'll do it later," don't assume it's wanted
