@@ -2,19 +2,15 @@
 
 > Written for an AI coding agent picking this up cold. No prior context assumed.
 > Last updated: 2026-07-18.
-> Current release: **v5.1.2** (tagged 2026-07-17, itself building on v5.0.0 "Bank
-> Transfers Supported") — see `CHANGELOG.md` for the full release notes and the repo's
-> GitHub Releases page for the tagged versions. Since v5.1.2 was tagged, further
-> untagged fixes have landed on `main`: an Edge Function `escapeHtml` de-duplication, a
-> pre-commit/CI guard against unescaped `innerHTML`, baseline security headers via
-> `vercel.json`, admin-access/CORS test coverage, and two RLS/grants migrations
-> (revoking vestigial `anon`/`authenticated` grants on `cancel_booking_secure` and
-> `get_next_booking_id`, and filtering `public_schedule_info` to match
-> `public_performer_info`) — both migrations applied live and verified, not just
-> committed. Also since then: a `submit-booking` fix so a failed document-storage
-> move keeps the still-valid `temp/` path in `bookings.documents` instead of
-> recording a destination that was never created (PR #20, deployed live — see
-> [Next Steps](#8-next-steps) item 51).
+> Current release: **v5.1.11** (tagged 2026-07-18; the `submit-booking` failed-move
+> temp-path fix, see [Next Steps](#8-next-steps) item 51) — see `CHANGELOG.md` for
+> per-version release notes and the repo's GitHub Releases page for the tagged
+> versions. Every `CHANGELOG.md` version now has a matching GitHub release:
+> v5.1.4–v5.1.10 had been changelog-entries-only, and were tagged retroactively on
+> 2026-07-18 (each tag anchored to the commit that introduced its changelog entry;
+> v5.1.4's tag already existed but had never been published as a release). The
+> package version in `package.json` tracks the latest changelog entry — keep all
+> three (package version, changelog, tag/release) in step when releasing.
 > `ARCHITECTURE.md` and `USER_GUIDE.md` also exist in this repo and are more exhaustive on
 > some points, but **both contain stale information** — see [Gotchas](#9-gotchas) for the
 > specific claims to distrust. Where this document and `ARCHITECTURE.md` disagree, trust
