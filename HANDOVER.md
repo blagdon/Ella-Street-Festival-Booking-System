@@ -1823,6 +1823,53 @@ tested live, and deployed. In order, what was just finished:
     (`audit_logs_id_seq`/`booking_locations_id_seq`/`email_queue_id_seq`) — are each
     a meaningfully larger/different-shaped piece of work and were deliberately left
     for their own dedicated pass, not folded in here.
+48. Narrowed `authenticated`'s table grants (2026-07-18,
+    `20260718110000_narrow_authenticated_table_grants.sql`, item 47's deferred
+    follow-up). Unlike `anon`, `authenticated` genuinely needs broad CRUD for the
+    admin app to work, so this couldn't just be "revoke everything" — for every
+    table, traced (a) the exact FOR-clause command each authenticated-reachable RLS
+    policy allows, and (b) every real `.insert()`/`.update()`/`.delete()`/`.upsert()`
+    call site across `js/`, plus confirmed all nine Edge Functions use
+    `SERVICE_ROLE_KEY` exclusively (so none depend on `authenticated`'s own table
+    grants at all). Findings that narrowed further than RLS alone would suggest:
+    `booking_locations`/`locations` writes all route through
+    `rpc_set_booking_locations` (`SECURITY DEFINER`) — `js/locations.js`'s
+    `updateLocation()` despite its name calls that RPC, never touching the
+    `locations` table directly, and the table itself is seed/migration-only;
+    `email_queue` status transitions are `claim_pending_emails()`
+    (`SECURITY DEFINER`) + service-role Edge Functions only, no direct
+    UPDATE/DELETE call site exists; `email_templates` has no create/delete UI
+    (edit-existing-only); `payments` has zero direct INSERT call sites (all
+    creation is the same `SECURITY DEFINER` RPCs item 46 already traced) despite
+    `finalizeConfirmation()`/`updatePayment()` doing genuine direct DELETE/UPDATE;
+    `bookings` has no hard-delete path anywhere. Result: `SELECT,INSERT` on
+    `audit_logs`/`email_queue`; `SELECT` only on `booking_locations`/`location_power`/
+    `locations` and the three views; `SELECT,INSERT,UPDATE` on `bookings`/
+    `hcc_checks`; `SELECT,UPDATE` on `email_templates`; `SELECT,UPDATE,DELETE`
+    (no INSERT) on `payments`. **Deliberately excluded: `performers` and
+    `schedules`** — both are shared with a separate, external app
+    (`ellafestperformersadmin.vercel.app`) against this same Supabase project; this
+    repo's code never writes to either directly, but that app's authenticated
+    sessions might, and it's outside this repo, unauditable and untestable from
+    here — narrowing a grant a system I can't see or verify might depend on is
+    exactly the kind of cross-system risk not to take silently. `user_roles`/
+    `settings` also untouched (already correctly scoped from prior work). Applied
+    to the test project first; the full suite caught a real gap on the first run —
+    `tests/workflow.test.mjs`'s "confirm booking" step used the `admin` client to
+    directly upsert a payments row as a test-setup shortcut, which the narrowed
+    grant correctly rejected (`permission denied for table payments`). The test's
+    own comment already said this mirrors what `finalize_stripe_payment`/
+    `rpc_record_bank_transfer_payment` (both `SECURITY DEFINER`) do in production —
+    fixed by switching that one line to the `service` client rather than
+    re-widening the grant, since grep confirmed zero real `authenticated`-role
+    INSERT call sites on `payments` anywhere. Full 89-test suite green (79 + 10
+    new) after the fix, then applied to production; independently re-verified via
+    a single query covering all fourteen tables that `authenticated`'s live
+    privileges exactly match intent, including confirming `performers`/`schedules`
+    remained untouched. Added 10 live-verified regression tests. `anon`/
+    `service_role` grants untouched everywhere; scoped to `authenticated` only.
+    Still deliberately deferred: the `ALTER DEFAULT PRIVILEGES` fix for
+    `authenticated` and the three sequence grants.
 
 **Explicitly deferred, not started:** Slack/Discord/Sentry-style alerting for Edge
 Function errors — the project owner said "I'll do it later," don't assume it's wanted
