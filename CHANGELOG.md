@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [v5.1.8] - 2026-07-18
+
+### Security
+
+- Closed the last gap in this project's default-privilege posture: `ALTER DEFAULT PRIVILEGES` now also revokes `authenticated`'s automatic grant on new functions/tables/sequences, mirroring the `anon` fix from v5.1.3. Objects created as `postgres` (how every migration in this repo creates them) were still auto-granting `authenticated` essentially full access at creation time — every migration already states its `authenticated` grant explicitly by hand, so this only removes a redundant default that could have silently over-granted a future object whose migration forgot the explicit grant. Non-retroactive; no existing grant changes. Verified live via `pg_default_acl` on both the test project and production.
+
 ## [v5.1.7] - 2026-07-18
 
 ### Security
