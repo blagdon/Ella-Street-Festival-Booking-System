@@ -86,7 +86,14 @@ describe('critical admin workflow: create -> confirm -> assign -> move -> pay ->
       .eq('id', bookingId);
     assert.equal(confirmErr, null, confirmErr?.message);
 
-    const { error: paymentErr } = await admin
+    // The payments row insert itself uses `service`, not `admin`: both real
+    // production paths (finalize_stripe_payment, rpc_record_bank_transfer_payment)
+    // are SECURITY DEFINER, so they write as postgres regardless of the
+    // caller's own grants — authenticated has never needed table-level
+    // INSERT on payments for this (confirmed by 20260718110000, which
+    // narrowed authenticated's payments grant to SELECT/UPDATE/DELETE only,
+    // no INSERT). Using `service` here matches what actually happens.
+    const { error: paymentErr } = await service
       .from('payments')
       .upsert({ booking_id: bookingId, paid: false }, { onConflict: 'booking_id' });
     assert.equal(paymentErr, null, paymentErr?.message);

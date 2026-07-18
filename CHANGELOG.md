@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [v5.1.7] - 2026-07-18
+
+### Security
+
+- Narrowed `authenticated`'s table grants, the same defense-in-depth pattern already applied to `anon`. Unlike `anon`, `authenticated` needs broad CRUD for the admin app, so every table was traced individually (real client write call sites plus RLS) rather than revoked wholesale: `audit_logs`/`email_queue` to SELECT+INSERT, `booking_locations`/`location_power`/`locations`/the three public info views to SELECT-only (their writes route through `SECURITY DEFINER` RPCs or don't exist at all), `bookings`/`hcc_checks` to SELECT+INSERT+UPDATE, `email_templates` to SELECT+UPDATE, and `payments` to SELECT+UPDATE+DELETE (no INSERT — all payment-row creation is `SECURITY DEFINER`). `performers`/`schedules` were deliberately left untouched, since both are shared with a separate external app this repo can't audit. Full test suite green on both the test project and production (89 tests, 10 new); one real gap caught mid-verification (a test using the authenticated client as a shortcut for what's actually a service-role-level write) was fixed in the test, not by re-widening the grant.
+
 ## [v5.1.6] - 2026-07-18
 
 ### Security

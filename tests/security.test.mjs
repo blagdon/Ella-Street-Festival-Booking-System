@@ -425,3 +425,81 @@ describe('anon access to privileged RPCs', () => {
     assert.equal(data, null);
   });
 });
+
+describe('authenticated table grant narrowing (20260718110000)', () => {
+  // Every real write path was traced (grep of every .insert()/.update()/
+  // .delete()/.upsert() call site in js/, plus confirming all nine Edge
+  // Functions use SERVICE_ROLE_KEY exclusively) before narrowing
+  // `authenticated`'s table grants. These prove the removed privileges are
+  // actually rejected live, not just absent from the grant text - the same
+  // "verify, don't infer" lesson as every other narrowing this project has
+  // done.
+
+  test('authenticated cannot INSERT into payments directly (all real inserts are SECURITY DEFINER RPCs)', async () => {
+    const { error } = await admin.from('payments').insert({ booking_id: 'ESF26-TESTSEC-NOPE2', paid: false });
+    assert.ok(error, 'expected authenticated INSERT on payments to be rejected outright');
+  });
+
+  test('authenticated CAN delete from payments (finalizeConfirmation\'s real free-booking cleanup path)', async () => {
+    await service.from('payments').upsert({ booking_id: confirmedBookingId, paid: true }, { onConflict: 'booking_id' });
+    const { error } = await admin.from('payments').delete().eq('booking_id', confirmedBookingId);
+    assert.equal(error, null, error?.message);
+    const { data } = await service.from('payments').select('booking_id').eq('booking_id', confirmedBookingId).maybeSingle();
+    assert.equal(data, null, 'expected the authenticated DELETE to have actually removed the row');
+  });
+
+  test('authenticated cannot write to booking_locations directly (writes go through rpc_set_booking_locations)', async () => {
+    const { error } = await admin.from('booking_locations').insert({ booking_id: confirmedBookingId, location_id: liveLocationId });
+    assert.ok(error, 'expected authenticated INSERT on booking_locations to be rejected outright');
+  });
+
+  test('authenticated cannot write to locations directly (physical locations are seed/migration-only)', async () => {
+    const { error } = await admin.from('locations').update({ lat: 0 }).eq('id', liveLocationId);
+    assert.ok(error, 'expected authenticated UPDATE on locations to be rejected outright');
+  });
+
+  test('authenticated cannot write to location_power (zero real usage anywhere)', async () => {
+    const { error } = await admin.from('location_power').update({ power_available: true }).eq('location', liveLocationId);
+    assert.ok(error, 'expected authenticated UPDATE on location_power to be rejected outright');
+  });
+
+  test('authenticated cannot UPDATE or DELETE audit_logs (append-only log)', async () => {
+    const { error: updateErr } = await admin.from('audit_logs').update({ action: 'tampered' }).eq('booking_id', confirmedBookingId);
+    assert.ok(updateErr, 'expected authenticated UPDATE on audit_logs to be rejected outright');
+
+    const { error: deleteErr } = await admin.from('audit_logs').delete().eq('booking_id', confirmedBookingId);
+    assert.ok(deleteErr, 'expected authenticated DELETE on audit_logs to be rejected outright');
+  });
+
+  test('authenticated cannot INSERT or DELETE email_templates (edit-existing-only, no create/delete UI)', async () => {
+    const { error: insertErr } = await admin.from('email_templates').insert({ id: 'sectest_template', subject: 's', body_html: 'b' });
+    assert.ok(insertErr, 'expected authenticated INSERT on email_templates to be rejected outright');
+
+    const { error: deleteErr } = await admin.from('email_templates').delete().eq('id', 'application_received');
+    assert.ok(deleteErr, 'expected authenticated DELETE on email_templates to be rejected outright');
+  });
+
+  test('authenticated cannot UPDATE or DELETE email_queue directly (status transitions are RPC/service-role only)', async () => {
+    const { error: updateErr } = await admin.from('email_queue').update({ status: 'Sent' }).eq('recipient', emailQueueTestRecipient);
+    assert.ok(updateErr, 'expected authenticated UPDATE on email_queue to be rejected outright');
+
+    const { error: deleteErr } = await admin.from('email_queue').delete().eq('recipient', emailQueueTestRecipient);
+    assert.ok(deleteErr, 'expected authenticated DELETE on email_queue to be rejected outright');
+  });
+
+  test('authenticated cannot DELETE bookings (no hard-delete path exists anywhere)', async () => {
+    const { error } = await admin.from('bookings').delete().eq('id', confirmedBookingId);
+    assert.ok(error, 'expected authenticated DELETE on bookings to be rejected outright');
+  });
+
+  test('authenticated cannot write to the three public info views', async () => {
+    const { error: bookingsViewErr } = await admin.from('public_bookings_info').update({ business_name: 'Hacked' }).eq('id', confirmedBookingId);
+    assert.ok(bookingsViewErr, 'expected authenticated UPDATE on public_bookings_info to be rejected');
+
+    const { error: performerViewErr } = await admin.from('public_performer_info').update({ status: 'Paid' }).eq('id', scheduledPerformerId);
+    assert.ok(performerViewErr, 'expected authenticated UPDATE on public_performer_info to be rejected');
+
+    const { error: scheduleViewErr } = await admin.from('public_schedule_info').delete().eq('id', '00000000-0000-0000-0000-000000000000');
+    assert.ok(scheduleViewErr, 'expected authenticated DELETE on public_schedule_info to be rejected');
+  });
+});
