@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented in this file.
 
+## [v5.1.12] - 2026-07-18
+
+### Fixed
+
+- The settings.html "Closed (Visitors Blocked)" toggle now actually blocks visitors. The public food/general booking pages read `settings.food_bookings_open`/`general_bookings_open` as anon to decide whether to swap the form for the "bookings closed" notice, but the anon RLS allowlist on `settings` never included those two keys — the read always failed (masked by the catch whose logging v5.1.10 had already improved), so the forms stayed open regardless of the toggle. Migration `20260718140000_allow_anon_read_booking_open_flags.sql` adds the two keys to the allowlist (their values are only the strings `'true'`/`'false'` — nothing sensitive; the v5.1.6 table-grant narrowing is untouched). Three new live-behavior tests in `tests/security.test.mjs` cover the exact page query as anon, the admin-toggle→anon-visible round trip, and that non-allowlisted settings rows stay hidden. Verified on the disposable test project first (full 92-test suite green), then applied to production and confirmed end-to-end with a real anon REST call.
+
+### Changed
+
+- New `.gitattributes` pins LF line endings for `*.sh` and `rls_grants_snapshot.txt`: a fresh Windows worktree checkout (`core.autocrlf=true`) materialized them with CRLF, which broke `check-rls-grants-snapshot.sh` under bash (`$'\r': command not found`) and made its diff report a bogus full-file snapshot mismatch.
+
 ## [v5.1.11] - 2026-07-18
 
 ### Fixed
