@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [v5.1.9] - 2026-07-18
+
+### Security
+
+- Revoked `anon`'s grant on the three id sequences behind `audit_logs`/`booking_locations`/`email_queue` (previously full `rwU`, letting `anon` call `nextval()`/`setval()`/`currval()` directly). No PostgREST surface exposes a sequence, so this was never a live exploit path — pure hygiene, closed because `anon` has zero legitimate reason to ever trigger `nextval()` on any of the three (none of the underlying tables allow `anon` to INSERT, following the narrowing already done in v5.1.6). `authenticated`/`service_role` grants on these sequences are unaffected. This closes the last remaining item from the interrupted table-grant-narrowing effort (v5.1.5–v5.1.9). Verified live via `pg_class.relacl` on both the test project and production.
+
 ## [v5.1.8] - 2026-07-18
 
 ### Security
