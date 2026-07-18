@@ -1,6 +1,7 @@
 import { initAdminPage, getSupabaseClient } from './supabase.js';
 import { getCurrentInstance } from './config.js';
 import { showToast } from './ui.js';
+import { safeError } from './utils.js';
 
 let sb;
 
@@ -115,7 +116,8 @@ async function updateUserPassword() {
         }, 1500);
 
     } catch (err) {
-        showToast('Failed to update password.', 'error');
+        console.error('Password update failed:', err);
+        showToast('Failed to update password: ' + safeError(err), 'error');
         btn.disabled = false;
         btn.innerText = 'Update Password';
     }

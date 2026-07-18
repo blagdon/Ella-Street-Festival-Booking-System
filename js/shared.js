@@ -29,6 +29,7 @@ export async function manualSendPaymentReminder(id) {
 
         showToast("Payment reminder sent!");
     } catch (err) {
+        console.error('Payment reminder failed:', err);
         showToast("Failed to send reminder: " + err.message, 'error');
     }
 }
@@ -200,6 +201,7 @@ export async function sharedUpdateStatus(id, status, allBookings, options = {}) 
         if (onSuccess) onSuccess(status);
 
     } catch (err) {
+        console.error(`Status update to '${status}' failed for ${id}:`, err);
         showToast("Failed to update: " + err.message, 'error');
         if (onError) onError();
     }
