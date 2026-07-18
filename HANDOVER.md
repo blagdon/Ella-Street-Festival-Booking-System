@@ -1750,6 +1750,39 @@ tested live, and deployed. In order, what was just finished:
     their queued `integration-tests` runs cancelled — just `gh run rerun --failed`
     once the queue drains, nothing is actually broken.
 
+46. Narrowed `payments` table grants for `anon` (2026-07-18,
+    `20260718090000_narrow_payments_table_grants_anon.sql`, same defense-in-depth
+    pattern as item 44's `settings` narrowing). `anon` held `GRANT ALL` on `payments`
+    with only the "Admin only payments" RLS policy (implicitly `PUBLIC`, gated on
+    `check_user_role('admin')`) standing behind it — a bad policy edit or an
+    accidental `DISABLE ROW LEVEL SECURITY` would have hit the table recording who
+    paid what for a stall booking. Traced before touching anything: no trigger exists
+    on `payments`; every write path (`mark_stripe_payment_received`,
+    `finalize_stripe_confirmation`, `finalize_stripe_payment`,
+    `rpc_record_bank_transfer_payment`) is `SECURITY DEFINER` and already denies
+    `anon` at the function level (`REVOKE ALL FROM PUBLIC` plus, for the bank-transfer
+    RPC, an explicit `REVOKE ... FROM "anon"`); grep of every `.from('payments')` call
+    site (js/api.js only) confirmed all three live behind `getSupabaseClient()`,
+    reachable only from admin-authenticated pages — the public booking pages
+    (`page-cancel.js`/`page-general-booking.js`/`page-food-booking.js`) import only
+    `getPublicSupabaseClient` and never touch `payments`. `anon` now has zero
+    table-level privileges, not even SELECT. Applied to the disposable test project
+    first, full 70-test suite green (including the entire Stripe/bank-transfer/
+    booking-confirmation workflow), then to the live project; independently
+    confirmed via a direct read-only query that `anon`'s privileges on `payments` are
+    now empty. Added a live-verified regression test (`tests/security.test.mjs`,
+    "payments is completely inaccessible to anon, including writes") rather than
+    trusting the grant text — same lesson item 44 already recorded. `authenticated`/
+    `service_role` grants on `payments` are untouched; this was scoped to `anon` only.
+    Gotcha: regenerating `rls_grants_snapshot.txt` while the local CLI happened to
+    still be linked to the disposable test project produced a snapshot with several
+    extra `storage.objects` policies the test project has and production doesn't —
+    caught before committing by re-diffing and noticing the unexpected lines; always
+    confirm `cat supabase/.temp/project-ref` before running
+    `check-rls-grants-snapshot.sh --update`, and relink back to the test project
+    immediately after touching production (the safe default per this repo's
+    convention).
+
 **Explicitly deferred, not started:** Slack/Discord/Sentry-style alerting for Edge
 Function errors — the project owner said "I'll do it later," don't assume it's wanted
 now without asking.

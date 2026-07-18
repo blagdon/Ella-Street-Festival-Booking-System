@@ -291,6 +291,32 @@ describe('anon access to admin-only tables', () => {
     const { error } = await anon.from('email_queue').select('*');
     assert.ok(error, 'expected anon SELECT on email_queue to be rejected outright');
   });
+
+  test('payments is completely inaccessible to anon, including writes', async () => {
+    // 20260718090000_narrow_payments_table_grants_anon.sql: payments used to
+    // hold GRANT ALL for anon at the table level, with only the "Admin only
+    // payments" RLS policy (implicitly PUBLIC, gated on check_user_role
+    // ('admin')) stopping anon from reading/writing it - a single point of
+    // failure. anon now has zero table-level grant, same posture as
+    // user_roles/email_queue above, so every operation is rejected outright
+    // rather than filtered down to zero rows.
+    const { error: selectErr } = await anon.from('payments').select('*');
+    assert.ok(selectErr, 'expected anon SELECT on payments to be rejected outright');
+
+    const { error: insertErr } = await anon.from('payments').insert({
+      booking_id: 'ESF26-TESTSEC-NOPE', paid: true, editor: 'anon-injection-attempt',
+    });
+    assert.ok(insertErr, 'expected anon INSERT on payments to be rejected outright');
+
+    const { error: updateErr } = await anon
+      .from('payments')
+      .update({ paid: true })
+      .eq('booking_id', 'ESF26-TESTSEC-NOPE');
+    assert.ok(updateErr, 'expected anon UPDATE on payments to be rejected outright');
+
+    const { error: deleteErr } = await anon.from('payments').delete().eq('booking_id', 'ESF26-TESTSEC-NOPE');
+    assert.ok(deleteErr, 'expected anon DELETE on payments to be rejected outright');
+  });
 });
 
 describe('admin access to email_queue', () => {

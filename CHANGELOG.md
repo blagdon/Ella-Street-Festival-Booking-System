@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [v5.1.5] - 2026-07-18
+
+### Security
+
+- Narrowed the `payments` table grant: `anon` no longer holds `GRANT ALL`. RLS already blocked every anon read/write via the "Admin only payments" policy, but the table grant was the sole thing standing behind it — a bad policy edit or an accidental `DISABLE ROW LEVEL SECURITY` would have handed anon full read/write on the table that records who paid what for a stall booking. `anon` now has zero table-level privileges on `payments`, confirmed by trace: no trigger touches the table, every write path is `SECURITY DEFINER` and already denies anon at the function level, and no client code (public or admin) ever queries `payments` as anon. `authenticated`/`service_role` are unaffected. Applied and verified on both the live and disposable test projects; full 70-test suite green on the test project before the live push.
+
 ## [v5.1.4] - 2026-07-17
 
 ### Fixed
