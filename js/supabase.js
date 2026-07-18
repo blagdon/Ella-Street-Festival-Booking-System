@@ -40,7 +40,6 @@ export async function requireAuth(requiredRole = 'admin') {
         const { data: { session } } = await sb.auth.getSession();
 
         if (!session) {
-            window.location.href = (requiredRole === 'steward') ? 'steward_login.html' : 'login.html';
             throw new Error('Not authenticated');
         }
 
@@ -59,14 +58,15 @@ export async function requireAuth(requiredRole = 'admin') {
             return session;
         }
 
-        const loginPage = (requiredRole === 'steward') ? 'steward_login.html' : 'login.html';
-        window.location.href = loginPage + '?error=unauthorized';
         throw new Error('Unauthorized');
 
     } catch (e) {
-        if (e.message === 'Not authenticated' || e.message === 'Unauthorized') {
+        if (e.message === 'Not authenticated') {
             const loginPage = (requiredRole === 'steward') ? 'steward_login.html' : 'login.html';
             window.location.href = loginPage;
+        } else if (e.message === 'Unauthorized') {
+            const loginPage = (requiredRole === 'steward') ? 'steward_login.html' : 'login.html';
+            window.location.href = loginPage + '?error=unauthorized';
         } else {
             console.warn("Database connection issue during authentication check:", e);
             if (typeof showToast === 'function') {
