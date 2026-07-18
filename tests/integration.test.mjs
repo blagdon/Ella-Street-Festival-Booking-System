@@ -300,6 +300,73 @@ describe('submit-booking', () => {
   });
 });
 
+describe('submit-booking document moves', () => {
+  // Same bucket the seed script's bucket_name setting points at.
+  const BUCKET = 'esf-documents';
+  const storagePathsToClean = [];
+
+  after(async () => {
+    if (storagePathsToClean.length) {
+      await service.storage.from(BUCKET).remove(storagePathsToClean);
+    }
+  });
+
+  test('moves an uploaded temp file into the booking folder and records the new path', async () => {
+    const tempUuid = crypto.randomUUID();
+    const fileName = 'doc_move_ok.pdf';
+    const tempPath = `temp/${tempUuid}/${fileName}`;
+
+    const { error: upErr } = await service.storage
+      .from(BUCKET)
+      .upload(tempPath, Buffer.from('%PDF-1.4 integration test'), { contentType: 'application/pdf' });
+    assert.equal(upErr, null, `temp upload failed: ${upErr?.message}`);
+    storagePathsToClean.push(tempPath);
+
+    const { status, json } = await callFunction('submit-booking', {
+      ...submitBookingPayload('DOCMOVE', { instance_prefix: 'ESF26-DEV-' }),
+      tempUuid,
+      fileNames: [fileName],
+    });
+    assert.equal(status, 200, JSON.stringify(json));
+    const booking = json.data[0];
+    createdBookingIds.push(booking.id);
+    const movedPath = `${booking.id}/${fileName}`;
+    storagePathsToClean.push(movedPath);
+
+    assert.deepEqual(booking.documents, [movedPath], 'documents must record the post-move path');
+    const { data: row } = await service.from('bookings').select('documents').eq('id', booking.id).single();
+    assert.deepEqual(row.documents, [movedPath]);
+
+    const { data: moved, error: dlErr } = await service.storage.from(BUCKET).download(movedPath);
+    assert.equal(dlErr, null, `expected the file to exist at its recorded path: ${dlErr?.message}`);
+    assert.ok(moved.size > 0, 'moved file should not be empty');
+  });
+
+  test('keeps the temp path when a move fails, never recording a destination that does not exist', async () => {
+    const tempUuid = crypto.randomUUID();
+    const fileName = 'doc_never_uploaded.pdf';
+    const tempPath = `temp/${tempUuid}/${fileName}`;
+    // Deliberately NOT uploaded — the storage move will fail (missing source),
+    // which is also what a real transient move failure leaves behind: the file
+    // absent from the booking folder. The function must fall back to the temp
+    // path rather than record a booking-folder path that was never created.
+
+    const { status, json } = await callFunction('submit-booking', {
+      ...submitBookingPayload('DOCMOVEFAIL', { instance_prefix: 'ESF26-DEV-' }),
+      tempUuid,
+      fileNames: [fileName],
+    });
+    assert.equal(status, 200, JSON.stringify(json));
+    const booking = json.data[0];
+    createdBookingIds.push(booking.id);
+
+    assert.deepEqual(booking.documents, [tempPath],
+      'a failed move must keep the temp path in documents, not the nonexistent destination path');
+    const { data: row } = await service.from('bookings').select('documents').eq('id', booking.id).single();
+    assert.deepEqual(row.documents, [tempPath]);
+  });
+});
+
 describe('cancel-booking', () => {
   test('cancels a booking by its token and logs the confirmation email as Error', async () => {
     const bookingId = 'ESF26-TESTCANCEL-0001';

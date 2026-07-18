@@ -289,17 +289,20 @@ Deno.serve(async (req) => {
         const fromPath = `temp/${tempUuid}/${fileName}`
         const toPath = `${newBooking.id}/${fileName}`
 
-        // Move the file
-        const { error: moveErr } = await supabaseAdmin.storage.from(bucketName).move(fromPath, toPath)
-        if (moveErr) {
-          console.warn(`Failed to move file ${fromPath} to ${toPath}:`, moveErr.message)
-          // Fallback: If move fails, try using the original temp URL if available
-        }
-
         // Store the storage path, not a public URL — esf-documents is a
         // private bucket; admin views resolve this to a signed URL on
-        // demand via the get-booking-documents Edge Function.
-        movedPaths.push(toPath)
+        // demand via the get-booking-documents Edge Function. If the move
+        // fails, keep the temp path instead of recording a destination that
+        // doesn't exist: nothing cleans up temp/, so the uploaded file is
+        // still there and signable — the admin just sees it under its temp
+        // path rather than the booking's folder.
+        const { error: moveErr } = await supabaseAdmin.storage.from(bucketName).move(fromPath, toPath)
+        if (moveErr) {
+          console.warn(`Failed to move file ${fromPath} to ${toPath} (keeping temp path):`, moveErr.message)
+          movedPaths.push(fromPath)
+        } else {
+          movedPaths.push(toPath)
+        }
       }
 
       const { error: updateErr } = await supabaseAdmin
