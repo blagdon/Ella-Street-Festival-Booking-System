@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [v5.1.6] - 2026-07-18
+
+### Security
+
+- Narrowed the remaining tables/views where `anon` held `GRANT ALL`: `anon` now has zero table-level privileges on `audit_logs`, `email_templates`, and `hcc_checks` (no RLS policy ever let anon through any of them), and SELECT-only on `booking_locations`, `location_power`, `locations`, `public_bookings_info`, `public_performer_info`, and `public_schedule_info` (each already SELECT-only or read-only by RLS/view intent). Also revoked a vestigial `TRIGGER` privilege `anon` still held on `bookings`/`performers`/`schedules` — inert, since that privilege only gates `CREATE TRIGGER` DDL, not whether existing triggers fire. Every anon-reachable trigger chain and client call site was traced first to confirm nothing depended on the removed grants; `performers`/`schedules`' deliberate column-level anon grants were left untouched. Applied and verified on both the disposable test project (79-test suite green) and production, with an independent read-only query confirming the final live state matches intent exactly. `authenticated`/`service_role` grants are unaffected.
+
 ## [v5.1.5] - 2026-07-18
 
 ### Security
