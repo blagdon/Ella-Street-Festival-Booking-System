@@ -1,0 +1,6 @@
+# Keep bash-executed and bash-generated files LF even on Windows checkouts.
+# core.autocrlf=true materializes CRLF, which (a) breaks bash on the \r's
+# ("$'\r': command not found") and (b) makes check-rls-grants-snapshot.sh
+# falsely diff its LF database dump against a CRLF snapshot file.
+*.sh text eol=lf
+rls_grants_snapshot.txt text eol=lf
