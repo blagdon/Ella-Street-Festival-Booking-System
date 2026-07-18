@@ -2,6 +2,20 @@
 
 All notable changes to this project are documented in this file.
 
+## [v5.1.10] - 2026-07-18
+
+### Fixed
+
+- Client catch blocks no longer swallow the underlying error: the password-update toast now includes the laundered cause (`safeError`) and logs the full error, the public forms' bookings-open check logs the real message instead of an unstringified object, and `shared.js`'s reminder/status-update handlers log the full error alongside their existing toasts. (Found the hard way: two live failures on 2026-07-18 were undiagnosable from the generic messages.)
+
+### Changed
+
+- Extracted the FSA hygiene-ratings and Google Maps reviews sections out of `js/shared.js` into `js/fsa-ratings.js` and `js/google-reviews.js` (verbatim move, no behavior change); `shared.js` drops from ~810 to 400 lines.
+
+### Security
+
+- Removed the `cdn.tailwindcss.com` runtime script from all pages — every page now uses the compiled `css/output.css` only — and dropped that origin from every page's CSP `script-src`/`style-src`, eliminating a third-party supply-chain exposure and the "should not be used in production" console warning. Also renamed the package from the historical `test-deploy-tailwinds-change` and removed the stale hardcoded `v3.0` from page footers.
+
 ## [v5.1.9] - 2026-07-18
 
 ### Security
