@@ -12,8 +12,8 @@
  */
 
 export const ESF_PUBLIC_CONFIG = {
-    SUPABASE_URL: "https://rsnxhuhibglieofikkpo.supabase.co",
-    SUPABASE_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJzbnhodWhpYmdsaWVvZmlra3BvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk2Nzg5MjcsImV4cCI6MjA4NTI1NDkyN30.QNrMVCc9FFdIAR4wRv6g4V4p2JA8pbCoaf8zLRuu0fw",
+    SUPABASE_URL: "https://qeplpcnrkgpaawfyliap.supabase.co",
+    SUPABASE_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFlcGxwY25ya2dwYWF3ZnlsaWFwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk5NTIwNDQsImV4cCI6MjA4NTUyODA0NH0.5XJdJEw8-bfhcPteMQsIG-Tk5DwtUIVdbbJGnmW1ZbM",
     BUCKET_NAME: "esf-documents",
     TURNSTILE_SITE_KEY: "0x4AAAAAACZTfDIHzMhGqnER",
     BASE_URL: "https://app.ellastreet.co.uk",
