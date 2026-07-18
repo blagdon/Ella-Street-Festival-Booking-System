@@ -6,3 +6,8 @@ backups/
 .env*
 *.local
 syntax_errors_report.json
+
+# Session-local Claude Code state (worktrees, launch config) and ad-hoc
+# root-level schema dumps - the schema source of truth is supabase/migrations/.
+.claude/
+/schema.sql
