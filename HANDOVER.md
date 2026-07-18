@@ -1870,6 +1870,36 @@ tested live, and deployed. In order, what was just finished:
     `service_role` grants untouched everywhere; scoped to `authenticated` only.
     Still deliberately deferred: the `ALTER DEFAULT PRIVILEGES` fix for
     `authenticated` and the three sequence grants.
+49. `ALTER DEFAULT PRIVILEGES` fix for `authenticated` (2026-07-18,
+    `20260718120000_revoke_default_authenticated_privileges.sql`, mirrors
+    20260717080000's anon fix, closing one of the two items item 48 deferred).
+    Confirmed live via `pg_default_acl` that objects created as `postgres` (how every
+    migration in this project creates objects) were still auto-granting
+    `authenticated` essentially everything at CREATE time: `X` (EXECUTE) on new
+    functions, `arwdDxtm` (all table privileges) on new tables, `rwU` (all) on new
+    sequences — the exact same gap `anon` had before 20260717080000, just never
+    closed for `authenticated`. Every migration in this project already states its
+    `authenticated` grant explicitly by hand (confirmed across every migration
+    touched this session), so the default was already redundant in practice — it
+    just meant a future migration that forgot the explicit grant would silently
+    get full access instead of failing loudly. Non-retroactive, same as the anon
+    fix: doesn't touch any existing grant, only what happens at CREATE time from
+    here on. Applied to the test project first, full 89-test suite green (an
+    inherent no-op check, since nothing existing changes), then to production;
+    independently re-verified via `pg_default_acl` on both that `authenticated` is
+    now absent from all three default ACL entries, matching `anon`'s. No
+    regression test added — the project's test suite runs entirely over
+    supabase-js/PostgREST with no raw SQL/DDL execution capability (no generic
+    SQL-exec RPC exists in the schema, which is itself a good property, not a
+    gap), so there's no way to create a throwaway object from within the Node
+    suite to exercise this rule automatically; the live `pg_default_acl` query is
+    the verification here, not a stand-in for one. `rls_grants_snapshot.txt`
+    unchanged by this migration (it only captures `CREATE POLICY`/`GRANT`/
+    `REVOKE` lines from a schema dump; `ALTER DEFAULT PRIVILEGES` isn't a current
+    grant on anything, so there's nothing for it to capture — same reason the
+    anon fix never touched the snapshot either). The three `anon` sequence grants
+    (`audit_logs_id_seq`/`booking_locations_id_seq`/`email_queue_id_seq`) remain
+    the one piece of the original interrupted brief not yet done.
 
 **Explicitly deferred, not started:** Slack/Discord/Sentry-style alerting for Edge
 Function errors — the project owner said "I'll do it later," don't assume it's wanted
