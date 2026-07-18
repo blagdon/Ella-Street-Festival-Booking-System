@@ -2,8 +2,8 @@
 
 > Written for an AI coding agent picking this up cold. No prior context assumed.
 > Last updated: 2026-07-18.
-> Current release: **v5.1.11** (tagged 2026-07-18; the `submit-booking` failed-move
-> temp-path fix, see [Next Steps](#8-next-steps) item 51) — see `CHANGELOG.md` for
+> Current release: **v5.1.12** (tagged 2026-07-18; the bookings-closed-toggle RLS
+> fix, see [Next Steps](#8-next-steps) item 52) — see `CHANGELOG.md` for
 > per-version release notes and the repo's GitHub Releases page for the tagged
 > versions. Every `CHANGELOG.md` version now has a matching GitHub release:
 > v5.1.4–v5.1.10 had been changelog-entries-only, and were tagged retroactively on
@@ -1961,6 +1961,41 @@ it as a live concern.
     phantom destination). Verified per convention: function deployed to the
     disposable test project first, full 91-test suite green there, then merged
     and deployed to production with a CORS-preflight smoke check.
+
+52. **Fixed the bookings-open toggle never actually blocking visitors
+    (2026-07-18, PR #21, migration
+    `20260718140000_allow_anon_read_booking_open_flags.sql`).** The public
+    booking pages read `settings.food_bookings_open`/`general_bookings_open` as
+    anon (`js/page-food-booking.js`, `js/page-general-booking.js`) to decide
+    whether to swap the form for the "bookings closed" notice, but the anon
+    SELECT policy's key allowlist never included those two keys — RLS filtered
+    the row, `.single()` errored on zero rows, the page's catch swallowed it
+    (v5.1.10 had already improved exactly that logging, one release before the
+    cause was found), and the form always showed. settings.html's "Closed
+    (Visitors Blocked)" switch had therefore never blocked anyone. This IS an
+    RLS policy change — the category items 46–50 deliberately avoided —
+    justified because the existing policy broke a real feature; the two values
+    are only the strings 'true'/'false', and the 20260717100000 table-grant
+    narrowing stays untouched as the independent second layer. Three
+    live-behavior tests added to `tests/security.test.mjs` ("anon access to
+    settings" describe block): the exact page query for both keys as anon, the
+    real admin upsert write path flipping a flag and anon seeing the change
+    (the precise closed-notice condition), and non-allowlisted rows
+    (`bank_account_number`) staying invisible including via the broad
+    `loadPublicSettings()`-style read. Verified per convention: applied to the
+    test project first (full 92-test suite green), production confirmed
+    drift-free against the committed snapshot beforehand, human-run `db push`
+    to production, snapshot check OK against production after, plus a live
+    anon REST call proving both flags readable and sensitive keys still
+    hidden. Two operational lessons from the same session, both fixed: (a) new
+    `.gitattributes` pins LF for `*.sh` and `rls_grants_snapshot.txt` — a
+    fresh Windows worktree checkout (`core.autocrlf=true`) materialized them
+    CRLF, breaking the check script under bash and producing a bogus
+    full-file snapshot diff; (b) the snapshot is authoritative from
+    PRODUCTION only — the test project carries leftover `storage.objects`
+    policies production doesn't have — so the check/`--update` dance is: link
+    `rsnxhuhibglieofikkpo`, verify `supabase/.temp/project-ref`, run it, and
+    always relink `qeplpcnrkgpaawfyliap` after.
 
 **Explicitly deferred, not started:** Slack/Discord/Sentry-style alerting for Edge
 Function errors — the project owner said "I'll do it later," don't assume it's wanted
