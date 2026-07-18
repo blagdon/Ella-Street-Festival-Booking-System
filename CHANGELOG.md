@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [v5.1.11] - 2026-07-18
+
+### Fixed
+
+- `submit-booking` no longer records a nonexistent storage path when moving an uploaded document out of `temp/` fails: previously a failed move was only logged but the never-created destination path (`<bookingId>/<file>`) was still written to `bookings.documents`, so `get-booking-documents` couldn't sign it and the admin silently lost access to the trader's uploaded document (e.g. the required insurance certificate). A failed move now keeps the still-valid `temp/` source path instead — nothing cleans up `temp/`, so the file remains signable and viewable by admins, just under its temp path. Covered by two new integration tests (success path and failed-move fallback); verified on the disposable test project before the production deploy.
+
 ## [v5.1.10] - 2026-07-18
 
 ### Fixed
