@@ -39,6 +39,12 @@ const deletedScheduledPerformerId = '11111111-2222-3333-4444-555555555503';
 const devLocationId = 'TESTSECLOC-DEV';
 const liveLocationId = 'TESTSECLOC-LIVE';
 const emailQueueTestRecipient = 'sectest-emailqueue@example.test';
+// The two booking-form open/closed flags (written by settings.html's toggle,
+// read by the public booking pages as anon). Saved/restored around the run
+// because unlike the other fixtures they're global keys, not TESTSEC-prefixed
+// rows we own outright.
+const bookingOpenKeys = ['food_bookings_open', 'general_bookings_open'];
+let savedBookingOpenRows;
 
 before(async () => {
   admin = createClient(url, anonKey);
@@ -108,6 +114,15 @@ before(async () => {
     status: 'Error', error_message: 'Sec test induced failure', instance_prefix: 'ESF26-FOOD-',
   });
   if (emailQueueInsertErr) throw new Error(`Fixture setup failed (email_queue): ${emailQueueInsertErr.message}`);
+
+  const { data: savedRows, error: savedErr } = await service.from('settings').select('key, value').in('key', bookingOpenKeys);
+  if (savedErr) throw new Error(`Fixture setup failed (settings read): ${savedErr.message}`);
+  savedBookingOpenRows = savedRows;
+  const { error: settingsErr } = await service.from('settings').upsert(
+    bookingOpenKeys.map((key) => ({ key, value: 'true' })),
+    { onConflict: 'key' },
+  );
+  if (settingsErr) throw new Error(`Fixture setup failed (settings): ${settingsErr.message}`);
 });
 
 after(async () => {
@@ -116,6 +131,14 @@ after(async () => {
   await service.from('performers').delete().in('id', [scheduledPerformerId, appliedPerformerId, deletedScheduledPerformerId]);
   await service.from('locations').delete().in('id', [devLocationId, liveLocationId]);
   await service.from('email_queue').delete().eq('recipient', emailQueueTestRecipient);
+  // Restore the booking-open flags to whatever they were before the run:
+  // delete the ones that didn't exist, put back the ones that did.
+  if (savedBookingOpenRows) {
+    const savedKeys = savedBookingOpenRows.map((r) => r.key);
+    const unsavedKeys = bookingOpenKeys.filter((k) => !savedKeys.includes(k));
+    if (unsavedKeys.length) await service.from('settings').delete().in('key', unsavedKeys);
+    if (savedKeys.length) await service.from('settings').upsert(savedBookingOpenRows, { onConflict: 'key' });
+  }
 });
 
 describe('anon access to bookings', () => {
@@ -326,6 +349,72 @@ describe('anon access to location_power', () => {
 
     const { error: updateErr } = await anon.from('location_power').update({ power_available: false }).eq('location', liveLocationId);
     assert.ok(updateErr, 'expected anon UPDATE on location_power to be rejected outright');
+  });
+});
+
+describe('anon access to settings (booking open/closed flags)', () => {
+  // 20260718140000_allow_anon_read_booking_open_flags.sql: the public booking
+  // pages read food_bookings_open / general_bookings_open as anon to decide
+  // whether to swap the form for the "bookings closed" notice
+  // (js/page-food-booking.js, js/page-general-booking.js), but the anon
+  // settings allowlist never included those keys - the read always errored
+  // (masked by a catch that only console.warns) and the form always showed,
+  // making settings.html's "Closed (Visitors Blocked)" toggle a no-op for
+  // visitors. These run the exact queries the pages run.
+  test('anon can read both booking-open flags via the exact page query', async () => {
+    for (const key of bookingOpenKeys) {
+      const { data, error } = await anon.from('settings').select('value').eq('key', key).single();
+      assert.equal(error, null, `expected anon to read settings.${key}: ${error?.message}`);
+      assert.equal(data.value, 'true');
+    }
+  });
+
+  test('closing a form via the admin toggle is actually visible to anon (the closed-notice data path)', async () => {
+    // settings.html's toggleSetting() runs as an authenticated admin and
+    // upserts value 'false'; mirror that real write path, then confirm the
+    // public page's read sees it. page-*-booking.js hides the form when
+    // data.value !== 'true', so anon receiving 'false' here is precisely the
+    // condition that shows the closed notice.
+    const { error: toggleErr } = await admin.from('settings').upsert({
+      key: 'food_bookings_open', value: 'false',
+      updated_at: new Date().toISOString(), updated_by: adminEmail,
+    });
+    assert.equal(toggleErr, null, toggleErr?.message);
+
+    const { data, error } = await anon.from('settings').select('value').eq('key', 'food_bookings_open').single();
+    assert.equal(error, null, error?.message);
+    assert.equal(data.value, 'false', 'expected anon to see the toggled-closed value');
+
+    // Re-open and confirm the round trip back to "form shows".
+    const { error: reopenErr } = await admin.from('settings').upsert({
+      key: 'food_bookings_open', value: 'true',
+      updated_at: new Date().toISOString(), updated_by: adminEmail,
+    });
+    assert.equal(reopenErr, null, reopenErr?.message);
+    const { data: reopened } = await anon.from('settings').select('value').eq('key', 'food_bookings_open').single();
+    assert.equal(reopened.value, 'true');
+  });
+
+  test('the allowlist still hides sensitive settings rows from anon', async () => {
+    // bank_account_number is seeded by scripts/seed-test-project.mjs and is
+    // deliberately NOT on the allowlist; RLS filters it to zero rows (the
+    // table-level SELECT grant from 20260717100000 means no outright error).
+    const { data, error } = await anon.from('settings').select('key').eq('key', 'bank_account_number');
+    assert.equal(error, null, error?.message);
+    assert.equal(data.length, 0, 'expected non-allowlisted settings rows to stay invisible to anon');
+
+    // And the broad read loadPublicSettings() does (supabase-public.js) must
+    // only ever surface allowlisted keys.
+    const allowlist = [
+      'stall_cost_food', 'stall_cost_general', 'stall_cost_dev', 'turnstile_site_key',
+      'base_url', 'cancel_url', 'portal_url', 'booking_prefix', 'bucket_name',
+      'hcc_council_email', 'map_center_lat', 'map_center_lng', 'map_default_zoom',
+      ...bookingOpenKeys,
+    ];
+    const { data: broad, error: broadErr } = await anon.from('settings').select('key');
+    assert.equal(broadErr, null, broadErr?.message);
+    const leaked = broad.map((r) => r.key).filter((k) => !allowlist.includes(k));
+    assert.deepEqual(leaked, [], `expected no settings keys outside the anon allowlist, got: ${leaked.join(', ')}`);
   });
 });
 
