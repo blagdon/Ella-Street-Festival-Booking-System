@@ -199,6 +199,24 @@ describe('anon access to public_bookings_info (replaces direct bookings access)'
   });
 });
 
+describe('anon write access to the other public info views', () => {
+  // 20260718100000_narrow_remaining_anon_table_grants.sql: public_performer_info
+  // and public_schedule_info were narrowed from GRANT ALL to SELECT-only for
+  // anon, same as public_bookings_info above. Neither has a call site in
+  // this repo (consumed by the separate performers-admin app), so this only
+  // checks the write side - SELECT behavior for these two is exercised by
+  // the separate app, not this test suite.
+  test('anon cannot write to public_performer_info', async () => {
+    const { error } = await anon.from('public_performer_info').update({ status: 'Paid' }).eq('id', scheduledPerformerId);
+    assert.ok(error, 'expected anon UPDATE on public_performer_info to be rejected');
+  });
+
+  test('anon cannot write to public_schedule_info', async () => {
+    const { error } = await anon.from('public_schedule_info').delete().eq('id', '00000000-0000-0000-0000-000000000000');
+    assert.ok(error, 'expected anon DELETE on public_schedule_info to be rejected');
+  });
+});
+
 describe('anon access to booking_locations', () => {
   // "Allow public anon to read confirmed booking locations" checks
   // bookings.status via the is_booking_confirmed() SECURITY DEFINER helper
@@ -216,6 +234,13 @@ describe('anon access to booking_locations', () => {
     const { data, error } = await anon.from('booking_locations').select('location_id').eq('booking_id', pendingBookingId);
     assert.equal(error, null, error?.message);
     assert.equal(data.length, 0);
+  });
+
+  // 20260718100000_narrow_remaining_anon_table_grants.sql: narrowed from
+  // GRANT ALL to SELECT-only for anon.
+  test('anon cannot write to booking_locations', async () => {
+    const { error } = await anon.from('booking_locations').insert({ booking_id: confirmedBookingId, location_id: liveLocationId });
+    assert.ok(error, 'expected anon INSERT on booking_locations to be rejected outright');
   });
 });
 
@@ -275,6 +300,33 @@ describe('anon access to locations', () => {
     const { data: explicitLive } = await anon.from('locations').select('id').eq('id', liveLocationId);
     assert.equal(explicitLive.length, 1, 'expected the LIVE test row to remain visible to anon');
   });
+
+  // 20260718100000_narrow_remaining_anon_table_grants.sql: locations was
+  // narrowed from GRANT ALL to SELECT-only for anon (RLS was already the
+  // only thing filtering rows; this makes the table grant a second,
+  // independent layer). SELECT continuing to work is proven above; this
+  // proves the write side is actually rejected outright, not just filtered.
+  test('anon cannot write to locations', async () => {
+    const { error: updateErr } = await anon.from('locations').update({ lat: 0 }).eq('id', liveLocationId);
+    assert.ok(updateErr, 'expected anon UPDATE on locations to be rejected outright');
+
+    const { error: insertErr } = await anon.from('locations').insert({ id: 'TESTSEC-INJECT', dataset: 'LIVE', lat: 0, lng: 0 });
+    assert.ok(insertErr, 'expected anon INSERT on locations to be rejected outright');
+  });
+});
+
+describe('anon access to location_power', () => {
+  // Same narrowing as locations, applied the same day. No client call site
+  // in this repo currently reads location_power, but its own RLS policy
+  // ("Public view power") has always been SELECT-only, so the table grant
+  // now just matches what was already the intent.
+  test('anon can select but not write to location_power', async () => {
+    const { error: selectErr } = await anon.from('location_power').select('*').limit(1);
+    assert.equal(selectErr, null, selectErr?.message);
+
+    const { error: updateErr } = await anon.from('location_power').update({ power_available: false }).eq('location', liveLocationId);
+    assert.ok(updateErr, 'expected anon UPDATE on location_power to be rejected outright');
+  });
 });
 
 describe('anon access to admin-only tables', () => {
@@ -290,6 +342,26 @@ describe('anon access to admin-only tables', () => {
   test('email_queue is completely inaccessible to anon', async () => {
     const { error } = await anon.from('email_queue').select('*');
     assert.ok(error, 'expected anon SELECT on email_queue to be rejected outright');
+  });
+
+  // 20260718100000_narrow_remaining_anon_table_grants.sql: audit_logs,
+  // email_templates, and hcc_checks all had GRANT ALL for anon with no RLS
+  // policy that ever let anon through (audit_logs/hcc_checks are admin-only;
+  // email_templates is authenticated-admin-only) - narrowed to zero,
+  // same posture as user_roles/email_queue above.
+  test('audit_logs is completely inaccessible to anon', async () => {
+    const { error } = await anon.from('audit_logs').select('*');
+    assert.ok(error, 'expected anon SELECT on audit_logs to be rejected outright');
+  });
+
+  test('email_templates is completely inaccessible to anon', async () => {
+    const { error } = await anon.from('email_templates').select('*');
+    assert.ok(error, 'expected anon SELECT on email_templates to be rejected outright');
+  });
+
+  test('hcc_checks is completely inaccessible to anon', async () => {
+    const { error } = await anon.from('hcc_checks').select('*');
+    assert.ok(error, 'expected anon SELECT on hcc_checks to be rejected outright');
   });
 
   test('payments is completely inaccessible to anon, including writes', async () => {

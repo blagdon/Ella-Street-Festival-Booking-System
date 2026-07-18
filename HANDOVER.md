@@ -1782,6 +1782,47 @@ tested live, and deployed. In order, what was just finished:
     `check-rls-grants-snapshot.sh --update`, and relink back to the test project
     immediately after touching production (the safe default per this repo's
     convention).
+47. Narrowed the rest of the anon-`GRANT ALL` tables/views flagged alongside `payments`
+    (2026-07-18, `20260718100000_narrow_remaining_anon_table_grants.sql`, item 46's
+    sibling). Queried production directly first for a fresh, authoritative list of
+    every table where `anon` still held elevated privileges, rather than trusting a
+    written-down list that could have drifted. Traced every `CREATE TRIGGER` in the
+    schema (5 total) and every anon-reachable write path (`performers`' "Public can
+    apply" INSERT is the only one) to confirm no non-`SECURITY DEFINER` trigger writes
+    into any of the target tables as a side effect — the exact "trigger trap" this
+    kind of change can fall into. Also discovered `js/api.js` is not purely
+    admin-only as previously assumed: `js/map.js` (used by the public
+    `visitor_map.html`) imports `fetchMapData()` from it directly, and
+    `getSupabaseClient()`/`getPublicSupabaseClient()` construct clients from the
+    identical anon key — so that read genuinely runs as `anon`, which is exactly
+    why `locations`/`public_bookings_info` need `anon` SELECT (confirmed
+    `fetchMapData()` touches only those two, both read-only). Result: `anon`
+    `REVOKE ALL` (zero access) on `audit_logs`/`email_templates`/`hcc_checks` (no RLS
+    policy for anon on any of them); `anon` narrowed to `SELECT` only on
+    `booking_locations`/`location_power`/`locations` and the three views
+    (`public_bookings_info`/`public_performer_info`/`public_schedule_info` — "views
+    get SELECT at most," since a view runs its internal query as the view owner
+    regardless of the caller's own grant, and none has an `INSTEAD OF` trigger). Also
+    revoked a vestigial table-level `TRIGGER` privilege `anon` still held on
+    `bookings`/`performers`/`schedules` — that privilege only gates `CREATE TRIGGER`
+    DDL, not whether existing triggers fire on a role's own DML, so it was pure dead
+    weight; their deliberate column-level grants (the real access mechanism for these
+    three) were **not touched**, per this project's standing rule. Applied to the
+    test project first, full 79-test suite green (71 + 8 new), then to production;
+    independently re-verified via a single query covering all twelve tables/views
+    that `anon`'s live privileges exactly match intent. Added 8 live-verified
+    regression tests rather than trusting the grant text (three new
+    "completely inaccessible" entries alongside `payments`, three new write-rejection
+    tests, one new `location_power` describe block, one new describe block for the
+    two views without existing coverage). `authenticated`/`service_role` grants
+    untouched everywhere; scoped to `anon` only, same as item 46. The remaining
+    pieces of the original interrupted table-grant-narrowing brief —
+    `authenticated`-role narrowing across the admin app, the `ALTER DEFAULT
+    PRIVILEGES` fix for `authenticated` (mirroring `anon`'s existing
+    20260717080000 fix), and the three anon sequence grants
+    (`audit_logs_id_seq`/`booking_locations_id_seq`/`email_queue_id_seq`) — are each
+    a meaningfully larger/different-shaped piece of work and were deliberately left
+    for their own dedicated pass, not folded in here.
 
 **Explicitly deferred, not started:** Slack/Discord/Sentry-style alerting for Edge
 Function errors — the project owner said "I'll do it later," don't assume it's wanted
