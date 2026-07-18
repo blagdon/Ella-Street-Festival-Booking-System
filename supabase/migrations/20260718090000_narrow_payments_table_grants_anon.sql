@@ -1,0 +1,40 @@
+-- payments had GRANT ALL to anon at the table level. RLS was doing all the
+-- narrowing: the only policy, "Admin only payments", has no explicit TO
+-- clause (defaults to PUBLIC) and gates on check_user_role('admin') - anon
+-- never has a user_roles row, so it always evaluates false for anon. That
+-- works, but it leaves RLS as a single point of failure: a bad policy edit
+-- or an accidental DISABLE ROW LEVEL SECURITY during debugging would
+-- instantly hand anon INSERT/UPDATE/DELETE on the table that records who
+-- paid what for a stall booking. Narrowing the table grant to what anon
+-- actually needs makes the grant a second, independent layer.
+--
+--   anon needs NOTHING on payments, not even SELECT:
+--     - No RLS policy ever lets anon through (see above).
+--     - No trigger exists on payments (confirmed: no CREATE TRIGGER ... ON
+--       payments anywhere in supabase/migrations/).
+--     - Every write path is SECURITY DEFINER and already explicitly denies
+--       anon at the function level: mark_stripe_payment_received and
+--       finalize_stripe_confirmation (20260715085816) are REVOKE ALL FROM
+--       PUBLIC with EXECUTE granted only to service_role; finalize_stripe_payment
+--       (20260716142140, CREATE OR REPLACE of the same SECURITY DEFINER
+--       function, service_role-only grant untouched) and
+--       rpc_record_bank_transfer_payment (20260716142140) explicitly REVOKE
+--       FROM "anon" and grant EXECUTE only to authenticated/service_role.
+--       None of these run with the caller's own privileges, so none of them
+--       depend on anon holding a table grant.
+--     - No client code ever queries payments as anon: grep of every
+--       .from('payments')/.from(TBL_PAYMENTS) call site (js/api.js only,
+--       lines ~247/278/323) shows all three live behind getSupabaseClient(),
+--       which is only ever reached from admin-authenticated pages
+--       (page-add-misc.js, page-hcc-dashboard.js, page-settings.js,
+--       page-steward.js). The public booking pages (page-cancel.js,
+--       page-general-booking.js, page-food-booking.js) import only
+--       getPublicSupabaseClient from supabase-public.js and never touch
+--       payments at all.
+--
+-- authenticated and service_role grants are untouched - this migration is
+-- scoped to anon only. RLS policies themselves are unchanged; this is
+-- defense-in-depth, not a behavior change. Sequences are not involved
+-- (payments' id is not separately exposed to anon in any grant).
+
+REVOKE ALL ON TABLE "public"."payments" FROM "anon";

@@ -96,7 +96,6 @@ GRANT ALL ON TABLE "public"."location_power" TO "service_role";
 GRANT ALL ON TABLE "public"."locations" TO "anon";
 GRANT ALL ON TABLE "public"."locations" TO "authenticated";
 GRANT ALL ON TABLE "public"."locations" TO "service_role";
-GRANT ALL ON TABLE "public"."payments" TO "anon";
 GRANT ALL ON TABLE "public"."payments" TO "authenticated";
 GRANT ALL ON TABLE "public"."payments" TO "service_role";
 GRANT ALL ON TABLE "public"."performers" TO "authenticated";
