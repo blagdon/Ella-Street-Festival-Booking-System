@@ -38,7 +38,7 @@ initPublicPage(async function () {
                 document.getElementById('closed-section')?.classList.remove('hidden');
             }
         } catch (err) {
-            console.warn("Failed to check if bookings are open:", err);
+            console.warn("Failed to check if bookings are open:", err?.message || err);
         }
     }
     checkBookingsOpen();
