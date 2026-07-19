@@ -29,7 +29,17 @@ if (IS_PASSWORD_RECOVERY) {
     // --- RECOVERY PATH ---
     // Show only the password-reset modal; nothing else is rendered.
     document.addEventListener('DOMContentLoaded', () => {
-        // Strip the sensitive token from the browser's address bar immediately.
+        // Create the client — and let it exchange the recovery hash for a
+        // session — BEFORE the hash is stripped below. getSupabaseClient()
+        // constructs the underlying GoTrueClient, which reads the
+        // access_token/type=recovery params out of window.location at
+        // construction time to establish the session; call this any later
+        // and there's nothing left in the URL to exchange, so
+        // auth.updateUser() below fails with "Auth session missing!".
+        sb = getSupabaseClient();
+
+        // Strip the sensitive token from the browser's address bar now that
+        // the client has consumed it.
         window.history.replaceState(null, '', window.location.pathname);
 
         // Hide dashboard chrome so there is nothing to interact with.
@@ -43,8 +53,7 @@ if (IS_PASSWORD_RECOVERY) {
         const modal = document.getElementById('passwordResetModal');
         if (modal) modal.classList.remove('opacity-0', 'pointer-events-none');
 
-        // Wire up the button — we need a Supabase client but NOT requireAuth.
-        sb = getSupabaseClient();
+        // Wire up the button.
         const updatePassBtn = document.getElementById('updatePassBtn');
         if (updatePassBtn) {
             updatePassBtn.addEventListener('click', updateUserPassword);
