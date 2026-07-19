@@ -32,7 +32,10 @@ export function populateGoogleMapsReviews(item) {
             taSearchBtn.innerText = "Search Google Maps";
             taSearchBtn.disabled = false;
 
-            const runAutoTaSearch = async () => {
+            // forceRefresh=true (the explicit Refresh button) bypasses the
+            // server-side SerpApi cache; the automatic on-pane-open search
+            // never does — that's the call volume the cache exists to absorb.
+            const runAutoTaSearch = async (forceRefresh = false) => {
                 const bizName = taSearchBtn.dataset.business;
                 if (!bizName || bizName.trim() === '') {
                     if (taStatus) taStatus.innerText = "Missing business name for search.";
@@ -50,7 +53,7 @@ export function populateGoogleMapsReviews(item) {
                 try {
                     const sbClient = getSupabaseClient();
                     const { data, error } = await sbClient.functions.invoke('get-reviews', {
-                        body: { business_name: bizName }
+                        body: { business_name: bizName, force: forceRefresh === true }
                     });
 
                     if (error) throw error;
@@ -114,9 +117,15 @@ export function populateGoogleMapsReviews(item) {
                             resultsHtml += `</div>`;
                             taResults.innerHTML = resultsHtml;
                             taResults.classList.remove('hidden');
+                            if (data.cached && taStatus) {
+                                const cachedWhen = data.cached_at ? new Date(data.cached_at).toLocaleString() : '';
+                                taStatus.innerText = `Cached result${cachedWhen ? ` from ${cachedWhen}` : ''} — Refresh for a live lookup.`;
+                                taStatus.classList.remove('hidden');
+                            }
                         } else {
                             if (taStatus) {
-                                taStatus.innerText = data.message || "No Google Maps listing found.";
+                                taStatus.innerText = (data.message || "No Google Maps listing found.")
+                                    + (data.cached ? " (cached — Refresh for a live lookup)" : "");
                                 taStatus.classList.remove('hidden');
                             }
                         }
@@ -135,7 +144,7 @@ export function populateGoogleMapsReviews(item) {
 
             if (!taSearchBtn.dataset.listenerBound) {
                 taSearchBtn.dataset.listenerBound = 'true';
-                taSearchBtn.addEventListener('click', runAutoTaSearch);
+                taSearchBtn.addEventListener('click', () => runAutoTaSearch(true));
             }
 
             runAutoTaSearch();
