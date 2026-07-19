@@ -1,6 +1,13 @@
 # HANDOVER — Ella Street Festival Booking System
 
 > Written for an AI coding agent picking this up cold. No prior context assumed.
+> **If you are an agent: read
+> [Agent autonomy](#agent-autonomy--what-to-do-without-asking) (section 7) first.**
+> The owner's standing instruction is to do as much as possible without asking —
+> that section says exactly which actions to take unprompted (most of them,
+> including applying additive migrations to production), which require specific
+> verification first, and the short list that needs an explicit instruction every
+> time. Default to acting.
 > Last updated: 2026-07-19.
 > Current release: **v7.1.0** (tagged 2026-07-19; retry failed emails from the
 > Email Queue viewer, see [Next Steps](#8-next-steps) item 55).
@@ -206,11 +213,16 @@ recreate). This closes the gap flagged earlier in this document's history: befor
 the base schema wasn't reproducible from anything in this repo at all.
 
 **New workflow going forward**: `supabase migration new <descriptive_name>` to scaffold
-a timestamped file under `supabase/migrations/`, write the DDL there, then a human runs
-`supabase db push` (reviews the diff first) to apply it to the live project — same
-human-in-the-loop principle as before, just via the CLI instead of pasting into the SQL
-Editor. **No agent should run `supabase db push` against the live project directly** —
-same rule as the old convention, just a different mechanism for a human to trigger it.
+a timestamped file under `supabase/migrations/`, write the DDL there, then `supabase db
+push` (review the diff it prints first) to apply it — test project first, then
+production.
+
+**On who runs `db push`**: this used to read "no agent should run `supabase db push`
+against the live project directly." That rule is superseded — see
+[Agent autonomy](#agent-autonomy--what-to-do-without-asking) in section 7 for what an
+agent should now do unprompted (additive DDL: yes; destructive DDL: never without an
+explicit instruction) and what verification each tier requires. The review step didn't
+go away, it just became the agent's job to perform and report rather than to hand off.
 
 **Resolved (2026-07-14)**: `supabase/migrations/20260714144652_storage_buckets_and_policies.sql`
 covers the storage side — the three bucket definitions (`documents`,
@@ -857,6 +869,78 @@ with a real run via `gh run watch` — all three green.
 
 ## 7. Conventions
 
+### Agent autonomy — what to do without asking
+
+**Read this before deciding whether you need permission for something.** This
+replaces the previous blanket rule ("no agent should run `supabase db push`
+against the live project"), which the owner overrode ad-hoc often enough that a
+vague prohibition was worse than an explicit policy: it produced pointless
+round-trips for safe work while giving no real guidance on the genuinely
+dangerous actions. The owner's standing instruction is to **do as much as
+possible autonomously**. Default to acting.
+
+**Green — just do it, then report what you did.** No permission needed, ever:
+- **Additive migrations against production**: `CREATE TABLE`, `ADD COLUMN`
+  (nullable or with a default), `CREATE INDEX`, `CREATE OR REPLACE FUNCTION`,
+  seeding a new `settings`/`email_templates` row. Apply to the test project
+  first, then production, both via `supabase db push`.
+- **Edge Function deploys**, test project first then production.
+- **Merging your own PR** once CI is green; deleting the merged branch.
+- **Cutting a release**: CHANGELOG, HANDOVER, version bump, tag, GitHub release.
+- **Regenerating `rls_grants_snapshot.txt`** (from production only — see the
+  link dance in item 52).
+- **Running the test suite** anywhere, and seeding/wiping the test project.
+
+**Amber — do it, but the stated verification is mandatory, not optional.**
+Skipping the check is the failure, not doing the work:
+- **Migrations that change RLS policies or grants**: run
+  `npm run check:rls-grants` against production *before* (to prove no
+  pre-existing drift) and *after* (to prove only your intended change landed),
+  and put both results in the PR. Diff every line of the after-check — "it
+  passed" is not the same as "the diff was what I expected."
+- **Anything touching `payments`, `bookings.stall_cost`, or the Stripe
+  columns**: exercise the affected path in `tests/` before shipping. This is
+  money; a passing unrelated suite is not evidence.
+- **Changing an existing Edge Function's auth check**: add or extend a test
+  proving the rejection still happens, live, as an actual anon/non-admin
+  caller.
+
+**Red — never without an explicit instruction naming the specific action in
+the conversation.** A general "do it all" does *not* authorize these; if one
+blocks you, stop and say so plainly rather than working around it:
+- **Sending real email to real people.** Clicking Retry/bulk-send/reminders
+  against production data, or any test that could deliver to a live address.
+  Traders receiving a spurious festival email is not undoable.
+- **Moving real money.** Stripe refunds, charges, or anything against the live
+  keys.
+- **Destructive DDL or DML on production**: `DROP TABLE`/`DROP COLUMN`,
+  `TRUNCATE`, `DELETE`/`UPDATE` without a narrow `WHERE`, or a type change
+  that can lose data. Note the backup is 30-day retention with a fully manual
+  restore (section 10) — "we can roll back" is weaker here than it sounds.
+- **Repointing `supabase-public.js`** at a different Supabase project. It sets
+  the project for the public pages *and* the admin dashboard; doing this broke
+  the entire app on 2026-07-18.
+- **Rotating or replacing credentials** in the `settings` table (Zoho, Stripe,
+  SerpApi).
+- **Rewriting published history**: force-pushing `main`, deleting a branch with
+  unmerged work, deleting a published tag or release.
+
+**Non-negotiable sequencing, regardless of tier**: test project
+(`qeplpcnrkgpaawfyliap`) first, full suite green, *then* production
+(`rsnxhuhibglieofikkpo`). Always relink to the test project when you're done.
+When a migration and a frontend change ship together, apply the migration
+**before** merging — merging auto-deploys the frontend via Vercel, so the
+reverse order puts live UI in front of columns that don't exist yet.
+
+**Known blocker on full autonomy, unresolved**: browser-driven flows can't be
+verified by an agent, because `supabase-public.js` points at production — so
+loading any admin page locally talks to the live database, and clicking a
+button there can email real traders. This is why items 51, 54 and 55 all
+shipped with "an admin should confirm the button works." Fixing it properly
+means a local-only way to point the frontend at the test project without
+editing the committed file (a gitignored override, say). That's an owner
+decision, not something to improvise — see the red-tier entry above.
+
 ### Commits
 Short conventional-ish prefixes: `fix:`, `feat:`, `security:`, `refactor:`, `chore:`,
 followed by a specific, imperative summary. Body text (when present) explains **why**,
@@ -886,9 +970,10 @@ committed. These still exist as historical record — **never move them into
 `supabase/migrations/`**, the CLI would try to replay them as pending migrations (see
 the note under [Migrations](#migrations-supabase-cli)). **The current convention for
 anything touching the `public` schema or storage buckets/`storage.objects` policies** is
-`supabase migration new <name>` under `supabase/migrations/`, applied via a human
-running `supabase db push` — same draft/review/confirm/commit shape, different
-mechanism. Keep `storage` and `public` changes in separate migration files (see
+`supabase migration new <name>` under `supabase/migrations/`, applied with
+`supabase db push` — same draft/review/confirm/commit shape, different mechanism, and
+see [Agent autonomy](#agent-autonomy--what-to-do-without-asking) for when an agent
+should run that itself versus stop and ask. Keep `storage` and `public` changes in separate migration files (see
 [Migrations](#migrations-supabase-cli) for why) — never dump the full `storage` schema
 into one, only the bucket rows and `storage.objects` policies that are actually ours.
 
