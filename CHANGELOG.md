@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [v7.1.0] - 2026-07-19
+
+### Added
+
+- **Retry failed emails from the Email Queue viewer.** `email_queue.html` has shown failed sends with their exact Zoho error since v5.1.0, but an admin looking at one had no way to act on it — the only recovery was re-triggering the original action from the booking, which isn't even possible for every email type (the "received" auto-responder, for instance). Failed rows now have a Retry button, backed by a new `retry-queued-email` Edge Function (admin-JWT only, no service-role bypass — retrying is a human recovery action). It runs server-side because `authenticated` deliberately has no UPDATE on `email_queue` and the Zoho credentials are server-side. The function claims the row (`Error → Processing`) before sending, so two retries in flight can't both deliver, and an already-`Sent` row can never be re-sent; a row that fails again returns to `Error` and stays retryable, which is the point. New `retry_count`/`last_retry_at` columns surface repeat failures in the viewer, since a row that has failed five times usually means a bad address or a Zoho config problem rather than something another retry will fix. Retries are audit-logged as `retry_queued_email`.
+
 ## [v7.0.0] - 2026-07-19
 
 Version number set by the project owner. Note this jumps from the 5.1.x line

@@ -2,8 +2,9 @@
 
 > Written for an AI coding agent picking this up cold. No prior context assumed.
 > Last updated: 2026-07-19.
-> Current release: **v7.0.0** (tagged 2026-07-19; the password-reset session fix,
-> see [Next Steps](#8-next-steps) item 54). **The version line jumps 5.1.13 → 7.0.0
+> Current release: **v7.1.0** (tagged 2026-07-19; retry failed emails from the
+> Email Queue viewer, see [Next Steps](#8-next-steps) item 55).
+> **The version line jumps 5.1.13 → 7.0.0
 > — there is no 6.x series**, and 7.0.0 contains a bug fix, not breaking changes;
 > the major bump was a deliberate owner decision, so don't read it as a schema or
 > API break. — see `CHANGELOG.md` for
@@ -2065,6 +2066,56 @@ it as a live concern.
     verification could only confirm the SDK config and no-regression, not the
     full click-through).
 
+55. **Retry action for failed emails in the Email Queue viewer (2026-07-19,
+    PR #31, released as v7.1.0, migration
+    `20260719120000_email_queue_retry_tracking.sql`).** `email_queue.html`
+    had surfaced failed sends with their Zoho error message since v5.1.0 but
+    offered no way to act on one — the only recovery was re-triggering the
+    original action from the booking, impossible for some email types (the
+    "received" auto-responder among them). New `retry-queued-email` Edge
+    Function, admin-JWT only with **no** service-role "trusted service call"
+    bypass (unlike `send-email`): retrying is a human recovery action,
+    nothing server-side should trigger it. It must be server-side on two
+    counts — `authenticated` has no UPDATE on `email_queue` by design (item
+    48's grant narrowing) and the Zoho credentials are server-side — and it
+    calls `sendViaZoho()` in-process, not `send-email` over HTTP, per the
+    sibling-function rule the pre-commit hook enforces.
+    **The concurrency semantics are worth understanding before changing
+    anything here**, because they're easy to get wrong (I did, first pass):
+    the function claims the row with a conditional `Error → Processing`
+    update and treats "no rows matched" as the rejection. That means two
+    retries overlapping *in flight* → only one sends; a retry after a
+    previous one *succeeded* → refused, since the row is `Sent` and only
+    `Error` is claimable (**this is the guarantee that matters — a delivered
+    email is never delivered twice**); a retry after a previous one *failed*
+    → allowed, since the row is back to `Error`, which is the entire point of
+    the endpoint rather than a hole. If the function dies mid-send the row
+    sits in `Processing` with `claimed_at` set, where `claim_pending_emails()`'s
+    existing 15-minute self-heal collects it. New `retry_count`/`last_retry_at`
+    columns (additive, grant-neutral — the production snapshot check came
+    back clean afterwards) let the viewer distinguish a first-time failure
+    from one that has failed repeatedly, which usually means a bad address or
+    Zoho config rather than something a further retry fixes.
+    **Two testing lessons from this one, both mine, both worth not
+    repeating**: (a) an anon-lockout assertion written against this file's
+    `anon` client was meaningless, because `before()` signs that client in as
+    the test admin — `security.test.mjs` is where anon checks belong; (b) a
+    "two concurrent retries, exactly one accepted" test passed locally and
+    **failed in CI** — not because the guard broke, but because the
+    assertion was wrong: with Zoho failing fast the first call completes its
+    whole cycle before the second claims, so the second legitimately retries.
+    Replaced with a deterministic test of the claim primitive itself, which
+    can't flake since nothing resets the status. Same false-negative trap
+    `integration.test.mjs` already documents for `booking_locations` — two
+    HTTP round trips don't reliably overlap. Verified: migration + function
+    on the test project first (108-test suite green), then applied to
+    production and deployed there, with the live function confirmed
+    rejecting unauthenticated calls (401) and the grants snapshot confirmed
+    unchanged. **Not verified by me**: the button itself was never clicked —
+    `supabase-public.js` points at production, so a local click would email
+    real traders. Same browser-flow blind spot as item 54; an admin should
+    confirm on a real failed row.
+
 **Explicitly deferred, not started:** Slack/Discord/Sentry-style alerting for Edge
 Function errors — the project owner said "I'll do it later," don't assume it's wanted
 now without asking.
@@ -2203,6 +2254,21 @@ stay in the separate `ellafestperformersadmin.vercel.app` codebase.
   current, correct behavior is a manual "send" button on `hcc_dashboard.html` that
   redirects to the logged-in admin's own inbox when the active instance is `DEV`, and
   audit-logs every send.
+
+- **`check-rls-grants-snapshot.sh` needs Git Bash, not WSL — and `.gitattributes`
+  alone won't save you from CRLF.** Two separate traps, both hit live on
+  2026-07-19 while verifying item 55, neither obvious from the error message.
+  (a) Running it as `bash scripts/...` from PowerShell resolves to **WSL**
+  bash, where the globally npm-installed Supabase CLI has no Linux binary —
+  it dies with `No matching Supabase CLI binary package found for linux-x64`,
+  three times over, since the script retries the dump. Run it from Git Bash
+  (which has the Windows `supabase.exe` on PATH) instead. (b) The
+  `*.sh text eol=lf` rule added in item 52 only applies **at checkout**, so a
+  working copy that predates it — or that git hasn't re-materialized since —
+  still has CRLF on disk and fails with `syntax error near unexpected token
+  $'do\r'`. `.gitattributes` being correct is not proof the file on disk is.
+  Fix the working copy with `git add --renormalize`, or delete the file and
+  `git checkout --` it; check with a byte scan for `0D 0A`, not by eye.
 
 - **`ARCHITECTURE.md` is stale — specific claims to distrust:**
   - Production URL listed as `stallbookingstailwinds.vercel.app` → actually
