@@ -146,28 +146,54 @@ describe('retry-queued-email', () => {
     assert.equal(status, 409, JSON.stringify(json));
   });
 
-  // The double-click case. Two concurrent retries of the same row must not
-  // both send - the function claims the row (Error -> Processing) and treats
-  // "no rows updated" as the rejection, so exactly one caller proceeds.
-  test('two concurrent retries of the same row: only one is accepted', async () => {
+  // The anti-double-send mechanism, tested at the level it actually operates.
+  //
+  // An earlier version of this test fired two concurrent retry HTTP calls and
+  // asserted exactly one was accepted. That was wrong on two counts, and CI
+  // caught it where a local run hadn't:
+  //
+  //  1. It asserted the wrong thing. With Zoho unconfigured the send fails
+  //     fast, so the first call finishes its whole cycle (claim -> send fails
+  //     -> status back to 'Error') before the second claims. The second then
+  //     sees a genuinely-Error row and retries it - which is correct, desired
+  //     behaviour, not a double-send. Retrying after a failure is the point.
+  //  2. Even for a true overlap it would be unreliable: two HTTP round trips
+  //     don't dependably land in the same microsecond window, exactly the
+  //     false negative integration.test.mjs documents for booking_locations.
+  //
+  // So this exercises the claim primitive the function is built on instead:
+  // a conditional Error -> Processing update where "no rows matched" is the
+  // rejection. This IS deterministic, because nothing resets the status back
+  // - once claimed, the row stays Processing, so the loser matches nothing no
+  // matter how the two calls interleave.
+  //
+  // The real user-facing guarantee - a successfully delivered email is never
+  // sent twice - is covered by the already-Sent test above: a successful send
+  // leaves the row 'Sent', which is not claimable.
+  test('the row claim is atomic: only one of two concurrent claims matches', async () => {
     const row = await seedRow('Error');
 
-    const [a, b] = await Promise.all([
-      callRetry({ id: row.id }),
-      callRetry({ id: row.id }),
+    const [c1, c2] = await Promise.all([
+      service.from('email_queue').update({ status: 'Processing' }).eq('id', row.id).eq('status', 'Error').select(),
+      service.from('email_queue').update({ status: 'Processing' }).eq('id', row.id).eq('status', 'Error').select(),
     ]);
 
-    const accepted = [a, b].filter((r) => r.status === 200);
-    const rejected = [a, b].filter((r) => r.status === 409);
+    const winners = [c1, c2].filter((r) => (r.data || []).length > 0);
+    assert.equal(winners.length, 1,
+      `exactly one concurrent claim should match, got ${winners.length} - ` +
+      `two winners would mean two callers could both proceed to send the same email`);
+  });
 
-    assert.equal(accepted.length, 1,
-      `exactly one concurrent retry should be accepted, got ${accepted.length} ` +
-      `(a: ${a.status}, b: ${b.status}) - two acceptances means the same email could be sent twice`);
-    assert.equal(rejected.length, 1);
+  test('a retry that fails again leaves the row retryable (not stuck in Processing)', async () => {
+    const row = await seedRow('Error');
+    await callRetry({ id: row.id });
 
-    // Ground truth: only one attempt was actually recorded.
-    const { data: final } = await service.from('email_queue').select('retry_count').eq('id', row.id).single();
-    assert.equal(final.retry_count, 1, 'exactly one send attempt should have been recorded');
+    const { data: afterFirst } = await service.from('email_queue').select('status').eq('id', row.id).single();
+    assert.equal(afterFirst.status, 'Error',
+      'a failed retry must return the row to Error so the admin can try again, not strand it in Processing');
+
+    const { status } = await callRetry({ id: row.id });
+    assert.equal(status, 200, 'a row that failed again must still be retryable');
   });
 });
 

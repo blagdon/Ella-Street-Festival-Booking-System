@@ -74,15 +74,24 @@ Deno.serve(async (req) => {
       })
     }
 
-    // Claim the row by flipping Error -> Processing conditionally, and treat
-    // "no rows updated" as the rejection. This is the real guard against a
-    // double-click (or two admins on the same row) sending the email twice:
-    // checking status with a separate SELECT first would leave a window
-    // where both callers see 'Error' and both send. Re-sending an email that
-    // already went out is worse than refusing a retry, so this errs strict.
+    // Claim the row by flipping Error -> Processing conditionally, treating
+    // "no rows updated" as the rejection. A separate SELECT-then-check would
+    // leave a window where two callers both see 'Error' and both send;
+    // Postgres serializes these conditional updates, so the loser re-evaluates
+    // against the committed 'Processing' row and matches nothing.
     //
-    // Only 'Error' rows are retryable — an already-Sent row must never be
-    // re-sent, and Pending/Processing rows belong to the bulk-drain path.
+    // What this does and doesn't guarantee, precisely:
+    //  - Two retries overlapping IN FLIGHT: only one sends. (The other gets
+    //    409 while the first is still working.)
+    //  - A retry after a previous one SUCCEEDED: refused, because the row is
+    //    'Sent' and only 'Error' is claimable. This is the guarantee that
+    //    matters — a delivered email is never delivered twice.
+    //  - A retry after a previous one FAILED: allowed, because the row is
+    //    back to 'Error'. That's intentional, not a hole: retrying a failure
+    //    is the entire point of this endpoint.
+    //
+    // Pending/Processing rows are never claimable here — they belong to the
+    // bulk-drain path.
     //
     // Note the crash-recovery interaction, which is intentional: if this
     // function dies between claiming and finishing, the row is left in
