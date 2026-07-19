@@ -2,8 +2,11 @@
 
 > Written for an AI coding agent picking this up cold. No prior context assumed.
 > Last updated: 2026-07-19.
-> Current release: **v5.1.13** (tagged 2026-07-19; server-side SerpApi cache for
-> Google Maps reviews, see [Next Steps](#8-next-steps) item 53) — see `CHANGELOG.md` for
+> Current release: **v7.0.0** (tagged 2026-07-19; the password-reset session fix,
+> see [Next Steps](#8-next-steps) item 54). **The version line jumps 5.1.13 → 7.0.0
+> — there is no 6.x series**, and 7.0.0 contains a bug fix, not breaking changes;
+> the major bump was a deliberate owner decision, so don't read it as a schema or
+> API break. — see `CHANGELOG.md` for
 > per-version release notes and the repo's GitHub Releases page for the tagged
 > versions. Every `CHANGELOG.md` version now has a matching GitHub release:
 > v5.1.4–v5.1.10 had been changelog-entries-only, and were tagged retroactively on
@@ -2030,6 +2033,37 @@ it as a live concern.
     production, then the item-52(b) snapshot link dance — production's only
     diff was the expected `GRANT ALL ON google_reviews_cache TO service_role`
     line, confirming the anon/authenticated lockout held live.
+
+54. **Fixed password-reset links never establishing a session (2026-07-19,
+    PR #29, released as v7.0.0).** An admin reported "Update Password" failing
+    with a generic toast; the console showed
+    `AuthSessionMissingError: Auth session missing!` from
+    `sb.auth.updateUser()`. Root cause was an ordering bug in
+    `js/page-index.js`'s recovery path: it called
+    `history.replaceState()` to scrub the
+    `#access_token=…&type=recovery` fragment from the address bar **before**
+    calling `getSupabaseClient()`. That function lazily constructs the client,
+    and GoTrueClient reads the recovery token out of `window.location` at
+    construction time to establish the session (verified live against the
+    vendored SDK: `flowType: 'implicit'`, `detectSessionInUrl: true`). With the
+    hash already gone, no session was ever created, so the later
+    `updateUser()` call could not succeed no matter what the admin did. Fix is
+    a two-line reorder: construct the client first, then scrub the URL.
+    **This was the third fault in the same chain** — v5.1.2 fixed the
+    client-side redirect domain, v5.1.4 fixed the hosted Site URL/allowlist,
+    and both were genuinely necessary but neither made the flow work, because
+    this bug sat behind them. **Lesson worth keeping**: v5.1.4's writeup said
+    the flow was "verified end-to-end," but what was actually checked was that
+    the reset link redirected and the "Set New Password" form *rendered* — not
+    that submitting it worked. A rendering check is not an end-to-end check.
+    The integration suite has a real blind spot here: it covers Edge
+    Functions/RLS/RPC thoroughly but nothing exercises browser-driven auth
+    flows, which is exactly the class both this and item 51 belong to — worth
+    adding a browser-level smoke test if this area is touched again. Confirmed
+    working live by the reporting admin with a real reset link (a synthetic
+    unsigned token can't reach the timing-dependent path, so local
+    verification could only confirm the SDK config and no-regression, not the
+    full click-through).
 
 **Explicitly deferred, not started:** Slack/Discord/Sentry-style alerting for Edge
 Function errors — the project owner said "I'll do it later," don't assume it's wanted

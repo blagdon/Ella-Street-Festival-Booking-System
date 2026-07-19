@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented in this file.
 
+## [v7.0.0] - 2026-07-19
+
+Version number set by the project owner. Note this jumps from the 5.1.x line
+directly to 7.0.0 — there is no 6.x series, and this release contains a bug fix
+rather than breaking changes, so the major bump reflects a deliberate
+versioning decision rather than a semver-driven API break. Nothing about the
+database schema, Edge Function contracts, or admin workflows changes here.
+
+### Fixed
+
+- Password-reset links now actually let an admin set a new password. The recovery page stripped the `#access_token=…&type=recovery` fragment from the address bar *before* the Supabase client was constructed — and the client reads that fragment at construction time to establish the session — so no session ever existed and "Update Password" always failed with `AuthSessionMissingError: Auth session missing!`. The client is now created first, then the URL is scrubbed. Confirmed working end-to-end against a real reset link. (This is the third and final fault in the password-reset chain, after the v5.1.2 client-side redirect fix and the v5.1.4 hosted Site URL/allowlist fix — both of those were necessary but neither made the flow work, because this bug sat behind them.)
+
 ## [v5.1.13] - 2026-07-19
 
 ### Added
