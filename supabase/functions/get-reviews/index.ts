@@ -59,7 +59,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    const { business_name } = await req.json()
+    const { business_name, force } = await req.json()
 
     if (!business_name) {
       return new Response(JSON.stringify({ error: 'Missing business name.' }), {
@@ -68,12 +68,57 @@ Deno.serve(async (req) => {
       })
     }
 
-    // 2. Fetch SerpApi key and map center from env/settings table (single query)
+    // 2. Fetch SerpApi key, map center, and cache TTL from env/settings table
+    // (single query)
     const { data: settingsRows } = await supabaseClient
       .from('settings')
       .select('key, value')
-      .in('key', ['serpapi_api_key', 'map_center_lat', 'map_center_lng'])
+      .in('key', ['serpapi_api_key', 'map_center_lat', 'map_center_lng', 'reviews_cache_ttl_hours'])
     const settingsMap = new Map((settingsRows ?? []).map((r: { key: string; value: string }) => [r.key, r.value]))
+
+    // 2a. Serve from the cache when possible — SerpApi is metered/paid, and the
+    // detail pane auto-searches on every open, so identical lookups repeat
+    // constantly. Checked BEFORE the API-key requirement on purpose: cached
+    // results keep working even if the key is removed/rotated. found:false
+    // results are cached too (they cost SerpApi calls just the same). An
+    // explicit force:true (the detail pane's "Refresh Google Maps" button)
+    // bypasses the cache and refetches. Cache errors are deliberately
+    // non-fatal — a missing/broken cache table must degrade to the old
+    // fetch-every-time behavior, never break lookups.
+    const CACHE_TTL_HOURS_DEFAULT = 24 * 7
+    const ttlHours = parseFloat(settingsMap.get('reviews_cache_ttl_hours') ?? '') || CACHE_TTL_HOURS_DEFAULT
+    const businessKey = String(business_name).trim().toLowerCase()
+
+    if (force !== true) {
+      const { data: cached, error: cacheErr } = await supabaseClient
+        .from('google_reviews_cache')
+        .select('payload, fetched_at')
+        .eq('business_key', businessKey)
+        .maybeSingle()
+      if (cacheErr) {
+        console.warn('Reviews cache read failed (continuing without cache):', cacheErr.message)
+      } else if (cached && (Date.now() - new Date(cached.fetched_at).getTime()) < ttlHours * 3600 * 1000) {
+        return new Response(JSON.stringify({ ...cached.payload, cached: true, cached_at: cached.fetched_at }), {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        })
+      }
+    }
+
+    // Upserts the response body we're about to serve, so the next lookup for
+    // this business is free. Best-effort, same rationale as the read above.
+    const cacheAndRespond = async (payload: Record<string, unknown>) => {
+      const { error: upsertErr } = await supabaseClient
+        .from('google_reviews_cache')
+        .upsert({ business_key: businessKey, payload, fetched_at: new Date().toISOString() })
+      if (upsertErr) {
+        console.warn('Reviews cache write failed (result served uncached):', upsertErr.message)
+      }
+      return new Response(JSON.stringify(payload), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
+    }
 
     let apiKey = Deno.env.get('SERPAPI_API_KEY')
     if (!apiKey) {
@@ -121,10 +166,7 @@ Deno.serve(async (req) => {
     const firstResult = searchData.local_results?.[0] || searchData.place_results
 
     if (!firstResult) {
-      return new Response(JSON.stringify({ found: false, message: 'No Google Maps results found.' }), {
-        status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      })
+      return await cacheAndRespond({ found: false, message: 'No Google Maps results found.' })
     }
 
     // Guard against a confident-looking but wrong match. Require at least one
@@ -158,12 +200,9 @@ Deno.serve(async (req) => {
     const relevant = isRelevantMatch(firstResult.title, business_name)
 
     if (!relevant) {
-      return new Response(JSON.stringify({
+      return await cacheAndRespond({
         found: false,
         message: `No confident Google Maps match found for "${business_name}".`
-      }), {
-        status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
     }
 
@@ -190,12 +229,9 @@ Deno.serve(async (req) => {
       : false
 
     if (!isNearHull) {
-      return new Response(JSON.stringify({
+      return await cacheAndRespond({
         found: false,
         message: `No confident Google Maps match found for "${business_name}" in Hull, UK.`
-      }), {
-        status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
     }
 
@@ -225,7 +261,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    return new Response(JSON.stringify({
+    return await cacheAndRespond({
       found: true,
       title,
       place_id,
@@ -234,9 +270,6 @@ Deno.serve(async (req) => {
       thumbnail,
       location,
       reviews: reviewsList.slice(0, 3) // Return top 3 reviews
-    }), {
-      status: 200,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })
 
   } catch (error: any) {
