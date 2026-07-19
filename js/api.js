@@ -620,6 +620,44 @@ export async function queueBulkEmail(bookingIds, subject, body) {
 }
 
 /**
+ * Retries a single failed email_queue send via the retry-queued-email Edge
+ * Function. Only rows currently in 'Error' are retryable — the function
+ * claims the row server-side before sending, so a double-click can't deliver
+ * the same email twice. Runs server-side because `authenticated` has no
+ * UPDATE on email_queue by design (status transitions are service-role only).
+ * @param {number} id email_queue row id
+ * @returns {Promise<{success: boolean, status: string, error_message: string|null, retry_count: number}>}
+ */
+export async function retryQueuedEmail(id) {
+    const sb = getSupabaseClient();
+    const { data, error } = await sb.functions.invoke('retry-queued-email', {
+        body: { id }
+    });
+
+    // A non-2xx response surfaces as a FunctionsHttpError whose .message is
+    // the generic "Edge Function returned a non-2xx status code" — the actual
+    // reason ("this entry is currently Sent", "not found") is in the response
+    // body. Those specific messages are the whole point of this action, so
+    // dig the body out rather than showing the admin the generic one.
+    if (error) {
+        let message = error.message;
+        try {
+            const body = await error.context?.json();
+            if (body?.error) message = body.error;
+        } catch { /* keep the generic message if the body isn't readable */ }
+        throw new Error(message);
+    }
+    if (data && data.error) throw new Error(data.error);
+
+    await auditLog('retry_queued_email', String(id), {
+        result: data?.status,
+        retry_count: data?.retry_count
+    });
+
+    return data;
+}
+
+/**
  * Resolves a booking's stored document storage paths to time-limited
  * signed URLs via the get-booking-documents Edge Function (esf-documents
  * is a private bucket, so paths aren't directly resolvable without this).
