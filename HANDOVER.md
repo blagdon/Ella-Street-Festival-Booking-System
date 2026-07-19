@@ -1,9 +1,9 @@
 # HANDOVER — Ella Street Festival Booking System
 
 > Written for an AI coding agent picking this up cold. No prior context assumed.
-> Last updated: 2026-07-18.
-> Current release: **v5.1.12** (tagged 2026-07-18; the bookings-closed-toggle RLS
-> fix, see [Next Steps](#8-next-steps) item 52) — see `CHANGELOG.md` for
+> Last updated: 2026-07-19.
+> Current release: **v5.1.13** (tagged 2026-07-19; server-side SerpApi cache for
+> Google Maps reviews, see [Next Steps](#8-next-steps) item 53) — see `CHANGELOG.md` for
 > per-version release notes and the repo's GitHub Releases page for the tagged
 > versions. Every `CHANGELOG.md` version now has a matching GitHub release:
 > v5.1.4–v5.1.10 had been changelog-entries-only, and were tagged retroactively on
@@ -1996,6 +1996,40 @@ it as a live concern.
     policies production doesn't have — so the check/`--update` dance is: link
     `rsnxhuhibglieofikkpo`, verify `supabase/.temp/project-ref`, run it, and
     always relink `qeplpcnrkgpaawfyliap` after.
+
+53. **Server-side cache for `get-reviews`' SerpApi Google Maps lookups
+    (2026-07-19, PR #27, migration `20260719090000_google_reviews_cache.sql`).**
+    The booking detail pane auto-searches Google Maps on every open of a
+    food-stall booking (`js/google-reviews.js`'s `runAutoTaSearch()`), costing
+    two metered SerpApi calls each time — for results that rarely change. New
+    `google_reviews_cache` table (service-role only: RLS enabled, zero
+    policies, same access pattern as `stripe_webhook_events`) stores the exact
+    response body served, keyed by normalized (lowercased/trimmed) business
+    name; `get-reviews` serves entries fresher than the TTL — default 7 days,
+    overridable via an optional `reviews_cache_ttl_hours` settings row (no UI;
+    seed via SQL if ever wanted) — without touching SerpApi. Deliberate design
+    decisions worth knowing before "improving" this: the cache is checked
+    BEFORE the API-key requirement (cached lookups survive key
+    rotation/removal); `found:false` results are cached too (they cost SerpApi
+    calls just the same, and most detail-pane opens are for businesses with no
+    listing); cache read/write failures only `console.warn` and fall through
+    to the old fetch-every-time path (the function is safe to deploy without
+    the table, and a broken cache can never break lookups); and `force:true`
+    in the request body bypasses the cache — wired only to the detail pane's
+    explicit "Refresh Google Maps" button, never the automatic on-open search,
+    which is the call volume the cache exists to absorb. The UI labels cached
+    results with their fetch time. Five integration tests in
+    `tests/google-reviews-cache.test.mjs` prove hit/bypass/TTL/anon-lockout
+    behavior **without ever making a real SerpApi call** — the test project
+    deliberately has no SerpApi key (the test's `before()` also deletes any
+    leftover `serpapi_api_key` settings row), so a "not configured" failure is
+    the detector that a request did NOT come from cache. Verified per
+    convention: migration + function on the test project first (full 99-test
+    suite green), function deployed to production ahead of the migration (ran
+    cache-less until the table existed, by design), human-run `db push` to
+    production, then the item-52(b) snapshot link dance — production's only
+    diff was the expected `GRANT ALL ON google_reviews_cache TO service_role`
+    line, confirming the anon/authenticated lockout held live.
 
 **Explicitly deferred, not started:** Slack/Discord/Sentry-style alerting for Edge
 Function errors — the project owner said "I'll do it later," don't assume it's wanted

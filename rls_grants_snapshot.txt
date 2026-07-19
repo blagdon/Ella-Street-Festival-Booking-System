@@ -76,6 +76,7 @@ GRANT ALL ON TABLE "public"."booking_locations" TO "service_role";
 GRANT ALL ON TABLE "public"."bookings" TO "service_role";
 GRANT ALL ON TABLE "public"."email_queue" TO "service_role";
 GRANT ALL ON TABLE "public"."email_templates" TO "service_role";
+GRANT ALL ON TABLE "public"."google_reviews_cache" TO "service_role";
 GRANT ALL ON TABLE "public"."hcc_checks" TO "service_role";
 GRANT ALL ON TABLE "public"."location_power" TO "service_role";
 GRANT ALL ON TABLE "public"."locations" TO "service_role";
