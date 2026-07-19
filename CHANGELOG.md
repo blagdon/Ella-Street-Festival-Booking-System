@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [v5.1.13] - 2026-07-19
+
+### Added
+
+- Server-side caching for the booking detail pane's Google Maps ratings/reviews lookup, cutting SerpApi usage: the pane auto-searches on every open of a food-stall booking (two metered SerpApi calls each time), and identical lookups now serve from a new `google_reviews_cache` table (service-role only) for 7 days — overridable via a `reviews_cache_ttl_hours` settings row — instead of re-hitting SerpApi. Not-found results are cached too; only the explicit "Refresh Google Maps" button bypasses the cache; cached results are labelled with their fetch time; and cache failures degrade to the old fetch-every-time behavior rather than ever breaking lookups (which also made deploying the function ahead of the migration safe). Five new integration tests prove the hit/bypass/TTL/lockout behavior without making a single real SerpApi call; verified on the disposable test project (99-test suite green), then applied live with the RLS/grants snapshot showing exactly the one expected new grant.
+
 ## [v5.1.12] - 2026-07-18
 
 ### Fixed
