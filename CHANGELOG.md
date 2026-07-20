@@ -2,6 +2,24 @@
 
 All notable changes to this project are documented in this file.
 
+## [v7.4.0] - 2026-07-20
+
+**Database changes, already applied to production.** Four findings from a schema/permissions review, each verified against the live schema before acting rather than taken on trust.
+
+### Security
+
+- **Stewards can no longer UPDATE `bookings` directly.** The `"Steward update"` policy allowed UPDATE for any steward with no `WITH CHECK`, and `authenticated` holds full-column UPDATE on the table — so a steward session could write `stall_cost`, `status`, `cancel_token`, the Stripe columns, anything. Only reachable by a compromised or malicious steward account, but it was the widest remaining privilege gap in the schema. **Dropped rather than narrowed**: tracing the actual usage showed nothing used it — `steward.html` never updates bookings, it reads (still permitted by the separate `"Steward access"` policy) and assigns pitches through `rpc_set_booking_locations()`, a `SECURITY DEFINER` RPC that does its own role check. Admin writes are unaffected.
+- **`audit_logs.user_email` is now stamped server-side from the request JWT.** The insert policy is `WITH CHECK (true)` and the value was ordinary client-supplied text, so any authenticated staff account could write audit entries attributed to someone else — an audit trail its own subjects can forge. A `BEFORE INSERT` trigger now overwrites it, mirroring how `verified_by` is already server-derived for bank transfers. It only overwrites when an email claim exists (Edge Functions insert as `service_role`, which has none, and blanking or rejecting those would break server-side logging) and swallows malformed claims rather than raising, since a trigger that blocks a write from being recorded would be worse than the spoofing it prevents.
+- **Revoked the vestigial `anon` EXECUTE grant on `rpc_set_booking_locations()`**, finishing the sweep that the v5.1.3 migration started for `cancel_booking_secure()` and `get_next_booking_id()`. Not a live hole — the function already rejected anon internally — but the grant described access no caller has ever needed.
+
+### Changed
+
+- **`bookings.status` is now constrained** to the six real statuses (`Pending`, `Payment Requested`, `Confirmed`, `Rejected`, `Cancelled`, `HCC Checks`). It was unconstrained `text`, with the status machine enforced only in app code and RPC guards, so a typo from future code or a direct SQL fix would strand a booking invisibly — every board filters by status, and a row with an unrecognised one renders in no column at all. Implemented as a **CHECK constraint, deliberately not an enum** despite `is_charity` having been converted to one: Postgres cannot remove a value from an enum type, and this project has added and then removed `Pre-Confirmed`, `Paid` and `On Hold`, each of which would have required a full type swap. Verified against live data first — all 184 production bookings already held valid values.
+
+### Testing
+
+- New `tests/privilege-hardening.test.mjs` — 12 behavioural tests covering all four changes against the real REST API as genuinely authenticated sessions, including regression guards that admins can still update bookings and still assign pitches.
+
 ## [v7.3.1] - 2026-07-20
 
 **Documentation only — no code, schema, or configuration changes.** The live site is unchanged; the last release affecting it is v7.2.0.

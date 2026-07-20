@@ -9,11 +9,13 @@
 > verification first, and the short list that needs an explicit instruction every
 > time. Default to acting.
 > Last updated: 2026-07-20.
-> Current release: **v7.3.1** (tagged 2026-07-20; documentation only).
-> **The last release that changed the live site is v7.2.0**, the Payment Tracker
-> modal fix — v7.3.0 was developer tooling (dev-server Supabase proxy) and
-> v7.3.1 is docs, so both can be ruled out when tracing a production issue. See
-> [Next Steps](#8-next-steps) items 56 and 57.
+> Current release: **v7.4.0** (tagged 2026-07-20; schema/permissions hardening —
+> **database changes, applied to production**: steward booking-UPDATE policy
+> dropped, `audit_logs.user_email` server-stamped, `bookings.status`
+> CHECK-constrained, vestigial anon RPC grant revoked. See
+> [Next Steps](#8-next-steps) item 58). Preceding releases: v7.3.1 docs, v7.3.0
+> developer tooling, v7.2.0 the Payment Tracker modal fix (the last release
+> before this one to change anything users touch).
 > **The version line jumps 5.1.13 → 7.0.0
 > — there is no 6.x series**, and 7.0.0 contains a bug fix, not breaking changes;
 > the major bump was a deliberate owner decision, so don't read it as a schema or
@@ -2338,6 +2340,60 @@ it as a live concern.
     — read that before changing any of it. Developer tooling only: no
     production code, schema, or Edge Function is touched, which is why v7.3.0
     is safe to skip when reasoning about what the live site is running.
+
+58. **Schema/permissions hardening from a review (2026-07-20, PR #42,
+    released as v7.4.0, migrations `20260720100000`/`100100`/`110000`/
+    `110100`).** Four findings, each verified against the live schema before
+    acting — this document's own history has reviews that were right and
+    reviews that overstated, so none was taken on trust.
+    - **Dropped `"Steward update"` on `bookings`.** No `WITH CHECK`, and
+      `authenticated` holds full-column UPDATE, so a steward could write
+      `stall_cost`/`status`/`cancel_token`/the Stripe columns. Dropped rather
+      than narrowed because **nothing used it**: `page-steward.js` never
+      updates bookings — it reads (via the retained `"Steward access"`) and
+      assigns pitches through `rpc_set_booking_locations()`, a SECURITY
+      DEFINER RPC with its own role check. Don't "restore" this policy; if a
+      steward ever needs a booking write, add an RPC.
+    - **`audit_logs.user_email` is now server-stamped** by a BEFORE INSERT
+      trigger. It was client-supplied text under `WITH CHECK (true)`, so staff
+      could forge entries. **Two properties are load-bearing**: it only
+      overwrites when an email claim exists (`service_role` has none — Edge
+      Function audit rows would otherwise be blanked or rejected), and it
+      swallows malformed claims rather than raising, because a trigger that
+      blocks a write from being recorded is worse than the spoofing it
+      prevents. Reads `request.jwt.claims` directly rather than `auth.jwt()`
+      so it needs no EXECUTE grant on the caller's part.
+    - **`bookings.status` CHECK-constrained** to the six real values.
+      **Deliberately not an enum**, despite `is_charity` being one: Postgres
+      has no `ALTER TYPE ... DROP VALUE`, and this project has added *and
+      removed* `Pre-Confirmed`, `Paid` and `On Hold` — each removal would have
+      needed a full type swap. Keep the list in sync with
+      `CONFIG.UI.STATUS_LIST` in `js/config.js`.
+    - **Revoked the vestigial `anon` grant on `rpc_set_booking_locations()`**,
+      finishing the v5.1.3 sweep that missed it.
+
+    **A correction worth keeping**: the status migration also runs
+    `ALTER COLUMN status SET NOT NULL`, written believing NULL was permitted.
+    It wasn't — the column was already `NOT NULL`, established only by diffing
+    production dumps either side of the change after noticing the line being
+    read was `email_queue.status`, a different table. The statement is a
+    harmless no-op but the migration's comment overstates it; the applied
+    migration was left alone rather than rewritten, and the test is relabelled
+    to say what it actually guards. Lesson: when a dump shows two columns of
+    the same name, confirm which table each belongs to before concluding
+    anything.
+
+    **Not done, deliberately** (also from that review): `location_power` has no
+    PK or FK — but it has **zero references in `js/` or any HTML**, so the real
+    question is whether to drop the table, not constrain it. And consolidating
+    `user_roles.role` (text + CHECK) with the parallel `user_role` enum would
+    let the `eq_text_user_role` operator shim be dropped — high value, since
+    that shim is the invisible-call-site footgun in the Gotchas above, but it
+    touches nearly every RLS policy and wants planning. A third finding, the
+    anon `schedules` policy being `USING (true)`, is real but low-impact (slot
+    times for unnamed performers; column grants stop ID→name resolution) and
+    `schedules` is shared with the external performer app, so a table-policy
+    change needs checking against that consumer first.
 
 **Explicitly deferred, not started:** Slack/Discord/Sentry-style alerting for Edge
 Function errors — the project owner said "I'll do it later," don't assume it's wanted
