@@ -50,7 +50,6 @@ GRANT ALL ON FUNCTION "public"."rpc_get_next_misc_id"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rpc_get_next_misc_id"() TO "service_role";
 GRANT ALL ON FUNCTION "public"."rpc_record_bank_transfer_payment"("p_booking_id" "text", "p_payment_reference" "text", "p_notes" "text") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rpc_record_bank_transfer_payment"("p_booking_id" "text", "p_payment_reference" "text", "p_notes" "text") TO "service_role";
-GRANT ALL ON FUNCTION "public"."rpc_set_booking_locations"("p_booking_id" "text", "p_location_ids" "text"[]) TO "anon";
 GRANT ALL ON FUNCTION "public"."rpc_set_booking_locations"("p_booking_id" "text", "p_location_ids" "text"[]) TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rpc_set_booking_locations"("p_booking_id" "text", "p_location_ids" "text"[]) TO "service_role";
 GRANT ALL ON FUNCTION "public"."stamp_audit_log_user_email"() TO "service_role";
