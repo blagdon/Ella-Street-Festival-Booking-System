@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## [v7.5.0] - 2026-07-20
+
+**Database change, already applied to production.**
+
+### Removed
+
+- **Dropped the orphaned `location_power` table.** Flagged by a review for having no primary key and no foreign key to `locations`. It was *not* empty — it held five rows of deliberately written data (power-availability notes for `Music Stage`, `On the street`, `Beach`, `After party`, `Green`), and its own `COMMENT` described it as "power availability at each performance location," identifying it as belonging to the performers feature rather than stall pitches. That feature is served by a separate app (`ellafestperformersadmin.vercel.app`) this repo can't audit, so the drop was confirmed with the project owner before acting rather than inferred from "no references in this repo" — which, on its own, would have been the wrong evidence for this specific table. Made reversible before dropping anything: `supabase/sql-archive/restore_location_power.sql` recreates the table, its two policies, three grants, and all five rows exactly as captured from production immediately before the change.
+
 ## [v7.4.1] - 2026-07-20
 
 **CI configuration only — no application, schema, or Edge Function changes.** The live site and database are unchanged; the last release affecting them is v7.4.0.
