@@ -106,7 +106,79 @@ function resolveFilePath(urlPath) {
   return candidate;
 }
 
+// Path prefix the browser hits instead of the Supabase project directly. The
+// Supabase client builds every URL as `${SUPABASE_URL}/<service>/v1/...`
+// (auth, rest, functions, storage), so proxying one prefix covers all of them.
+const PROXY_PREFIX = '/__supabase';
+
+/**
+ * Forwards a Supabase request through this origin.
+ *
+ * Why: Edge Functions pin Access-Control-Allow-Origin to the production origin
+ * (_shared/cors.ts), so calling one from a localhost page fails CORS — which
+ * meant Edge-Function-backed buttons (Retry, bulk email, checkout) could not be
+ * clicked through locally at all. Going through this proxy makes every request
+ * same-origin, so CORS never applies and no Edge Function has to change. It
+ * also means CSP `connect-src 'self'` already covers it.
+ *
+ * Only forwards to the configured TEST project — never production — so a
+ * mistake here cannot reach live data.
+ */
+async function proxySupabase(req, res) {
+  if (!TEST_SUPABASE_URL) {
+    res.writeHead(503, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Dev server has no TEST_SUPABASE_URL configured (.env.test missing).' }));
+    return;
+  }
+
+  const target = TEST_SUPABASE_URL + req.url.slice(PROXY_PREFIX.length);
+
+  // Pass headers through, minus the hop-by-hop ones and `host` (which must
+  // reflect the target, not localhost, or Supabase routes the request wrong).
+  const headers = {};
+  for (const [k, v] of Object.entries(req.headers)) {
+    if (['host', 'connection', 'content-length', 'accept-encoding'].includes(k.toLowerCase())) continue;
+    headers[k] = v;
+  }
+
+  // Buffer the body: these are small JSON/form payloads, and streaming a
+  // request body through fetch needs duplex handling that buys nothing here.
+  const chunks = [];
+  for await (const chunk of req) chunks.push(chunk);
+  const body = chunks.length ? Buffer.concat(chunks) : undefined;
+
+  try {
+    const upstream = await fetch(target, {
+      method: req.method,
+      headers,
+      body: ['GET', 'HEAD'].includes(req.method) ? undefined : body,
+      redirect: 'manual',
+    });
+
+    const outHeaders = {};
+    upstream.headers.forEach((value, key) => {
+      // fetch has already decompressed; forwarding the original encoding or
+      // length would make the browser try to decode plain bytes.
+      if (['content-encoding', 'content-length', 'transfer-encoding', 'connection'].includes(key.toLowerCase())) return;
+      outHeaders[key] = value;
+    });
+
+    const payload = Buffer.from(await upstream.arrayBuffer());
+    res.writeHead(upstream.status, outHeaders);
+    res.end(payload);
+  } catch (err) {
+    console.error(`[dev-server] proxy error for ${req.method} ${target}:`, err.message);
+    res.writeHead(502, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Dev proxy failed: ' + err.message }));
+  }
+}
+
 const server = http.createServer((req, res) => {
+  if (req.url.startsWith(PROXY_PREFIX)) {
+    proxySupabase(req, res);
+    return;
+  }
+
   const filePath = resolveFilePath(req.url === '/' ? '/index.html' : req.url);
 
   if (!filePath || !fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
@@ -134,9 +206,9 @@ const server = http.createServer((req, res) => {
 server.listen(PORT, HOST, () => {
   console.log(`Dev server: http://localhost:${PORT}  (serving ${ROOT})`);
   if (TEST_SUPABASE_URL) {
-    console.log(`CSP connect-src widened for: ${TEST_SUPABASE_URL}`);
-    console.log('In the browser console: esfUseTestProject(url, anonKey) then reload.');
+    console.log(`Supabase proxy: ${PROXY_PREFIX}/* -> ${TEST_SUPABASE_URL}`);
+    console.log('In the browser console: esfUseTestProject(anonKey) then reload.');
   } else {
-    console.log('No .env.test found — CSP not widened, production config only.');
+    console.log('No .env.test found — proxy disabled, production config only.');
   }
 });

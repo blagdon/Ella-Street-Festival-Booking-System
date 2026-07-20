@@ -39,6 +39,8 @@
 // ---------------------------------------------------------------------------
 const ESF_LOCAL_HOSTS = ['localhost', '127.0.0.1', '::1', '[::1]'];
 const ESF_OVERRIDE_KEY = 'ESF_LOCAL_SUPABASE_OVERRIDE';
+// Must match PROXY_PREFIX in scripts/dev-server.mjs.
+const ESF_PROXY_PREFIX = '/__supabase';
 
 function esfIsLocalHost() {
     return typeof window !== 'undefined'
@@ -64,18 +66,26 @@ function esfReadLocalOverride() {
         return null;
     }
 
-    // Validate rather than trust: a half-applied override (valid URL, missing
-    // key) would fail in a confusing place far from here.
-    const url = parsed && parsed.SUPABASE_URL;
+    // Validate rather than trust: a half-applied override (missing key) would
+    // fail in a confusing place far from here.
     const key = parsed && parsed.SUPABASE_KEY;
-    if (typeof url !== 'string' || !/^https:\/\/[a-z0-9]+\.supabase\.co$/.test(url)) {
-        console.warn('[ESF] Ignoring local Supabase override: SUPABASE_URL is not a valid Supabase project URL.');
-        return null;
-    }
     if (typeof key !== 'string' || key.length < 20) {
         console.warn('[ESF] Ignoring local Supabase override: SUPABASE_KEY is missing or implausibly short.');
         return null;
     }
+
+    // Route through the dev server's same-origin Supabase proxy rather than at
+    // the project URL directly. This is what makes Edge Functions callable
+    // locally at all: _shared/cors.ts pins Access-Control-Allow-Origin to the
+    // production origin, so a direct call from localhost fails CORS. Proxied,
+    // every request is same-origin, so CORS never applies (and `connect-src
+    // 'self'` already permits it).
+    //
+    // The dev server decides which project the proxy targets, from
+    // TEST_SUPABASE_URL in .env.test - so the project ref deliberately is not
+    // configurable from the browser. Requires `npm run dev`; a plain static
+    // server has no proxy and these requests will 404.
+    parsed.SUPABASE_URL = `${window.location.origin}${ESF_PROXY_PREFIX}`;
     return parsed;
 }
 
@@ -101,9 +111,12 @@ if (_esfOverride) {
     Object.assign(ESF_PUBLIC_CONFIG, _esfOverride);
     ESF_PUBLIC_CONFIG.__LOCAL_OVERRIDE_ACTIVE = true;
 
-    const ref = ESF_PUBLIC_CONFIG.SUPABASE_URL.replace(/^https:\/\//, '').split('.')[0];
+    // Requests now go to the local proxy, so the URL no longer names the
+    // project - the dev server decides that. Show whatever it reported at
+    // set-time, falling back to a neutral label rather than a misleading one.
+    const ref = _esfOverride.PROJECT_LABEL || 'test project (via dev-server proxy)';
     console.warn(
-        `%c[ESF] LOCAL OVERRIDE ACTIVE — talking to Supabase project "${ref}", not production.`,
+        `%c[ESF] LOCAL OVERRIDE ACTIVE — proxying to ${ref}, not production.`,
         'background:#b45309;color:#fff;font-weight:bold;padding:2px 6px;border-radius:3px'
     );
 
@@ -113,7 +126,7 @@ if (_esfOverride) {
         if (document.getElementById('esf-local-override-banner')) return;
         const el = document.createElement('div');
         el.id = 'esf-local-override-banner';
-        el.textContent = `LOCAL OVERRIDE — Supabase project: ${ref} (not production)`;
+        el.textContent = `LOCAL OVERRIDE — ${ref} (not production)`;
         el.style.cssText = [
             'position:fixed', 'bottom:0', 'left:0', 'right:0', 'z-index:2147483647',
             'background:#b45309', 'color:#fff', 'font:bold 12px system-ui,sans-serif',
@@ -140,9 +153,19 @@ if (typeof window !== 'undefined') {
 // before, and applying another project's settings over the new one is a
 // genuinely confusing failure (wrong bucket, wrong Turnstile key).
 if (esfIsLocalHost()) {
-    window.esfUseTestProject = function (url, key, extra) {
+    /**
+     * Point this browser at the dev server's proxied test project.
+     * @param {string} key   the TEST project's anon key
+     * @param {string} [label] shown in the banner (defaults to a generic label)
+     * @param {object} [extra] any other ESF_PUBLIC_CONFIG keys to override
+     *
+     * Note there is no project-URL argument: the dev server picks the target
+     * from TEST_SUPABASE_URL in .env.test, so the browser cannot aim this at
+     * an arbitrary project (and definitely not at production).
+     */
+    window.esfUseTestProject = function (key, label, extra) {
         localStorage.setItem(ESF_OVERRIDE_KEY, JSON.stringify(
-            Object.assign({ SUPABASE_URL: url, SUPABASE_KEY: key }, extra || {})
+            Object.assign({ SUPABASE_KEY: key, PROJECT_LABEL: label || '' }, extra || {})
         ));
         try { sessionStorage.removeItem('ESF_SETTINGS_CACHE'); } catch (e) {}
         console.warn('[ESF] Local override set. Reload the page to apply.');
