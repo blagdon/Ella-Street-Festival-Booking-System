@@ -33,9 +33,6 @@ GRANT ALL ON FUNCTION "public"."check_user_role"("required_role" "public"."user_
 GRANT ALL ON FUNCTION "public"."check_user_role"("required_role" "public"."user_role") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."check_user_role"("required_role" "public"."user_role") TO "service_role";
 GRANT ALL ON FUNCTION "public"."claim_pending_emails"("p_batch_size" integer) TO "service_role";
-GRANT ALL ON FUNCTION "public"."eq_text_user_role"("text", "public"."user_role") TO "anon";
-GRANT ALL ON FUNCTION "public"."eq_text_user_role"("text", "public"."user_role") TO "authenticated";
-GRANT ALL ON FUNCTION "public"."eq_text_user_role"("text", "public"."user_role") TO "service_role";
 GRANT ALL ON FUNCTION "public"."finalize_stripe_payment"("p_booking_id" "text", "p_payment_intent_id" "text") TO "service_role";
 GRANT ALL ON FUNCTION "public"."get_is_admin"() TO "anon";
 GRANT ALL ON FUNCTION "public"."get_is_admin"() TO "authenticated";
