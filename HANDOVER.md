@@ -9,10 +9,11 @@
 > verification first, and the short list that needs an explicit instruction every
 > time. Default to acting.
 > Last updated: 2026-07-20.
-> Current release: **v7.3.0** (tagged 2026-07-20; dev-server Supabase proxy —
-> developer tooling only, no production surface. The last release affecting the
-> live site is v7.2.0, the Payment Tracker modal fix — see
-> [Next Steps](#8-next-steps) items 56 and 57).
+> Current release: **v7.3.1** (tagged 2026-07-20; documentation only).
+> **The last release that changed the live site is v7.2.0**, the Payment Tracker
+> modal fix — v7.3.0 was developer tooling (dev-server Supabase proxy) and
+> v7.3.1 is docs, so both can be ruled out when tracing a production issue. See
+> [Next Steps](#8-next-steps) items 56 and 57.
 > **The version line jumps 5.1.13 → 7.0.0
 > — there is no 6.x series**, and 7.0.0 contains a bug fix, not breaking changes;
 > the major bump was a deliberate owner decision, so don't read it as a schema or
