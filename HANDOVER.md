@@ -2534,6 +2534,61 @@ it as a live concern.
     was checked too — correct text, zero child elements confirming it went
     through `innerText`, not `innerHTML`.
 
+62. **The two follow-ups item 60 left open (2026-07-20, migration
+    `20260720140000_consolidate_get_is_admin_into_check_user_role.sql`, not yet
+    tagged in a release).** Neither was written down as a formal TODO anywhere
+    — both fell out of re-reading item 60's own Gotchas entries and asking
+    "is this actually finished."
+    - **Consolidated `get_is_admin()` into `check_user_role('admin'::user_role)`.**
+      The two were behaviourally identical — same `SECURITY DEFINER` body, same
+      `auth.uid()` lookup against `user_roles`, one hardcoded `'admin'` and the
+      other parameterized. `get_is_admin()`'s only call site anywhere was
+      `policy_allow_all_admin` on `user_roles` itself, confirmed by grepping
+      every function body in a live production dump for an embedded call (not
+      just `pg_depend`, which wouldn't show this either way — the same
+      opacity-of-plpgsql-bodies reason `check_user_role`'s own reference to
+      `user_roles.role` was invisible to dependency tracking in item 60) and by
+      checking client/RPC code directly. **This one was a plain `ALTER POLICY`,
+      not the `DROP POLICY`/`CREATE POLICY` dance item 60's six policies
+      needed** — verified on the test project first rather than assumed, given
+      that exact kind of assumption was wrong once already. The reasoning for
+      why it's safe here: the pg_depend trap in item 60 was about a policy
+      expression referencing a *column* directly; both the old
+      (`get_is_admin()`) and new (`check_user_role(...)`) expressions here are
+      plain function calls with no column reference in the policy body itself,
+      so `ALTER POLICY` correctly re-points the function dependency with
+      nothing left over to block anything. Also added a test that was missing
+      entirely before touching this policy: a steward had never actually been
+      tested against `user_roles` access. It failed on the first attempt — not
+      because the policy was wrong, but because the test forgot that a
+      *separate* policy, `"Users can read own role"` (`USING (id = auth.uid())`),
+      lets any authenticated user see their own row regardless of
+      `policy_allow_all_admin`. That's correct, pre-existing, unrelated
+      behaviour (`requireAuth()` depends on it), not a bug — fixed the test to
+      check the real boundary (own row visible, a *different* user's row is
+      not) instead.
+    - **Fixed `check-rls-grants-snapshot.sh`'s first-line-only blind spot**,
+      the exact gap item 60's own Gotchas entry documented as a manual
+      workaround rather than a fix. Full writeup in the Gotchas entry itself;
+      the short version is it now accumulates a statement across lines until
+      the one that actually ends it, instead of a plain `grep -E "^(...)"`
+      that only ever saw first lines. Regenerating the snapshot with the fixed
+      script against production surfaced one unrelated bonus catch —
+      `"Strict Public Uploads"` on `storage.objects` was *also* multi-line and
+      *also* silently truncated the same way; confirmed unchanged in substance
+      via the same before/after production dump comparison used throughout
+      this session, just newly visible in full for the first time.
+    Verified: 3 new/updated tests (`tests/user-roles-enum.test.mjs`), full
+    suite 134/134 on the test project, then production — drift-free check
+    beforehand used the *old* (buggy) script by necessity, so the real
+    confirmation was reading every line of the after-diff by hand: exactly
+    the six item-60 policies plus `Strict Public Uploads` going from
+    truncated to full (format only, no content change), `policy_allow_all_admin`
+    changing from `get_is_admin()` to `check_user_role()`, and the three
+    `get_is_admin()` grants disappearing — nothing unexplained. Snapshot
+    regenerated from production and committed; CLI relinked to the test
+    project afterward.
+
 **Explicitly deferred, not started:** Slack/Discord/Sentry-style alerting for Edge
 Function errors — the project owner said "I'll do it later," don't assume it's wanted
 now without asking.
@@ -2722,19 +2777,26 @@ stay in the separate `ellafestperformersadmin.vercel.app` codebase.
   v3-era markup: any styling that depended on `transform` for *stacking* rather
   than for movement is now load-bearing-but-absent, and it degrades quietly.
 
-- **`check-rls-grants-snapshot.sh` only captures each `CREATE POLICY`'s FIRST LINE — a
-  change buried in a policy's continuation lines (its actual `USING`/`WHERE` clause,
-  almost always) is invisible to the diff.** The script's `grep -E "^(CREATE POLICY|GRANT|
-  REVOKE)"` matches the line starting with the statement, and `pg_dump` wraps a policy's
-  body onto subsequent lines that don't start with anything the pattern matches — so two
-  policies with identical names/tables/`TO`/`FOR` clauses but a materially different
-  `WHERE` expression show as unchanged. Hit live on item 60: recreating six policies with
-  a different cast (`::text` → `::"public"."user_role"`) produced a snapshot diff of only
-  three unrelated GRANT lines, none of the actual policy-body changes. **For any migration
-  that edits a policy's body without changing its first line, verify with a full
-  `supabase db dump` and grep the specific expression directly — the snapshot script alone
-  is not sufficient evidence that a policy-body change landed**, only that the set of
-  policy *names*/grants is unchanged.
+- **`check-rls-grants-snapshot.sh` used to only capture each `CREATE POLICY`'s FIRST
+  LINE — fixed 2026-07-20 (item 62), but worth knowing the failure mode existed and
+  why, since the same class of bug could recur in a different form.** The old script's
+  `grep -E "^(CREATE POLICY|GRANT|REVOKE)"` matched only the line starting with the
+  statement, and `pg_dump` wraps a policy's body onto subsequent lines that don't start
+  with anything the pattern matched — so two policies with identical names/tables/`TO`/
+  `FOR` clauses but a materially different `WHERE` expression showed as unchanged. Hit
+  live on item 60: recreating six policies with a different cast (`::text` →
+  `::"public"."user_role"`) produced a snapshot diff of only three unrelated GRANT
+  lines, none of the actual policy-body changes. The script now accumulates every
+  matching statement across lines until the one that actually terminates it (ending in
+  `;`) before emitting it as a single joined line — verified against a live dump to
+  confirm this doesn't merge unrelated statements or mis-handle `GRANT`/`REVOKE` (which
+  are already single-line in this schema, so the same logic applied uniformly is a
+  no-op for them). Regenerating the snapshot after the fix surfaced one unrelated
+  bonus catch: `"Strict Public Uploads"` on `storage.objects` was *also* multi-line and
+  *also* silently truncated the same way, unrelated to anything item 60 or 62 changed —
+  confirmed unchanged in substance, just newly visible in full. **The general lesson,
+  not just "this script is fixed now"**: any line-oriented capture of multi-statement
+  SQL is only as complete as its statement-boundary detection, and `grep` alone has none.
 
 - **`check-rls-grants-snapshot.sh` needs Git Bash, not WSL — and `.gitattributes`
   alone won't save you from CRLF.** Two separate traps, both hit live on
