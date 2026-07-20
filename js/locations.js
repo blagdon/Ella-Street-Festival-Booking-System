@@ -1,6 +1,6 @@
-import { fetchLocationData, updateLocation } from './api.js';
+import { fetchLocationData, updateLocation, LIST_CAP } from './api.js';
 import { queueLocationEmail } from './shared.js';
-import { showToast, showConfirm, renderInstanceBadge } from './ui.js';
+import { showToast, showConfirm, renderInstanceBadge, notifyIfTruncated } from './ui.js';
 import { escapeHtml, sortBookings } from './utils.js';
 
 let allBookings = [];
@@ -39,6 +39,7 @@ export async function loadData() {
         allBookings = response.bookings || [];
         allLocations = response.locations || [];
         globalOccupiedIds = response.occupied_ids || [];
+        notifyIfTruncated(response, LIST_CAP, 'bookings — some occupancy/board data may be incomplete');
         renderTable();
         renderMobileCards();
     } catch (err) {
@@ -278,6 +279,13 @@ export async function downloadLocationsForMyMaps() {
             fetchLocationData('GENERAL'),
             fetchLocationData('MISC')
         ]);
+
+        // Worth flagging here specifically, more than the interactive views:
+        // an incomplete CSV travels with the download and the gap won't be
+        // obvious to whoever opens it later, unlike an on-screen board.
+        if (foodData.truncated || generalData.truncated || miscData.truncated) {
+            notifyIfTruncated({ truncated: true }, LIST_CAP, 'bookings per instance — this export may be missing some pitches');
+        }
 
         const combinedBookings = [
             ...(foodData.bookings || []),

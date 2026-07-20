@@ -4,6 +4,23 @@
  */
 
 /**
+ * One-line notice for a list fetch that hit its cap (see api.js's
+ * fetchCapped / LIST_CAP / STATS_CAP) — shared so the six call sites that
+ * check `.truncated` all word it the same way, rather than drifting. Uses
+ * showToast, which sets the message via `.innerText`, not innerHTML, so this
+ * is inherently XSS-safe with no separate escaping step needed even though
+ * `label` here is always a static string, never user data.
+ * @param {Array} data - the result of a fetchCapped()-backed call
+ * @param {number} cap - the cap that was applied (LIST_CAP or STATS_CAP)
+ * @param {string} label - what the capped items are, e.g. "bookings"
+ */
+export function notifyIfTruncated(data, cap, label) {
+    if (data && data.truncated) {
+        showToast(`Showing the first ${cap} ${label} — there are more than this. This view will need real pagination if that becomes routine.`, 'info');
+    }
+}
+
+/**
  * Shows a toast notification at the bottom right of the screen.
  * Requires a #toast element in the DOM (injected if missing).
  * @param {string} message - The message to display

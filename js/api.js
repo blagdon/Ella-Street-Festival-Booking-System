@@ -19,6 +19,51 @@ function normalizeLocationIds(locs) {
     return (locs || []).map(l => ({ ...l, id: String(l.id) }));
 }
 
+// Generous caps for admin list queries that previously had none at all —
+// insurance against unbounded growth, not a response to an actual problem:
+// at current data volumes (~184 bookings total) none of these are remotely
+// close to firing. One shared number for board/table views, kept separate
+// from stats' higher ceiling below. Exported so page modules can reference
+// the same value in their "showing first N" notice rather than hardcoding it.
+export const LIST_CAP = 1000;
+// Stats aggregates the WHOLE fetched set into totals/percentages. A
+// truncated board view is visibly incomplete (a missing card); a truncated
+// stats dataset produces a wrong-but-plausible-looking number — a worse
+// failure mode for the same truncation, so it gets a higher ceiling.
+export const STATS_CAP = 5000;
+
+/**
+ * Runs a partially-built Supabase query with a cap, and detects whether the
+ * cap actually truncated the result rather than assuming it did.
+ *
+ * Requests cap+1 rows and slices back to cap if more came back: checking
+ * `data.length === cap` alone would be a false positive on an exact match
+ * (e.g. precisely 1000 real bookings would wrongly show a "truncated"
+ * notice forever). One extra row is a negligible cost for an accurate signal.
+ *
+ * The `truncated` flag is attached as a non-enumerable property on the
+ * returned array rather than changing the return shape to {data, truncated}
+ * — every existing caller's `.length`/`.map`/`.filter`/iteration/
+ * `JSON.stringify` keeps working completely unchanged, and only call sites
+ * that explicitly check `.truncated` need to know this exists. This is
+ * deliberate: several call sites (e.g. details.js's loadBookings) consume
+ * fetchKanbanData's result without knowing or caring about this cap, and
+ * forcing every one of them to destructure a new shape for a condition that
+ * won't fire in practice at current data volumes would be a lot of blast
+ * radius for very little benefit.
+ * @param {import('@supabase/supabase-js').PostgrestFilterBuilder} queryBuilder
+ * @param {number} cap
+ */
+async function fetchCapped(queryBuilder, cap) {
+    const { data, error } = await queryBuilder.limit(cap + 1);
+    if (error) throw error;
+    const rows = data || [];
+    const truncated = rows.length > cap;
+    const result = truncated ? rows.slice(0, cap) : rows;
+    Object.defineProperty(result, 'truncated', { value: truncated, enumerable: false });
+    return result;
+}
+
 
 
 /**
@@ -30,14 +75,10 @@ export async function fetchKanbanData(currentInstance) {
     const sb = getSupabaseClient();
     const prefix = CONFIG.INSTANCE_MAP[currentInstance] || CONFIG.INSTANCE_MAP['DEV'];
 
-    const { data, error } = await sb
-        .from(TBL_BOOKINGS)
-        .select('*')
-        .eq('instance_prefix', prefix)
-        .order('created_at', { ascending: false });
-
-    if (error) throw error;
-    const bookings = data || [];
+    const bookings = await fetchCapped(
+        sb.from(TBL_BOOKINGS).select('*').eq('instance_prefix', prefix).order('created_at', { ascending: false }),
+        LIST_CAP
+    );
     await attachLocationIds(sb, bookings);
     return bookings; // Raw data, adaptation can happen in UI if needed
 }
@@ -252,7 +293,16 @@ export async function finalizeConfirmation(id) {
 
 /**
  * Fetches bookings and joins with payment data.
- * @param {string} currentInstance 
+ *
+ * Capped, not paginated, deliberately: js/payments.js computes its Paid/
+ * Outstanding totals client-side over this entire result. Real page-at-a-time
+ * pagination would make those totals silently reflect only whichever page is
+ * currently loaded — a wrong-looking-right number is worse than an
+ * incomplete table. A cap keeps totals accurate for as long as the cap isn't
+ * hit; if it ever is, both the table AND the totals become a same-shaped
+ * undercount together, which the "showing first N" notice flags, rather than
+ * the totals silently drifting out of sync with what the table shows.
+ * @param {string} currentInstance
  */
 export async function fetchPayments(currentInstance) {
     const sb = getSupabaseClient();
@@ -267,11 +317,10 @@ export async function fetchPayments(currentInstance) {
         instanceFilter = [CONFIG.INSTANCE_MAP['FOOD'], CONFIG.INSTANCE_MAP['GENERAL'], CONFIG.INSTANCE_MAP['MISC']];
     }
 
-    const { data: bookings, error: bErr } = await sb
-        .from(TBL_BOOKINGS)
-        .select('*')
-        .in('instance_prefix', instanceFilter);
-    if (bErr) throw bErr;
+    const bookings = await fetchCapped(
+        sb.from(TBL_BOOKINGS).select('*').in('instance_prefix', instanceFilter),
+        LIST_CAP
+    );
 
     const bookingIds = bookings.map(b => b.id);
     const { data: payments, error: pErr } = bookingIds.length
@@ -310,7 +359,12 @@ export async function fetchPayments(currentInstance) {
             awaitingPayment: true
         }));
 
-    return [...withPaymentRow, ...awaitingPayment];
+    // Spreading into a new array (needed to combine the two groups) drops
+    // any non-enumerable property on the source, so re-attach it here rather
+    // than losing the truncation signal fetchCapped computed above.
+    const combined = [...withPaymentRow, ...awaitingPayment];
+    Object.defineProperty(combined, 'truncated', { value: !!bookings.truncated, enumerable: false });
+    return combined;
 }
 
 /**
@@ -416,12 +470,10 @@ export async function fetchLocationData(currentInstance) {
     const currentPrefix = CONFIG.INSTANCE_MAP[currentInstance] || CONFIG.INSTANCE_MAP['DEV'];
 
     // 1. Fetch bookings to DISPLAY (Current Instance Only)
-    const { data: bLocs, error: blErr } = await sb
-        .from(TBL_BOOKINGS)
-        .select('*')
-        .eq('status', 'Confirmed')
-        .eq('instance_prefix', currentPrefix);
-    if (blErr) throw blErr;
+    const bLocs = await fetchCapped(
+        sb.from(TBL_BOOKINGS).select('*').eq('status', 'Confirmed').eq('instance_prefix', currentPrefix),
+        LIST_CAP
+    );
 
     await attachLocationIds(sb, bLocs);
 
@@ -433,14 +485,20 @@ export async function fetchLocationData(currentInstance) {
         occupancyFilter = [CONFIG.INSTANCE_MAP['FOOD'], CONFIG.INSTANCE_MAP['GENERAL'], CONFIG.INSTANCE_MAP['MISC']];
     }
 
-    const { data: occupantBookings, error: occBErr } = await sb
-        .from(TBL_BOOKINGS)
-        .select('id')
-        .eq('status', 'Confirmed')
-        .in('instance_prefix', occupancyFilter);
-    if (occBErr) throw occBErr;
+    // Capped like the display query above, with the same reasoning, plus one
+    // more: this feeds which pitches LOOK occupied client-side, not whether an
+    // assignment actually succeeds. booking_locations_check_conflict (a DB
+    // trigger) is the real, authoritative backstop against double-booking a
+    // pitch regardless of what this list contains — see HANDOVER. So a
+    // truncated occupancy set risks a confusing UX (a pitch shown as free,
+    // then the trigger rejects the assignment) rather than an actual
+    // double-booking.
+    const occupantBookings = await fetchCapped(
+        sb.from(TBL_BOOKINGS).select('id').eq('status', 'Confirmed').in('instance_prefix', occupancyFilter),
+        LIST_CAP
+    );
 
-    const occupantIds = (occupantBookings || []).map(b => b.id);
+    const occupantIds = occupantBookings.map(b => b.id);
     const { data: allOccupants, error: occErr } = occupantIds.length
         ? await sb.from(TBL_BOOKING_LOCATIONS).select('location_id').in('booking_id', occupantIds)
         : { data: [], error: null };
@@ -451,14 +509,18 @@ export async function fetchLocationData(currentInstance) {
 
     let locs = [];
     try {
-        const { data: lData } = await sb.from(TBL_LOCATIONS).select('*').eq('dataset', dataset);
+        const { data: lData } = await sb.from(TBL_LOCATIONS).select('*').eq('dataset', dataset).limit(LIST_CAP);
         if (lData) locs = normalizeLocationIds(lData);
     } catch (e) { }
 
     return {
         bookings: bLocs,
         locations: locs,
-        occupied_ids: (allOccupants || []).map(o => o.location_id)
+        occupied_ids: (allOccupants || []).map(o => o.location_id),
+        // Physical pitches are a small, admin-curated set that will not
+        // realistically approach LIST_CAP — not worth its own truncation
+        // signal, so only the two booking queries are tracked here.
+        truncated: !!bLocs.truncated || !!occupantBookings.truncated
     };
 }
 
@@ -483,13 +545,10 @@ export async function updateLocation(id, locationIds) {
  */
 export async function fetchStatsData() {
     const sb = getSupabaseClient();
-    const { data, error } = await sb
-        .from(TBL_BOOKINGS)
-        .select('*')
-        .order('created_at', { ascending: false });
-
-    if (error) throw error;
-    return data || [];
+    return await fetchCapped(
+        sb.from(TBL_BOOKINGS).select('*').order('created_at', { ascending: false }),
+        STATS_CAP
+    );
 }
 
 /**

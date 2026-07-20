@@ -1,5 +1,5 @@
-import { fetchStatsData } from './api.js';
-import { showToast } from './ui.js';
+import { fetchStatsData, STATS_CAP } from './api.js';
+import { showToast, notifyIfTruncated } from './ui.js';
 import { escapeHtml } from './utils.js';
 
 // Constants for Prefixes
@@ -25,6 +25,7 @@ export async function loadGlobalStats() {
 
     try {
         const allRows = await fetchStatsData();
+        notifyIfTruncated(allRows, STATS_CAP, 'bookings — charts and totals only reflect these');
 
         // 2. Segment Data
         const foodData = allRows.filter(r => r.instance_prefix === PREFIX_FOOD);

@@ -1,8 +1,8 @@
-import { fetchKanbanData, updateBookingStatus, addNote, sendEmail, queueBulkEmail, requestPayment, resendPaymentRequest } from './api.js';
+import { fetchKanbanData, updateBookingStatus, addNote, sendEmail, queueBulkEmail, requestPayment, resendPaymentRequest, LIST_CAP } from './api.js';
 import { CONFIG, getStallCost } from './config.js';
 import { safeError, escapeHtml, sortBookings } from './utils.js';
 import { sharedUpdateStatus, populateDetailPane } from './shared.js';
-import { showToast, renderInstanceBadge, showConfirm } from './ui.js';
+import { showToast, renderInstanceBadge, showConfirm, notifyIfTruncated } from './ui.js';
 
 // Single source of truth for which columns exist, per instance — HCC Checks
 // is Food-instance-only; the new payment-flow statuses apply everywhere.
@@ -280,6 +280,7 @@ export async function loadBoard() {
         const currentInstance = localStorage.getItem('ESF_INSTANCE') || 'DEV';
         const data = await fetchKanbanData(currentInstance);
         allBookings = data;
+        notifyIfTruncated(data, LIST_CAP, 'bookings');
         renderBoard(sortBookings(allBookings, currentSortField, currentSortDir));
     } catch (err) {
         console.error(err);
