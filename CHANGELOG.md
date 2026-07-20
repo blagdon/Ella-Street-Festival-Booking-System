@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented in this file.
 
+## [v7.8.0] - 2026-07-20
+
+**Database change, already applied to production**, plus a CI tooling fix.
+
+### Changed
+
+- **Consolidated `get_is_admin()` into `check_user_role('admin'::user_role)`, dropping the now-redundant function.** The two were behaviourally identical — same `SECURITY DEFINER` body, same `auth.uid()` lookup against `user_roles`, one hardcoded `'admin'`, the other parameterized. `get_is_admin()`'s only call site anywhere was the policy governing `user_roles` itself; confirmed before touching anything by grepping every function body in a live production dump for an embedded call, not just relying on dependency tracking (which wouldn't show this either way). A follow-up to the `user_roles.role` enum consolidation (v7.6.0) that finishes what it started — one canonical admin-check mechanism instead of two.
+
+### Fixed
+
+- **`check-rls-grants-snapshot.sh` no longer misses changes buried in a policy's continuation lines.** It previously captured only each `CREATE POLICY`/`GRANT`/`REVOKE` statement's first line, so a change to a policy's actual `WHERE` expression (almost always on a later line, since `pg_dump` wraps these) could show as unchanged. It now accumulates a statement across lines until the one that actually terminates it. Regenerating the snapshot with the fix surfaced one unrelated bonus catch — a `storage.objects` policy was also silently truncated the same way — confirmed unchanged in substance, just newly visible in full.
+
 ## [v7.7.0] - 2026-07-20
 
 **Frontend-only — no schema or Edge Function change.**
