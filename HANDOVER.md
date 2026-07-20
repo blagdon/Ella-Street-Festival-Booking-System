@@ -9,12 +9,14 @@
 > verification first, and the short list that needs an explicit instruction every
 > time. Default to acting.
 > Last updated: 2026-07-20.
-> Current release: **v7.6.0** (tagged 2026-07-20; **database change, applied to
-> production**: `user_roles.role` consolidated onto the `user_role` enum, the
-> `eq_text_user_role` shim dropped — see [Next Steps](#8-next-steps) item 60,
-> and the two new Gotchas entries on `ALTER POLICY`'s pg_depend trap and the
-> snapshot script's first-line-only blind spot before touching another RLS
-> policy that references a column directly). v7.5.0 dropped the orphaned
+> Current release: **v7.7.0** (tagged 2026-07-20; **frontend-only, no schema/
+> Edge Function change**: bounded every unbounded admin list query with a
+> cap-and-notice pattern — see [Next Steps](#8-next-steps) item 61 for why
+> payments got a cap instead of the pagination first proposed for it).
+> v7.6.0 was a database change (`user_roles.role` consolidated onto the
+> `user_role` enum, the `eq_text_user_role` shim dropped — item 60, plus two
+> new Gotchas entries on `ALTER POLICY`'s pg_depend trap and the snapshot
+> script's first-line-only blind spot). v7.5.0 dropped the orphaned
 > `location_power` table (item 59, read it before trusting a repo-only "no
 > references" check on anything performer-adjacent again) — also database
 > changes, as was v7.4.0 (item 58); v7.4.1 was CI config only; v7.3.1 docs,
@@ -2481,6 +2483,56 @@ it as a live concern.
     invisible to it. The six policies' actual casts, the column type, and the
     shim's absence were all confirmed directly in a full production dump
     instead, not inferred from the (in this case insufficient) snapshot diff.
+
+61. **Bounded every unbounded admin list query (2026-07-20, PR #50, released
+    as v7.7.0).** Every list-style admin query previously had no
+    `.limit()`/`.range()` at all — fine at ~184 bookings, insurance against a
+    slow-motion failure as data grows, not a response to an actual problem.
+    **The audit found the request's own suspect list was wrong twice**: all
+    four unbounded queries live in `js/api.js` (`fetchKanbanData`,
+    `fetchPayments`, `fetchLocationData`, `fetchStatsData`) — `kanban.js`/
+    `summary.js`/`stats.js`/`locations.js` have no direct queries of their
+    own — and HCC dashboard was named as a suspect but wasn't one; its
+    listing already used `.range()`.
+    **Payments got a cap, not the real pagination first proposed for it** —
+    caught before writing any pagination code by actually reading
+    `payments.js`'s `renderTable()`: it computes Paid/Outstanding totals
+    client-side over the *entire* filtered set, and page-at-a-time
+    pagination would make those totals silently reflect only the loaded page
+    — a wrong-*looking*-right number, worse than a visibly incomplete
+    table. All four queries use the same cap-with-notice treatment instead:
+    `LIST_CAP = 1000` for board/table views, `STATS_CAP = 5000` for stats
+    specifically (a truncated board is visibly incomplete; a truncated
+    aggregate produces a wrong-but-plausible number — worse for the same
+    truncation, hence the higher ceiling).
+    `fetchCapped()` (`api.js`) requests `cap+1` and slices back to `cap`
+    rather than treating `length === cap` as the signal — that would
+    false-positive on an exact match. The `truncated` flag is a
+    **non-enumerable property on the returned array**, not a
+    `{data, truncated}` shape change: several callers (e.g. `details.js`'s
+    `loadBookings`) consume these results without needing to know this cap
+    exists, and forcing every one to destructure a new shape for a condition
+    that won't fire in practice wasn't worth the blast radius.
+    `notifyIfTruncated()` (`ui.js`) is the one shared notice across all six
+    call sites, including the My Maps CSV export in `locations.js` —
+    flagged there specifically, since an incomplete export travels with the
+    downloaded file, unlike an on-screen board.
+    Location-admin's occupancy query is capped too, with a comment noting
+    the real backstop against double-booking a pitch is the
+    `booking_locations_check_conflict` DB trigger, not this client-side
+    list, so a truncated occupancy set risks a confusing UX rather than
+    actual data corruption.
+    No schema/RPC/Edge Function changes — pure client-side, so the
+    integration suite (132/132) was a sanity check, not the real
+    verification. That was live, against the test project: all six affected
+    pages loaded with zero console errors, and **the truncation algorithm
+    itself was proven correct at a scale that actually fits** — seeded 5 real
+    test rows, then ran `fetchCapped`'s exact cap+1/slice/flag logic against
+    them via the console with an artificially tiny cap (`cap=10` → not
+    truncated; `cap=3` → truncated, sliced to 3), since no realistic seeding
+    could exercise the real 1000/5000 caps directly. The notice's rendering
+    was checked too — correct text, zero child elements confirming it went
+    through `innerText`, not `innerHTML`.
 
 **Explicitly deferred, not started:** Slack/Discord/Sentry-style alerting for Edge
 Function errors — the project owner said "I'll do it later," don't assume it's wanted

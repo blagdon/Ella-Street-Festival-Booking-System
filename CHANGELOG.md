@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## [v7.7.0] - 2026-07-20
+
+**Frontend-only — no schema or Edge Function change.**
+
+### Added
+
+- **Bounded every admin list query that previously had no `.limit()`/`.range()` at all.** Fine at ~184 bookings today; insurance against a slow-motion failure as data grows, consistent with the audit-log and email-queue pages, which already paginate. All four unbounded queries — the Kanban board, the Payments dashboard, Location Manager (including its occupancy check), and the Statistics page — now use a generous cap (1000 for board/table views, 5000 for stats, since a truncated aggregate produces a wrong-but-plausible number rather than a visibly incomplete list) with a one-time "showing first N" notice if the cap is ever actually hit. Payments deliberately got this cap-and-notice treatment rather than real pagination, since its running Paid/Outstanding totals are computed client-side over the whole filtered set — true pagination would make those totals silently reflect only the current page. No behaviour change at current data volumes, verified live against every affected page.
+
 ## [v7.6.0] - 2026-07-20
 
 **Database change, already applied to production.**
