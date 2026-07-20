@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## [v7.3.1] - 2026-07-20
+
+**Documentation only — no code, schema, or configuration changes.** The live site is unchanged; the last release affecting it is v7.2.0.
+
+### Documentation
+
+- **Brought HANDOVER's reference sections back in line with reality.** Its chronological "Next Steps" log had been kept current as each change landed, but the reference half (architecture, data model, current state, testing) had drifted — so the document *looked* maintained while sections 3–6 quietly went stale, which is the more dangerous failure for a file written to be trusted by someone with no prior context. Fixed: the Edge Functions table was missing `retry-queued-email` entirely and still described `get-reviews` as uncached; `google_reviews_cache` was absent from the data model and `email_queue` was missing its `retry_count`/`last_retry_at` columns; "Known gaps" still claimed there was no Email Queue browse/retry UI (browse shipped in v5.1.0, retry in v7.1.0) and pointed at the wrong source file; the testing section said "three test files" when there are eight and 108 tests; and the repository layout listed neither `scripts/` nor `tests/`. Every claim was re-checked against the repo rather than the prose.
+
 ## [v7.3.0] - 2026-07-20
 
 **Developer tooling only — no production surface.** Nothing about the deployed site, database, or Edge Functions changes in this release.
