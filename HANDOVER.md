@@ -727,8 +727,13 @@ secrecy). There is no `.env` file to create for local frontend dev.
 ```bash
 npm install
 npm run build:css      # or: npm run watch:css   (compiles css/input.css → css/output.css)
-npx http-server .      # or any static file server — no build step for the JS/HTML
+npm run dev            # local server on :8080 (loopback only)
 ```
+Use `npm run dev` rather than a bare static server: it additionally widens each
+page's CSP `connect-src` in flight so the localhost test-project override can
+work — see [Verifying browser flows locally](#verifying-browser-flows-locally-the-test-project-override).
+**By default it still serves production config**, exactly like any other static
+server; the override is opt-in per browser.
 Then open the served root — `login.html` for admin, or any of the public booking forms
 directly. There's no `.claude/launch.json` committed; if you're driving this via a
 browser-automation tool, set one up pointing at the static server.
@@ -932,14 +937,59 @@ When a migration and a frontend change ship together, apply the migration
 **before** merging — merging auto-deploys the frontend via Vercel, so the
 reverse order puts live UI in front of columns that don't exist yet.
 
-**Known blocker on full autonomy, unresolved**: browser-driven flows can't be
-verified by an agent, because `supabase-public.js` points at production — so
-loading any admin page locally talks to the live database, and clicking a
-button there can email real traders. This is why items 51, 54 and 55 all
-shipped with "an admin should confirm the button works." Fixing it properly
-means a local-only way to point the frontend at the test project without
-editing the committed file (a gitignored override, say). That's an owner
-decision, not something to improvise — see the red-tier entry above.
+### Verifying browser flows locally (the test-project override)
+
+Historically an agent couldn't verify anything in a browser, because
+`supabase-public.js` points at production: loading an admin page locally talked
+to the **live** database, so clicking a button could email real traders. That's
+why items 51, 54 and 55 all shipped saying "an admin should confirm this."
+
+**This now mostly works.** Two pieces, added 2026-07-19:
+
+1. **`supabase-public.js` supports a localhost-only override.** It reads
+   `localStorage.ESF_LOCAL_SUPABASE_OVERRIDE` and applies it *only* when
+   `location.hostname` is in a strict allowlist (`localhost`, `127.0.0.1`,
+   `::1`). A deployed origin cannot execute that branch, so production
+   behaviour is unchanged; the override lives in localStorage rather than any
+   file, so there is nothing to accidentally commit (which is exactly how this
+   file caused a full outage on 2026-07-18). When active it is deliberately
+   loud: a console warning plus a fixed on-page banner naming the project.
+   Console helpers, defined on localhost only:
+   ```js
+   esfUseTestProject('https://qeplpcnrkgpaawfyliap.supabase.co', '<test anon key>') // then reload
+   esfUseProduction()                                                              // then reload
+   ```
+   Both clear `ESF_SETTINGS_CACHE`, since applying one project's cached
+   settings over another's is its own confusing failure.
+
+2. **`npm run dev` (`scripts/dev-server.mjs`) instead of `npx http-server`.**
+   Every page pins its Supabase project in a CSP `connect-src` meta tag, so
+   the browser blocks the test project before any of our code runs. The dev
+   server widens `connect-src` **in the bytes it serves**, never on disk — the
+   deployed CSP stays exactly as strict. Don't "fix" this by adding the test
+   URL to the committed meta tags; a dev-only need must not loosen a
+   production security header.
+
+**What this does NOT unblock, and why**: anything that calls an **Edge
+Function** from the browser still fails from localhost, with
+`Failed to send a request to the Edge Function`. `_shared/cors.ts` pins
+`Access-Control-Allow-Origin` to the production origin (v5.1.1 hardening,
+whose comment explicitly accepts losing local browser access). So Retry,
+bulk email, checkout-session and friends can be exercised from `tests/`
+(Node doesn't enforce CORS) but **not** clicked through locally. Two viable
+fixes, neither attempted yet, both bigger than they look:
+- **Proxy through the dev server** — serve `/functions/v1/*` (ideally all
+  Supabase traffic) from `localhost`, making every request same-origin and
+  removing CORS from the picture entirely. Probably the better option: no
+  Edge Function changes at all.
+- **Per-request origin negotiation in `_shared/cors.ts`** — echo a localhost
+  origin only when a test-project-only env var permits it. Touches all eight
+  functions' module-level `corsHeaders`, including the payment paths, and
+  note `tests/cors.test.mjs` asserts the test project emits the *production*
+  origin, so a naive env-var swap silently destroys that coverage.
+
+Until one of those lands, an Edge-Function-backed button still needs a human
+to confirm it end-to-end.
 
 ### Commits
 Short conventional-ish prefixes: `fix:`, `feat:`, `security:`, `refactor:`, `chore:`,
