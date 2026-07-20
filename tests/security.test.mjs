@@ -338,19 +338,11 @@ describe('anon access to locations', () => {
   });
 });
 
-describe('anon access to location_power', () => {
-  // Same narrowing as locations, applied the same day. No client call site
-  // in this repo currently reads location_power, but its own RLS policy
-  // ("Public view power") has always been SELECT-only, so the table grant
-  // now just matches what was already the intent.
-  test('anon can select but not write to location_power', async () => {
-    const { error: selectErr } = await anon.from('location_power').select('*').limit(1);
-    assert.equal(selectErr, null, selectErr?.message);
-
-    const { error: updateErr } = await anon.from('location_power').update({ power_available: false }).eq('location', liveLocationId);
-    assert.ok(updateErr, 'expected anon UPDATE on location_power to be rejected outright');
-  });
-});
+// The `anon access to location_power` block was removed on 2026-07-20 along
+// with the table itself (migration 20260720120000). If location_power is ever
+// restored from supabase/sql-archive/restore_location_power.sql, restore these
+// grant assertions too - anon was SELECT-only and authenticated could not
+// write, and both were worth locking in.
 
 describe('anon access to settings (booking open/closed flags)', () => {
   // 20260718140000_allow_anon_read_booking_open_flags.sql: the public booking
@@ -545,11 +537,6 @@ describe('authenticated table grant narrowing (20260718110000)', () => {
   test('authenticated cannot write to locations directly (physical locations are seed/migration-only)', async () => {
     const { error } = await admin.from('locations').update({ lat: 0 }).eq('id', liveLocationId);
     assert.ok(error, 'expected authenticated UPDATE on locations to be rejected outright');
-  });
-
-  test('authenticated cannot write to location_power (zero real usage anywhere)', async () => {
-    const { error } = await admin.from('location_power').update({ power_available: true }).eq('location', liveLocationId);
-    assert.ok(error, 'expected authenticated UPDATE on location_power to be rejected outright');
   });
 
   test('authenticated cannot UPDATE or DELETE audit_logs (append-only log)', async () => {

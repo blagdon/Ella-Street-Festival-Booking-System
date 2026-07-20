@@ -1,0 +1,27 @@
+-- Drop the orphaned `location_power` table.
+--
+-- Flagged by a schema review for having no primary key and no foreign key to
+-- `locations` - its `location` column was bare text referencing nothing. The
+-- owner confirmed the table is orphaned, so it is removed rather than
+-- constrained.
+--
+-- READ THIS BEFORE ASSUMING IT WAS EMPTY: it was not. It held five rows of
+-- deliberately written data (power availability notes for Music Stage, On the
+-- street, Beach, After party and Green), and its own COMMENT described it as
+-- "Power availability at each performance location". Those are performer
+-- venues, not stall pitches - the `locations` table holds numeric pitch ids
+-- with lat/lng, which is a different thing entirely. The performers feature is
+-- shared with a separate app (ellafestperformersadmin.vercel.app) that this
+-- repo cannot audit, so this drop was raised with the owner before being made
+-- rather than inferred from "no references in this codebase" - grepping this
+-- repo was never sufficient evidence for this particular table.
+--
+-- REVERSIBLE: supabase/sql-archive/restore_location_power.sql recreates the
+-- table, its two policies, its grants and all five rows exactly as they were.
+-- If the performer app turns out to depend on this, run that script.
+--
+-- Dropping the table takes its policies ("Public view power",
+-- "Admin manage location_power") and its grants with it; no separate
+-- REVOKE/DROP POLICY statements are needed.
+
+DROP TABLE IF EXISTS "public"."location_power";
