@@ -1,6 +1,6 @@
-import { fetchKanbanData, updateBookingStatus, addNote, sendEmail, queueBulkEmail, requestPayment, resendPaymentRequest } from './api.js';
+import { fetchKanbanData, updateBookingStatus, addNote, sendEmail, queueBulkEmail, requestPayment, resendPaymentRequest, LIST_CAP } from './api.js';
 import { sharedUpdateStatus, populateDetailPane } from './shared.js';
-import { showToast, renderInstanceBadge, showConfirm } from './ui.js';
+import { showToast, renderInstanceBadge, showConfirm, notifyIfTruncated } from './ui.js';
 import { escapeHtml, sortBookings } from './utils.js';
 import { CONFIG, getStallCost } from './config.js';
 
@@ -20,6 +20,7 @@ async function loadData() {
         const currentInstance = localStorage.getItem('ESF_INSTANCE') || 'DEV';
         const data = await fetchKanbanData(currentInstance);
         allBookings = data;
+        notifyIfTruncated(data, LIST_CAP, 'bookings');
         renderTable(data);
     } catch (err) {
         tbody.innerHTML = `<tr><td colspan="7" class="px-6 py-4 text-center text-red-500 font-bold">Error: ${escapeHtml(err.message)}</td></tr>`;

@@ -1,6 +1,6 @@
-import { fetchPayments, updatePayment, resendPaymentRequest, recordBankTransferPayment, sendEmail } from './api.js';
+import { fetchPayments, updatePayment, resendPaymentRequest, recordBankTransferPayment, sendEmail, LIST_CAP } from './api.js';
 import { manualSendPaymentReminder, getEmailFromTemplate } from './shared.js';
-import { showToast } from './ui.js';
+import { showToast, notifyIfTruncated } from './ui.js';
 import { escapeHtml } from './utils.js';
 import { CONFIG } from './config.js';
 
@@ -59,6 +59,7 @@ async function loadData() {
     try {
         const currentInstance = localStorage.getItem('ESF_INSTANCE') || 'DEV';
         allRecords = await fetchPayments(currentInstance);
+        notifyIfTruncated(allRecords, LIST_CAP, 'bookings — Paid/Outstanding totals only cover these');
         renderTable();
     } catch (err) {
         console.error(err);

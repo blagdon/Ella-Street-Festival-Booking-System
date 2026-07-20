@@ -1,5 +1,5 @@
-import { fetchKanbanData, updateBookingDetails } from './api.js';
-import { showToast, renderInstanceBadge } from './ui.js';
+import { fetchKanbanData, updateBookingDetails, LIST_CAP } from './api.js';
+import { showToast, renderInstanceBadge, notifyIfTruncated } from './ui.js';
 import { escapeHtml, safeError } from './utils.js';
 import { CONFIG } from './config.js';
 
@@ -66,6 +66,7 @@ export async function loadBookings() {
         const instance = localStorage.getItem('ESF_INSTANCE') || 'DEV';
         const data = await fetchKanbanData(instance); // This function is already in api.js
         allBookings = data;
+        notifyIfTruncated(data, LIST_CAP, 'bookings');
         renderList(data);
         const countEl = document.getElementById('countDisplay');
         if (countEl) countEl.innerText = `${data.length} bookings loaded`;
