@@ -170,8 +170,16 @@
             <div id="modal-overlay" class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"
                 aria-hidden="true"></div>
             <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+            <!-- `relative z-50` is load-bearing, do not remove: the overlay above is
+                 `fixed` (positioned), this panel is otherwise `static`, and a positioned
+                 element paints over a static one regardless of DOM order - so without
+                 this the panel renders UNDER the grey overlay and the page just looks
+                 blank. This markup used to work because Tailwind v3's bare `transform`
+                 utility created a stacking context; under v4 it computes to
+                 `transform: none`, so it no longer does. Matches the `relative z-50`
+                 pattern every other modal in this app already uses. -->
             <div
-                class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+                class="relative z-50 inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
                 <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
                     <h3 class="text-lg leading-6 font-medium text-gray-900" id="modal-title">Update Payment Details</h3>
                     <div class="mt-4 space-y-4">
@@ -226,8 +234,16 @@
             <div id="bank-transfer-modal-overlay" class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"
                 aria-hidden="true"></div>
             <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+            <!-- `relative z-50` is load-bearing, do not remove: the overlay above is
+                 `fixed` (positioned), this panel is otherwise `static`, and a positioned
+                 element paints over a static one regardless of DOM order - so without
+                 this the panel renders UNDER the grey overlay and the page just looks
+                 blank. This markup used to work because Tailwind v3's bare `transform`
+                 utility created a stacking context; under v4 it computes to
+                 `transform: none`, so it no longer does. Matches the `relative z-50`
+                 pattern every other modal in this app already uses. -->
             <div
-                class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+                class="relative z-50 inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
                 <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
                     <h3 class="text-lg leading-6 font-medium text-gray-900" id="bank-transfer-modal-title">Record Bank Transfer Payment</h3>
                     <p class="mt-1 text-sm text-gray-500">Recording this will mark the payment as received and automatically confirm the booking.</p>
