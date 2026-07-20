@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## [v7.4.1] - 2026-07-20
+
+**CI configuration only — no application, schema, or Edge Function changes.** The live site and database are unchanged; the last release affecting them is v7.4.0.
+
+### CI
+
+- **PR merges no longer block on a check that never ran.** An unscoped `push:` trigger fired a second, duplicate run for every branch that also had a PR open. GitHub keeps only one *pending* run per concurrency group and evicts the previously-pending one when a newer run queues behind the in-progress one — so with two events firing, the `integration-tests` job could be cancelled before executing, while still reporting a non-success required check against the head commit. Branch protection then blocked the merge for a run that never happened (hit live on PR #43; earlier PRs escaped only because both runs happened to finish before a third queued). Fixed by scoping `push` to `main`, giving exactly one run per PR plus one on merge — which also halves contention on the serialised shared test database. Note the fix is deliberately **not** in the concurrency block: `cancel-in-progress` was already `false` and must stay so, since cancelling a run mid-suite would abandon fixtures in the shared database for the next run to trip over. Tradeoff: pushing a branch with no PR open now runs no CI, matching this repo's PR-based convention.
+
 ## [v7.4.0] - 2026-07-20
 
 **Database changes, already applied to production.** Four findings from a schema/permissions review, each verified against the live schema before acting rather than taken on trust.
