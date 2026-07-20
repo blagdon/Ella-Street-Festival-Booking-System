@@ -2,6 +2,25 @@
 
 All notable changes to this project are documented in this file.
 
+## [v7.2.0] - 2026-07-20
+
+### Fixed
+
+- **Payment Tracker modals rendered underneath their own overlay.** Pressing "Record Bank Transfer" blanked the screen and recorded nothing — the modal was in fact opening and fully populated, but was being painted *under* the grey overlay, so there was no way to reach the Save button. Both symptoms had one cause: the form could never be submitted, so nothing was written. The overlay is `fixed` (positioned) while the panel was `static`, and a positioned element paints above a static one regardless of DOM order; the markup only ever worked because Tailwind v3's bare `transform` utility created a stacking context on the panel, and under v4 that computes to `transform: none`. Fixed with `relative z-50` on the panel, matching the pattern every other modal in the app already uses. **The "Edit Payment" modal on the same page was broken identically** and is fixed by the same change — it had simply never been reported.
+
+### Added
+
+- **Local test-project override, so browser flows can be verified against the disposable test project instead of production.** `supabase-public.js` points at production, which meant loading any admin page locally talked to the live database and clicking a button could email real traders. It now reads an override from `localStorage`, applied *only* on an exact-match localhost origin — a deployed origin cannot reach that branch, so production behaviour is unchanged, and nothing lives in a file that could be committed by accident (this file caused a full outage on 2026-07-18 when it was repointed and committed). When active it announces itself with a console warning and an on-page banner naming the project. Helpers: `esfUseTestProject(url, key)` / `esfUseProduction()`.
+- **`npm run dev`** — a loopback-only dev server that additionally widens each page's CSP `connect-src` *in the bytes it serves, never on disk*, since every page pins its Supabase project in a CSP meta tag that would otherwise block the test project. The deployed CSP stays exactly as strict.
+
+### Documentation
+
+- **HANDOVER now carries a tiered agent-autonomy policy** replacing the previous blanket "no agent should run `supabase db push`" rule, which was overridden ad-hoc often enough that it caused round-trips for safe work while giving no guidance on genuinely risky actions. Green (act freely: additive migrations, function deploys, merging green PRs, cutting releases), amber (act, but a stated verification is mandatory), red (needs an explicit instruction naming the action: sending real email, moving real money, destructive DDL, repointing `supabase-public.js`, rotating credentials, rewriting history).
+
+### Chore
+
+- Root-level ad-hoc schema dumps (`schema*.sql`) are now gitignored, rather than only the single literal `schema.sql`.
+
 ## [v7.1.0] - 2026-07-19
 
 ### Added

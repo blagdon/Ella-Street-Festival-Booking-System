@@ -8,9 +8,9 @@
 > including applying additive migrations to production), which require specific
 > verification first, and the short list that needs an explicit instruction every
 > time. Default to acting.
-> Last updated: 2026-07-19.
-> Current release: **v7.1.0** (tagged 2026-07-19; retry failed emails from the
-> Email Queue viewer, see [Next Steps](#8-next-steps) item 55).
+> Last updated: 2026-07-20.
+> Current release: **v7.2.0** (tagged 2026-07-20; Payment Tracker modals fixed,
+> plus the local test-project override — see [Next Steps](#8-next-steps) item 56).
 > **The version line jumps 5.1.13 → 7.0.0
 > — there is no 6.x series**, and 7.0.0 contains a bug fix, not breaking changes;
 > the major bump was a deliberate owner decision, so don't read it as a schema or
@@ -2251,6 +2251,35 @@ it as a live concern.
     real traders. Same browser-flow blind spot as item 54; an admin should
     confirm on a real failed row.
 
+56. **Payment Tracker modals were rendering underneath their own overlay
+    (2026-07-20, PR #36, released as v7.2.0).** Reported as: pressing "Record
+    Bank Transfer" blanks the screen and records nothing. Both halves had one
+    cause — the modal *was* opening and *was* fully populated, but was painted
+    under the grey overlay, so the Save button was unreachable and the form
+    could never be submitted. Nothing was wrong with `js/payments.js` or the
+    `rpc_record_bank_transfer_payment` path at all. Cause: the overlay is
+    `fixed` (positioned), the panel was `static`, and a positioned element
+    paints above a static one regardless of DOM order — see the Tailwind v4
+    Gotcha below for why this markup used to work and silently stopped.
+    Fixed with `relative z-50` on the panel, matching the pattern every other
+    modal in the app already uses. **The "Edit Payment" modal on the same page
+    was broken identically** — same structure, never reported — and is fixed by
+    the same change; assume admins had been quietly working around it.
+    Diagnosed empirically rather than by reading CSS
+    (`document.elementFromPoint()` at the screen centre returned the overlay;
+    the panel computed `position: static, z-index: auto, transform: none`) and
+    **verified end-to-end in a real browser** against the test project: the
+    modal renders and is interactive, and completing it records the payment
+    (`paid`, `payment_method='bank_transfer'`, server-derived `verified_by`)
+    and auto-confirms the booking with `date_confirmed` set. This is the first
+    bug found and fixed using the local test-project override from PR #34 (see
+    [Verifying browser flows locally](#verifying-browser-flows-locally-the-test-project-override))
+    — the class of bug items 51/54/55 all had to hand back to a human.
+    One process note: the first reproduction attempt failed with
+    `Invalid booking ID format.`, which was the *test fixture*, not the app —
+    `validateBookingId()` requires `ESF26-(FOOD|NONFOOD|DEV|MISC)-\d{4}`, four
+    digits exactly, so seeded fixtures must use a realistic id.
+
 **Explicitly deferred, not started:** Slack/Discord/Sentry-style alerting for Edge
 Function errors — the project owner said "I'll do it later," don't assume it's wanted
 now without asking.
@@ -2389,6 +2418,22 @@ stay in the separate `ellafestperformersadmin.vercel.app` codebase.
   current, correct behavior is a manual "send" button on `hcc_dashboard.html` that
   redirects to the logged-in admin's own inbox when the active instance is `DEV`, and
   audit-logs every send.
+
+- **Tailwind v4 broke `transform` as a stacking-context trick, and it fails
+  silently — suspect this first on any "the screen goes blank" report.** The
+  Tailwind v2/v3 modal pattern (a `fixed inset-0` overlay, then a panel that is
+  `inline-block ... transform transition-all` with no `relative`/`z-`) relied on
+  v3's bare `transform` utility emitting a real transform, which created a
+  stacking context and lifted the panel above the overlay. **Under v4, bare
+  `transform` with no transform values computes to `transform: none`** — no
+  stacking context — so the positioned overlay paints over the static panel and
+  the user sees a featureless grey screen. Nothing throws; there is no console
+  error to find. This hit both `payments.html` modals (item 56). Every other
+  modal in the app already uses `relative z-50` on the panel and is unaffected.
+  Diagnose it with `document.elementFromPoint(x, y)` at the screen centre — if
+  that returns the overlay, this is what you have. The general lesson for other
+  v3-era markup: any styling that depended on `transform` for *stacking* rather
+  than for movement is now load-bearing-but-absent, and it degrades quietly.
 
 - **`check-rls-grants-snapshot.sh` needs Git Bash, not WSL — and `.gitattributes`
   alone won't save you from CRLF.** Two separate traps, both hit live on
