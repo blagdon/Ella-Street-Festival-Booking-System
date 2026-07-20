@@ -9,13 +9,16 @@
 > verification first, and the short list that needs an explicit instruction every
 > time. Default to acting.
 > Last updated: 2026-07-20.
-> Current release: **v7.5.0** (tagged 2026-07-20; **database change, applied to
-> production**: dropped the orphaned `location_power` table — but read
-> [Next Steps](#8-next-steps) item 59 before trusting a repo-only "no
-> references" check on anything performer-adjacent again, since that's exactly
-> what went wrong on the first pass here). v7.4.0 (also database changes —
-> item 58) and v7.4.1 (CI config only) preceded it; v7.3.1 docs, v7.3.0
-> developer tooling, v7.2.0 the Payment Tracker modal fix before that.
+> Current release: **v7.6.0** (tagged 2026-07-20; **database change, applied to
+> production**: `user_roles.role` consolidated onto the `user_role` enum, the
+> `eq_text_user_role` shim dropped — see [Next Steps](#8-next-steps) item 60,
+> and the two new Gotchas entries on `ALTER POLICY`'s pg_depend trap and the
+> snapshot script's first-line-only blind spot before touching another RLS
+> policy that references a column directly). v7.5.0 dropped the orphaned
+> `location_power` table (item 59, read it before trusting a repo-only "no
+> references" check on anything performer-adjacent again) — also database
+> changes, as was v7.4.0 (item 58); v7.4.1 was CI config only; v7.3.1 docs,
+> v7.3.0 developer tooling, v7.2.0 the Payment Tracker modal fix before that.
 > **The version line jumps 5.1.13 → 7.0.0
 > — there is no 6.x series**, and 7.0.0 contains a bug fix, not breaking changes;
 > the major bump was a deliberate owner decision, so don't read it as a schema or
@@ -838,11 +841,14 @@ with a real run via `gh run watch` — all three green.
   `npm run check:rls-grants -- --update` and commit the refreshed snapshot if
   the change is expected.
 - `npm run test:integration` (`node --test --test-concurrency=1`, Node's
-  built-in `node:test`) runs **eight** test files (108 tests as of
-  2026-07-20). The three below are the originals; the rest were added
-  alongside their features — `tests/stripe-payment.test.mjs`,
-  `tests/bank-transfer-payment.test.mjs`, `tests/cors.test.mjs`,
-  `tests/email-retry.test.mjs` (item 55) and
+  built-in `node:test`) runs **ten** test files (132 tests as of
+  2026-07-20 — check `ls tests/*.test.mjs | wc -l` rather than trust this
+  number, it has already gone stale twice). The three below are the
+  originals; the rest were added alongside their features —
+  `tests/stripe-payment.test.mjs`, `tests/bank-transfer-payment.test.mjs`,
+  `tests/cors.test.mjs`, `tests/email-retry.test.mjs` (item 55),
+  `tests/privilege-hardening.test.mjs` (item 58) and
+  `tests/user-roles-enum.test.mjs` (item 60), and
   `tests/google-reviews-cache.test.mjs` (item 53, which proves cache
   hit/bypass/TTL behaviour **without ever making a real SerpApi call** — the
   test project has no key, so a "not configured" failure is the cache-miss
@@ -2388,15 +2394,12 @@ it as a live concern.
     any HTML" conclusion was wrong for this specific table; don't reuse that
     check as a general orphan-detection method.
 
-    **Still not done, deliberately**: consolidating
-    `user_roles.role` (text + CHECK) with the parallel `user_role` enum would
-    let the `eq_text_user_role` operator shim be dropped — high value, since
-    that shim is the invisible-call-site footgun in the Gotchas above, but it
-    touches nearly every RLS policy and wants planning. A third finding, the
-    anon `schedules` policy being `USING (true)`, is real but low-impact (slot
-    times for unnamed performers; column grants stop ID→name resolution) and
-    `schedules` is shared with the external performer app, so a table-policy
-    change needs checking against that consumer first.
+    **The `user_roles.role`/`eq_text_user_role` consolidation is done — see item
+    60.** Still open: the anon `schedules` policy being `USING (true)` — real
+    but low-impact (slot times for unnamed performers; column grants stop
+    ID→name resolution) — and `schedules` is shared with the external
+    performer app, so a table-policy change needs checking against that
+    consumer first.
 
 59. **Dropped the orphaned `location_power` table (2026-07-20, PR #46,
     migration `20260720120000_drop_location_power.sql`) — but read this
@@ -2426,6 +2429,59 @@ it as a live concern.
     before, and the after-diff was exactly the table's two policies and three
     grants — confirmed absent in a fresh production dump afterward.
 
+60. **Consolidated `user_roles.role` onto the pre-existing `user_role` enum,
+    dropping the `eq_text_user_role()` shim (2026-07-20, PR #48, migration
+    `20260720130000_consolidate_user_roles_enum.sql`).** Closes the item 58
+    "still not done" entry. The shim existed solely to make
+    `check_user_role()`'s `role = required_role` (`text` = `user_role`)
+    resolve — the invisible-call-site footgun in the Gotchas below. With
+    `role` now genuinely `user_role`, that comparison is native and the shim
+    plus its `"public".=` operator are gone.
+    **Scope was established by tracing every reference in a live production
+    dump, not by assuming `check_user_role()` was the only consumer** — 13 of
+    the schema's 23 policies touch `user_roles.role`, in three categories that
+    behave completely differently under this change:
+    - **7 call `check_user_role('x'::user_role)`** — no text change, and
+      critically, **no `pg_depend` dependency on the column at all**: a
+      plpgsql function body is opaque to Postgres's dependency tracker, so the
+      column reference living inside `check_user_role` never registers.
+      That's also why the function needed no `CREATE OR REPLACE` — it's
+      re-planned against the column's current type at each execution.
+    - **1 calls `get_is_admin()`** (untyped literal in the body) — unaffected
+      either way.
+    - **6 inline the comparison directly**
+      (`"user_roles"."role" = 'admin'::"text"`) — these DO register a
+      `pg_depend` column dependency, because policy expressions are parsed and
+      analyzed at `CREATE`/`ALTER POLICY` time. They're also in the *opposite*
+      cast direction from the shim (`user_role = text`, never defined even
+      while the shim existed) — they'd have broken **silently** if this
+      migration had only touched `check_user_role()`.
+    **The first attempt used `ALTER POLICY` on those six and failed** on the
+    subsequent `ALTER COLUMN TYPE` with *"cannot alter type of a column used
+    in a policy definition"* — for a policy already rewritten to reference
+    the new type. The `pg_depend` record is on the column, independent of
+    what the comparison casts to; `ALTER POLICY` edits the expression in place
+    without ever clearing it. **The only sequence that works is `DROP POLICY`
+    → the type change → `CREATE POLICY`** — see the Gotchas entry below, this
+    is worth knowing before touching any RLS policy referencing a column
+    that's about to change type. The failed attempt rolled back cleanly
+    (verified via a dump showing the original text column and CHECK still
+    present) since the whole migration is one transaction.
+    Verified: 14 new tests (`tests/user-roles-enum.test.mjs`) covering all
+    three policy categories as real admin *and* steward sessions, plus that
+    `role` still round-trips as a plain string to the client (what
+    `requireAuth()` compares against) and that an invalid value is now
+    rejected with `22P02` rather than a CHECK's `23514`. Three of the new
+    tests had bugs of my own (PostgREST `count` misuse, an integer literal
+    against a uuid column) — fixed to assert stored state instead; the
+    migration itself was correct throughout. 132/132 on the test project.
+    Production: drift-free before; **the snapshot diff after showed only the
+    shim's three revoked grants** — the check script's grep captures each
+    policy's *first line only*, so the cast change on a continuation line is
+    invisible to it. The six policies' actual casts, the column type, and the
+    shim's absence were all confirmed directly in a full production dump
+    instead, not inferred from the (in this case insufficient) snapshot diff.
+
 **Explicitly deferred, not started:** Slack/Discord/Sentry-style alerting for Edge
 Function errors — the project owner said "I'll do it later," don't assume it's wanted
 now without asking.
@@ -2440,16 +2496,32 @@ stay in the separate `ellafestperformersadmin.vercel.app` codebase.
 
 ## 9. Gotchas
 
-- **`check_user_role()` invokes a custom operator with no textual call site anywhere —
-  grepping for a function name is not enough to prove it's unused.** Its body does
-  `role = required_role` (`text` = `user_role`); Postgres resolves that to the custom
-  `eq_text_user_role` operator by exact type match, invisibly — the function name never
-  appears in any policy or query text. This schema also defines three sibling
+- **`eq_text_user_role()` and its custom operator no longer exist (removed 2026-07-20,
+  item 60) — this entry is now historical, kept for the general lesson.** It was invoked
+  by operator resolution with no textual call site anywhere: `check_user_role()`'s body
+  did `role = required_role` (`text` = `user_role`), and Postgres resolved that to the
+  shim invisibly, so grepping the function's name found nothing. Three sibling
   operators/functions (`eq_user_role_text`, `neq_text_user_role`, `neq_user_role_text`)
-  that really were dead (reversed argument order / negation, never actually exercised
-  anywhere) and were removed 2026-07-16 — but figure out *which* of a set of
-  operator-support functions is actually load-bearing by tracing the expressions that
-  use the types involved, not by searching for the function's name as a string.
+  really were dead and were removed 2026-07-16, before this one. **The general lesson,
+  still true**: figure out which of a set of operator-support functions is load-bearing by
+  tracing the expressions that use the types involved, not by searching for the
+  function's name as a string.
+
+- **`ALTER POLICY` does not clear a column's `pg_depend` dependency, no matter what you
+  rewrite the expression to — and `ALTER COLUMN TYPE` refuses while it's there.**
+  Hit live on item 60's `user_roles.role` enum consolidation: a policy directly
+  referencing a column (not through a function call — plpgsql function bodies are opaque
+  to dependency tracking, so calling `some_func(col)` does NOT create this dependency,
+  only writing `col = ...` straight in a policy expression does) registers a dependency
+  that survives `ALTER POLICY ... USING (...)` unchanged, because that statement edits the
+  expression in place without dropping the underlying pg_depend record. Rewriting the cast
+  first and changing the column type second — the intuitive order — fails with "cannot
+  alter type of a column used in a policy definition," naming a policy you may have
+  *already* rewritten to reference the new type. **The only sequence that works**:
+  `DROP POLICY` (every policy that references the column directly) → `ALTER COLUMN TYPE`
+  → `CREATE POLICY` fresh. This is Postgres DDL, transactional either way, so a failed
+  first attempt (mid-migration) rolls back completely — don't panic-diagnose a partially
+  applied state that doesn't exist.
 
 - **`locations`' primary key is `(id, dataset)`, not `id`.** Never assume a bare
   `location_id` is globally unique. `booking_locations.location_id` deliberately has no
@@ -2597,6 +2669,20 @@ stay in the separate `ellafestperformersadmin.vercel.app` codebase.
   that returns the overlay, this is what you have. The general lesson for other
   v3-era markup: any styling that depended on `transform` for *stacking* rather
   than for movement is now load-bearing-but-absent, and it degrades quietly.
+
+- **`check-rls-grants-snapshot.sh` only captures each `CREATE POLICY`'s FIRST LINE — a
+  change buried in a policy's continuation lines (its actual `USING`/`WHERE` clause,
+  almost always) is invisible to the diff.** The script's `grep -E "^(CREATE POLICY|GRANT|
+  REVOKE)"` matches the line starting with the statement, and `pg_dump` wraps a policy's
+  body onto subsequent lines that don't start with anything the pattern matches — so two
+  policies with identical names/tables/`TO`/`FOR` clauses but a materially different
+  `WHERE` expression show as unchanged. Hit live on item 60: recreating six policies with
+  a different cast (`::text` → `::"public"."user_role"`) produced a snapshot diff of only
+  three unrelated GRANT lines, none of the actual policy-body changes. **For any migration
+  that edits a policy's body without changing its first line, verify with a full
+  `supabase db dump` and grep the specific expression directly — the snapshot script alone
+  is not sufficient evidence that a policy-body change landed**, only that the set of
+  policy *names*/grants is unchanged.
 
 - **`check-rls-grants-snapshot.sh` needs Git Bash, not WSL — and `.gitattributes`
   alone won't save you from CRLF.** Two separate traps, both hit live on

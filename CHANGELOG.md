@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## [v7.6.0] - 2026-07-20
+
+**Database change, already applied to production.**
+
+### Changed
+
+- **Consolidated `user_roles.role` onto the pre-existing `user_role` enum, dropping the `eq_text_user_role()` operator shim.** The shim existed only to make an internal cross-type comparison (`text` = `user_role`) resolve for one function — invoked by Postgres's operator resolution with no textual call site anywhere, so grepping for its name could never prove it unused. With `role` now genuinely `user_role`, the comparison is native and the shim is gone. Scope was established by tracing every reference to the column in a live production dump rather than assuming one function was the only consumer: 13 of the schema's 23 policies touch it, split across three categories that needed entirely different handling — 7 needed no change at all, 1 was unaffected either way, and 6 had the comparison inlined in the *opposite* cast direction from the shim and would have broken silently if missed. No client-facing change: role values still round-trip as plain strings (`"admin"`/`"steward"`), verified directly. An invalid role is now rejected by the type itself rather than a CHECK constraint.
+
 ## [v7.5.0] - 2026-07-20
 
 **Database change, already applied to production.**
