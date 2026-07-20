@@ -1,7 +1,6 @@
 CREATE POLICY "Admin full" ON "public"."bookings" USING ("public"."check_user_role"('admin'::"public"."user_role"));
 CREATE POLICY "Admin manage email" ON "public"."email_queue" USING ("public"."check_user_role"('admin'::"public"."user_role"));
 CREATE POLICY "Admin manage email_templates" ON "public"."email_templates" TO "authenticated" USING ((EXISTS ( SELECT 1
-CREATE POLICY "Admin manage location_power" ON "public"."location_power" TO "authenticated" USING ((EXISTS ( SELECT 1
 CREATE POLICY "Admin manage locations" ON "public"."locations" USING ("public"."check_user_role"('admin'::"public"."user_role"));
 CREATE POLICY "Admin only payments" ON "public"."payments" USING ("public"."check_user_role"('admin'::"public"."user_role"));
 CREATE POLICY "Admin view audit" ON "public"."audit_logs" FOR SELECT USING ("public"."check_user_role"('admin'::"public"."user_role"));
@@ -17,7 +16,6 @@ CREATE POLICY "Public can apply" ON "public"."performers" FOR INSERT TO "authent
 CREATE POLICY "Public can view scheduled" ON "public"."performers" FOR SELECT TO "authenticated", "anon" USING ((("status" = ANY (ARRAY['Scheduled'::"public"."performer_status", 'Paid'::"public"."performer_status"])) AND ("deleted_at" IS NULL)));
 CREATE POLICY "Public row-level access for schedules" ON "public"."schedules" FOR SELECT TO "anon" USING (true);
 CREATE POLICY "Public view locations" ON "public"."locations" FOR SELECT USING (("dataset" = 'LIVE'::"text"));
-CREATE POLICY "Public view power" ON "public"."location_power" FOR SELECT TO "authenticated", "anon" USING (true);
 CREATE POLICY "Steward access" ON "public"."bookings" FOR SELECT USING ("public"."check_user_role"('steward'::"public"."user_role"));
 CREATE POLICY "Strict Public Uploads" ON "storage"."objects" FOR INSERT WITH CHECK ((("bucket_id" = 'esf-documents'::"text") AND (("storage"."extension"("name") = 'pdf'::"text") OR ("storage"."extension"("name") = 'jpg'::"text") OR ("storage"."extension"("name") = 'jpeg'::"text") OR ("storage"."extension"("name") = 'png'::"text")) AND
 CREATE POLICY "Users can read own role" ON "public"."user_roles" FOR SELECT TO "authenticated" USING (("id" = "auth"."uid"()));
@@ -77,7 +75,6 @@ GRANT ALL ON TABLE "public"."email_queue" TO "service_role";
 GRANT ALL ON TABLE "public"."email_templates" TO "service_role";
 GRANT ALL ON TABLE "public"."google_reviews_cache" TO "service_role";
 GRANT ALL ON TABLE "public"."hcc_checks" TO "service_role";
-GRANT ALL ON TABLE "public"."location_power" TO "service_role";
 GRANT ALL ON TABLE "public"."locations" TO "service_role";
 GRANT ALL ON TABLE "public"."payments" TO "service_role";
 GRANT ALL ON TABLE "public"."performers" TO "authenticated";
@@ -114,8 +111,6 @@ GRANT INSERT("phone") ON TABLE "public"."performers" TO "anon";
 GRANT INSERT("power_needed") ON TABLE "public"."performers" TO "anon";
 GRANT SELECT ON TABLE "public"."booking_locations" TO "anon";
 GRANT SELECT ON TABLE "public"."booking_locations" TO "authenticated";
-GRANT SELECT ON TABLE "public"."location_power" TO "anon";
-GRANT SELECT ON TABLE "public"."location_power" TO "authenticated";
 GRANT SELECT ON TABLE "public"."locations" TO "anon";
 GRANT SELECT ON TABLE "public"."locations" TO "authenticated";
 GRANT SELECT ON TABLE "public"."public_bookings_info" TO "anon";
