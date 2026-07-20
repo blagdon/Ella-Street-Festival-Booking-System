@@ -9,8 +9,10 @@
 > verification first, and the short list that needs an explicit instruction every
 > time. Default to acting.
 > Last updated: 2026-07-20.
-> Current release: **v7.2.0** (tagged 2026-07-20; Payment Tracker modals fixed,
-> plus the local test-project override — see [Next Steps](#8-next-steps) item 56).
+> Current release: **v7.3.0** (tagged 2026-07-20; dev-server Supabase proxy —
+> developer tooling only, no production surface. The last release affecting the
+> live site is v7.2.0, the Payment Tracker modal fix — see
+> [Next Steps](#8-next-steps) items 56 and 57).
 > **The version line jumps 5.1.13 → 7.0.0
 > — there is no 6.x series**, and 7.0.0 contains a bug fix, not breaking changes;
 > the major bump was a deliberate owner decision, so don't read it as a schema or
@@ -2283,6 +2285,20 @@ it as a live concern.
     `Invalid booking ID format.`, which was the *test fixture*, not the app —
     `validateBookingId()` requires `ESF26-(FOOD|NONFOOD|DEV|MISC)-\d{4}`, four
     digits exactly, so seeded fixtures must use a realistic id.
+
+57. **Dev-server Supabase proxy — Edge-Function-backed buttons are now
+    verifiable in a local browser (2026-07-20, PR #38, released as v7.3.0).**
+    Closes the CORS gap left open when the local override first landed: a
+    localhost page could not call any Edge Function, because `_shared/cors.ts`
+    pins `Access-Control-Allow-Origin` to production. `npm run dev` now proxies
+    `/__supabase/*` to the test project and the override points the Supabase
+    client there, so every request is same-origin and CORS never applies.
+    Full rationale, safety properties and the reason this was chosen over
+    per-request origin negotiation are in
+    [Verifying browser flows locally](#verifying-browser-flows-locally-the-test-project-override)
+    — read that before changing any of it. Developer tooling only: no
+    production code, schema, or Edge Function is touched, which is why v7.3.0
+    is safe to skip when reasoning about what the live site is running.
 
 **Explicitly deferred, not started:** Slack/Discord/Sentry-style alerting for Edge
 Function errors — the project owner said "I'll do it later," don't assume it's wanted
