@@ -1,27 +1,27 @@
 CREATE POLICY "Admin full" ON "public"."bookings" USING ("public"."check_user_role"('admin'::"public"."user_role"));
 CREATE POLICY "Admin manage email" ON "public"."email_queue" USING ("public"."check_user_role"('admin'::"public"."user_role"));
-CREATE POLICY "Admin manage email_templates" ON "public"."email_templates" TO "authenticated" USING ((EXISTS ( SELECT 1
+CREATE POLICY "Admin manage email_templates" ON "public"."email_templates" TO "authenticated" USING ((EXISTS ( SELECT 1 FROM "public"."user_roles" WHERE (("user_roles"."id" = "auth"."uid"()) AND ("user_roles"."role" = 'admin'::"public"."user_role"))))) WITH CHECK ((EXISTS ( SELECT 1 FROM "public"."user_roles" WHERE (("user_roles"."id" = "auth"."uid"()) AND ("user_roles"."role" = 'admin'::"public"."user_role")))));
 CREATE POLICY "Admin manage locations" ON "public"."locations" USING ("public"."check_user_role"('admin'::"public"."user_role"));
 CREATE POLICY "Admin only payments" ON "public"."payments" USING ("public"."check_user_role"('admin'::"public"."user_role"));
 CREATE POLICY "Admin view audit" ON "public"."audit_logs" FOR SELECT USING ("public"."check_user_role"('admin'::"public"."user_role"));
 CREATE POLICY "Admins manage hcc_checks" ON "public"."hcc_checks" TO "authenticated" USING ("public"."check_user_role"('admin'::"public"."user_role"));
-CREATE POLICY "Allow admins full access to booking_locations" ON "public"."booking_locations" TO "authenticated" USING ((EXISTS ( SELECT 1
-CREATE POLICY "Allow admins full access to settings" ON "public"."settings" TO "authenticated" USING ((EXISTS ( SELECT 1
+CREATE POLICY "Allow admins full access to booking_locations" ON "public"."booking_locations" TO "authenticated" USING ((EXISTS ( SELECT 1 FROM "public"."user_roles" WHERE (("user_roles"."id" = "auth"."uid"()) AND ("user_roles"."role" = 'admin'::"public"."user_role"))))) WITH CHECK ((EXISTS ( SELECT 1 FROM "public"."user_roles" WHERE (("user_roles"."id" = "auth"."uid"()) AND ("user_roles"."role" = 'admin'::"public"."user_role")))));
+CREATE POLICY "Allow admins full access to settings" ON "public"."settings" TO "authenticated" USING ((EXISTS ( SELECT 1 FROM "public"."user_roles" WHERE (("user_roles"."id" = "auth"."uid"()) AND ("user_roles"."role" = 'admin'::"public"."user_role"))))) WITH CHECK ((EXISTS ( SELECT 1 FROM "public"."user_roles" WHERE (("user_roles"."id" = "auth"."uid"()) AND ("user_roles"."role" = 'admin'::"public"."user_role")))));
 CREATE POLICY "Allow authenticated users to insert audit logs" ON "public"."audit_logs" FOR INSERT TO "authenticated" WITH CHECK (true);
 CREATE POLICY "Allow public anon to read confirmed booking locations" ON "public"."booking_locations" FOR SELECT TO "anon" USING ("public"."is_booking_confirmed"("booking_id"));
 CREATE POLICY "Allow public anon to read non-sensitive settings" ON "public"."settings" FOR SELECT TO "anon" USING (("key" = ANY (ARRAY['stall_cost_food'::"text", 'stall_cost_general'::"text", 'stall_cost_dev'::"text", 'turnstile_site_key'::"text", 'base_url'::"text", 'cancel_url'::"text", 'portal_url'::"text", 'booking_prefix'::"text", 'bucket_name'::"text", 'hcc_council_email'::"text", 'map_center_lat'::"text", 'map_center_lng'::"text", 'map_default_zoom'::"text", 'food_bookings_open'::"text", 'general_bookings_open'::"text"])));
-CREATE POLICY "Allow staff to read booking_locations" ON "public"."booking_locations" FOR SELECT TO "authenticated" USING ((EXISTS ( SELECT 1
+CREATE POLICY "Allow staff to read booking_locations" ON "public"."booking_locations" FOR SELECT TO "authenticated" USING ((EXISTS ( SELECT 1 FROM "public"."user_roles" WHERE (("user_roles"."id" = "auth"."uid"()) AND ("user_roles"."role" = ANY (ARRAY['admin'::"public"."user_role", 'steward'::"public"."user_role"]))))));
 CREATE POLICY "Applicants can view own" ON "public"."performers" FOR SELECT TO "authenticated" USING (("email" = ("auth"."jwt"() ->> 'email'::"text")));
 CREATE POLICY "Public can apply" ON "public"."performers" FOR INSERT TO "authenticated", "anon" WITH CHECK ((("status" = 'Applied'::"public"."performer_status") AND ("total_cost" = (0)::numeric) AND ("amount_paid" = (0)::numeric) AND ("insurance_verified" = false) AND ("insurance_verified_at" IS NULL) AND ("insurance_verified_by" IS NULL) AND ("status_updated_at" IS NULL) AND ("status_updated_by" IS NULL) AND ("admin_notes" IS NULL) AND ("payment_notes" IS NULL) AND ("deleted_at" IS NULL)));
 CREATE POLICY "Public can view scheduled" ON "public"."performers" FOR SELECT TO "authenticated", "anon" USING ((("status" = ANY (ARRAY['Scheduled'::"public"."performer_status", 'Paid'::"public"."performer_status"])) AND ("deleted_at" IS NULL)));
 CREATE POLICY "Public row-level access for schedules" ON "public"."schedules" FOR SELECT TO "anon" USING (true);
 CREATE POLICY "Public view locations" ON "public"."locations" FOR SELECT USING (("dataset" = 'LIVE'::"text"));
 CREATE POLICY "Steward access" ON "public"."bookings" FOR SELECT USING ("public"."check_user_role"('steward'::"public"."user_role"));
-CREATE POLICY "Strict Public Uploads" ON "storage"."objects" FOR INSERT WITH CHECK ((("bucket_id" = 'esf-documents'::"text") AND (("storage"."extension"("name") = 'pdf'::"text") OR ("storage"."extension"("name") = 'jpg'::"text") OR ("storage"."extension"("name") = 'jpeg'::"text") OR ("storage"."extension"("name") = 'png'::"text")) AND
+CREATE POLICY "Strict Public Uploads" ON "storage"."objects" FOR INSERT WITH CHECK ((("bucket_id" = 'esf-documents'::"text") AND (("storage"."extension"("name") = 'pdf'::"text") OR ("storage"."extension"("name") = 'jpg'::"text") OR ("storage"."extension"("name") = 'jpeg'::"text") OR ("storage"."extension"("name") = 'png'::"text")) AND CASE WHEN (("metadata" ->> 'size'::"text") IS NOT NULL) THEN ((("metadata" ->> 'size'::"text"))::integer <= 5242880) ELSE true END));
 CREATE POLICY "Users can read own role" ON "public"."user_roles" FOR SELECT TO "authenticated" USING (("id" = "auth"."uid"()));
-CREATE POLICY "performer_admin_access" ON "public"."performers" TO "authenticated" USING ((EXISTS ( SELECT 1
-CREATE POLICY "policy_allow_all_admin" ON "public"."user_roles" TO "authenticated" USING ("public"."get_is_admin"()) WITH CHECK ("public"."get_is_admin"());
-CREATE POLICY "schedule_admin_access" ON "public"."schedules" TO "authenticated" USING ((EXISTS ( SELECT 1
+CREATE POLICY "performer_admin_access" ON "public"."performers" TO "authenticated" USING ((EXISTS ( SELECT 1 FROM "public"."user_roles" WHERE (("user_roles"."id" = "auth"."uid"()) AND ("user_roles"."role" = 'admin'::"public"."user_role")))));
+CREATE POLICY "policy_allow_all_admin" ON "public"."user_roles" TO "authenticated" USING ("public"."check_user_role"('admin'::"public"."user_role")) WITH CHECK ("public"."check_user_role"('admin'::"public"."user_role"));
+CREATE POLICY "schedule_admin_access" ON "public"."schedules" TO "authenticated" USING ((EXISTS ( SELECT 1 FROM "public"."user_roles" WHERE (("user_roles"."id" = "auth"."uid"()) AND ("user_roles"."role" = 'admin'::"public"."user_role")))));
 GRANT ALL ON FUNCTION "public"."booking_locations_check_conflict"() TO "anon";
 GRANT ALL ON FUNCTION "public"."booking_locations_check_conflict"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."booking_locations_check_conflict"() TO "service_role";
@@ -34,9 +34,6 @@ GRANT ALL ON FUNCTION "public"."check_user_role"("required_role" "public"."user_
 GRANT ALL ON FUNCTION "public"."check_user_role"("required_role" "public"."user_role") TO "service_role";
 GRANT ALL ON FUNCTION "public"."claim_pending_emails"("p_batch_size" integer) TO "service_role";
 GRANT ALL ON FUNCTION "public"."finalize_stripe_payment"("p_booking_id" "text", "p_payment_intent_id" "text") TO "service_role";
-GRANT ALL ON FUNCTION "public"."get_is_admin"() TO "anon";
-GRANT ALL ON FUNCTION "public"."get_is_admin"() TO "authenticated";
-GRANT ALL ON FUNCTION "public"."get_is_admin"() TO "service_role";
 GRANT ALL ON FUNCTION "public"."get_next_booking_id"("p_prefix" "text") TO "service_role";
 GRANT ALL ON FUNCTION "public"."is_booking_confirmed"("p_booking_id" "text") TO "anon";
 GRANT ALL ON FUNCTION "public"."is_booking_confirmed"("p_booking_id" "text") TO "authenticated";

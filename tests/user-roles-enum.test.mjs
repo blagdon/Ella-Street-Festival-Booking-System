@@ -1,14 +1,19 @@
 // Behavioural tests for the 2026-07-20 user_roles.role text->enum
-// consolidation (20260720130000_consolidate_user_roles_enum.sql).
+// consolidation (20260720130000_consolidate_user_roles_enum.sql) and its
+// direct follow-up (20260720140000_consolidate_get_is_admin_into_check_user_role.sql).
 //
-// This migration touches 13 of the schema's 23 policies (7 via
+// The first migration touches 13 of the schema's 23 policies (7 via
 // check_user_role(), 1 via get_is_admin(), 6 rewritten directly), plus a
 // column type change and dropping the eq_text_user_role() operator shim. The
-// whole point of testing behaviourally rather than reading the SQL is that a
-// cross-type operator resolution mistake is exactly the kind of thing that
-// looks correct in a migration file and fails - or silently returns the wrong
-// rows - only when actually executed. Every check here calls the real REST
-// API as a genuinely authenticated session.
+// second finishes what it started: get_is_admin() was a behaviourally
+// identical duplicate of check_user_role('admin'::user_role), discovered as
+// a side effect of tracing every reference to the column - now there is one
+// canonical admin-check mechanism, not two. The whole point of testing
+// behaviourally rather than reading the SQL is that a cross-type operator
+// resolution mistake, or a dependency assumption that turns out wrong, is
+// exactly the kind of thing that looks correct in a migration file and fails
+// - or silently returns the wrong rows - only when actually executed. Every
+// check here calls the real REST API as a genuinely authenticated session.
 //
 // Setup required first: node scripts/seed-test-project.mjs
 // Run: npm run test:integration
@@ -186,11 +191,60 @@ describe('the seven check_user_role()-based policies (text unchanged, behaviour 
   });
 });
 
-describe('get_is_admin()-based policy (untouched by this migration either way)', () => {
-  test('admin can read their own row via policy_allow_all_admin, and manage user_roles', async () => {
+// Follow-up to the enum consolidation (20260720140000): policy_allow_all_admin
+// used to call get_is_admin(); it now calls check_user_role('admin'::user_role)
+// instead, and get_is_admin() itself is dropped as a genuine duplicate of that
+// call. Both the before and after here are function-call-only expressions with
+// no direct column reference, so this was a plain ALTER POLICY (not the
+// DROP+CREATE dance the six column-referencing policies needed) - verified
+// rather than assumed, given that exact kind of assumption was wrong once
+// already on this migration's first attempt.
+describe('policy_allow_all_admin now calls check_user_role(), get_is_admin() is gone', () => {
+  test('admin can still read their own row and manage user_roles', async () => {
     const { data, error } = await authed.from('user_roles').select('id, role').eq('id', adminUserId).single();
     assert.equal(error, null, error?.message);
     assert.equal(data.role, 'admin', 'role must still read back as the plain string "admin", not an object/wrapper');
+  });
+
+  test('a steward can see their own row (via the separate "Users can read own role" policy) but not others, and cannot write', async () => {
+    // A separate, pre-existing policy - "Users can read own role" USING
+    // (id = auth.uid()) - lets ANY authenticated user see their own row
+    // regardless of policy_allow_all_admin. That's correct, unrelated
+    // behaviour (requireAuth() depends on it to determine the caller's own
+    // role at all) and not something this migration touches - the real
+    // boundary policy_allow_all_admin enforces is visibility into OTHER
+    // users' rows, which is what this test actually checks.
+    const { data: otherRows } = await service.from('user_roles').select('id').neq('id', adminUserId).limit(1);
+    assert.ok(otherRows.length > 0, 'test fixture assumption: at least one other user_roles row must exist to test cross-user visibility');
+    const otherId = otherRows[0].id;
+
+    await asSteward(async () => {
+      const { data: ownRow, error: ownErr } = await authed.from('user_roles').select('id').eq('id', adminUserId);
+      assert.equal(ownErr, null, ownErr?.message);
+      assert.equal(ownRow.length, 1, 'a steward must still see their own row');
+
+      const { data: otherRow, error: otherErr } = await authed.from('user_roles').select('id').eq('id', otherId);
+      assert.equal(otherErr, null, otherErr?.message);
+      assert.equal(otherRow.length, 0, "a steward has no permitting policy for OTHER users' rows, so must see zero");
+
+      const { error: updErr } = await authed
+        .from('user_roles').update({ role: 'admin' }).eq('id', adminUserId);
+      // RLS-filtered UPDATE affects zero rows rather than erroring - the
+      // actual stored value (still 'steward', restored by asSteward's
+      // finally block) is the real assertion, same pattern as elsewhere in
+      // this file.
+      assert.equal(updErr, null, updErr?.message);
+    });
+
+    const { data: after } = await service.from('user_roles').select('role').eq('id', adminUserId).single();
+    assert.equal(after.role, 'admin', 'the demoted-then-restored row must show the restore, not a steward-authored change');
+  });
+
+  test('get_is_admin() no longer exists', async () => {
+    const { error } = await service.rpc('get_is_admin');
+    assert.ok(error, 'calling a dropped function must fail');
+    assert.match(error.message, /Could not find the function|does not exist/i,
+      `expected a function-not-found error, got: ${error.message}`);
   });
 });
 
