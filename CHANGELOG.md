@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented in this file.
 
+## [v7.3.0] - 2026-07-20
+
+**Developer tooling only — no production surface.** Nothing about the deployed site, database, or Edge Functions changes in this release.
+
+### Added
+
+- **`npm run dev` now proxies Supabase traffic same-origin, so Edge-Function-backed features can finally be verified in a local browser.** Previously any Edge Function call from a localhost page failed with `Failed to send a request to the Edge Function`: `_shared/cors.ts` pins `Access-Control-Allow-Origin` to the production origin, so the browser rejected the response. That left Retry, bulk email and checkout-session unverifiable locally, which is why several recent fixes shipped needing an admin to confirm the button by hand. The dev server now proxies `/__supabase/*` to the test project and the local override points the Supabase client at that path, making auth, PostgREST, Edge Functions and storage all same-origin — so CORS never applies. Deliberately chosen over per-request origin negotiation in `_shared/cors.ts`, which would have touched all eight functions including the payment paths and silently destroyed `tests/cors.test.mjs`'s coverage of the production CORS posture; this approach changes no Edge Function and no test. Verified by clicking the Email Queue Retry button end-to-end in a real browser (`retry_count` incremented, `last_retry_at` stamped, fresh Zoho error, `audit_logs` entry written).
+
+### Changed
+
+- `esfUseTestProject()` now takes only the anon key plus an optional banner label, **not a project URL** — the dev server picks the target from `TEST_SUPABASE_URL`, so a page cannot aim itself at an arbitrary Supabase project, let alone production.
+
 ## [v7.2.0] - 2026-07-20
 
 ### Fixed
