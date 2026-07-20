@@ -19,7 +19,6 @@ CREATE POLICY "Public row-level access for schedules" ON "public"."schedules" FO
 CREATE POLICY "Public view locations" ON "public"."locations" FOR SELECT USING (("dataset" = 'LIVE'::"text"));
 CREATE POLICY "Public view power" ON "public"."location_power" FOR SELECT TO "authenticated", "anon" USING (true);
 CREATE POLICY "Steward access" ON "public"."bookings" FOR SELECT USING ("public"."check_user_role"('steward'::"public"."user_role"));
-CREATE POLICY "Steward update" ON "public"."bookings" FOR UPDATE USING ("public"."check_user_role"('steward'::"public"."user_role"));
 CREATE POLICY "Strict Public Uploads" ON "storage"."objects" FOR INSERT WITH CHECK ((("bucket_id" = 'esf-documents'::"text") AND (("storage"."extension"("name") = 'pdf'::"text") OR ("storage"."extension"("name") = 'jpg'::"text") OR ("storage"."extension"("name") = 'jpeg'::"text") OR ("storage"."extension"("name") = 'png'::"text")) AND
 CREATE POLICY "Users can read own role" ON "public"."user_roles" FOR SELECT TO "authenticated" USING (("id" = "auth"."uid"()));
 CREATE POLICY "performer_admin_access" ON "public"."performers" TO "authenticated" USING ((EXISTS ( SELECT 1
@@ -51,9 +50,9 @@ GRANT ALL ON FUNCTION "public"."rpc_get_next_misc_id"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rpc_get_next_misc_id"() TO "service_role";
 GRANT ALL ON FUNCTION "public"."rpc_record_bank_transfer_payment"("p_booking_id" "text", "p_payment_reference" "text", "p_notes" "text") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rpc_record_bank_transfer_payment"("p_booking_id" "text", "p_payment_reference" "text", "p_notes" "text") TO "service_role";
-GRANT ALL ON FUNCTION "public"."rpc_set_booking_locations"("p_booking_id" "text", "p_location_ids" "text"[]) TO "anon";
 GRANT ALL ON FUNCTION "public"."rpc_set_booking_locations"("p_booking_id" "text", "p_location_ids" "text"[]) TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rpc_set_booking_locations"("p_booking_id" "text", "p_location_ids" "text"[]) TO "service_role";
+GRANT ALL ON FUNCTION "public"."stamp_audit_log_user_email"() TO "service_role";
 GRANT ALL ON FUNCTION "public"."track_status_change"() TO "anon";
 GRANT ALL ON FUNCTION "public"."track_status_change"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."track_status_change"() TO "service_role";

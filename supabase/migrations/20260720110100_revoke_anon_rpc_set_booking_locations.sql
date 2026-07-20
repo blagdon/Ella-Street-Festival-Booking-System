@@ -1,0 +1,22 @@
+-- Revoke the vestigial anon EXECUTE grant on rpc_set_booking_locations().
+--
+-- Finishes the sweep started by 20260717070000 ("revoke vestigial anon function
+-- grants"), which covered cancel_booking_secure() and get_next_booking_id() but
+-- missed this one.
+--
+-- Not a live exploit path: the function is SECURITY DEFINER and performs its
+-- own admin/steward check, so an anon caller was already rejected inside the
+-- function body. This is defense-in-depth and consistency - the grant simply
+-- described access that no caller has ever needed.
+--
+-- Confirmed vestigial before removing: the only callers are js/api.js
+-- (admin, via the Location Manager) and js/page-steward.js (steward, on the
+-- day of the event), both of which run authenticated. Nothing public touches
+-- pitch assignment - the visitor map reads `locations` and
+-- `public_bookings_info`, never this RPC.
+--
+-- Revoked by name rather than only FROM PUBLIC: this schema's
+-- ALTER DEFAULT PRIVILEGES history means a PUBLIC-only revoke has silently
+-- failed to cover these roles before (see the Gotchas entry on that).
+
+REVOKE ALL ON FUNCTION "public"."rpc_set_booking_locations"("p_booking_id" "text", "p_location_ids" "text"[]) FROM "anon";

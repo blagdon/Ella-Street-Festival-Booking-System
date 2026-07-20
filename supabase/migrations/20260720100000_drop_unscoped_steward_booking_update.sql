@@ -1,0 +1,25 @@
+-- Drop the unscoped "Steward update" policy on bookings.
+--
+-- The policy allowed UPDATE for any steward with **no WITH CHECK clause**, and
+-- `authenticated` holds full-column UPDATE on the table (no column list), so a
+-- steward session could write any column it liked: stall_cost, status,
+-- cancel_token, stripe_payment_intent_id, date_confirmed - anything. Only
+-- reachable by a compromised or malicious steward account, but it was the
+-- widest remaining privilege gap in the schema.
+--
+-- This is a REMOVAL, not a narrowing, because nothing legitimate used it:
+-- steward.html (js/page-steward.js, the only requireAuth('steward') page in
+-- the app) never updates `bookings` directly. It SELECTs - still permitted by
+-- the separate "Steward access" policy, deliberately retained - and assigns or
+-- clears pitches through rpc_set_booking_locations(), a SECURITY DEFINER RPC
+-- that performs its own admin/steward check and therefore bypasses RLS
+-- entirely. The HCC "mobile status" write that sounds steward-facing actually
+-- lives in js/page-hcc-dashboard.js, which is an admin-only page.
+--
+-- So there is no column subset worth preserving and no RPC to build: the
+-- write path stewards need already goes through one.
+--
+-- Admin writes are unaffected - the "Admin full" policy covers ALL commands
+-- for admins independently of this one.
+
+DROP POLICY IF EXISTS "Steward update" ON "public"."bookings";
