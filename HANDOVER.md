@@ -9,16 +9,13 @@
 > verification first, and the short list that needs an explicit instruction every
 > time. Default to acting.
 > Last updated: 2026-07-20.
-> Current release: **v7.4.1** (tagged 2026-07-20; CI configuration only — see
-> the Gotchas entry on the duplicate-run/branch-protection interaction).
-> Last release to change the live site or database: **v7.4.0**
-> (tagged 2026-07-20; schema/permissions hardening —
-> **database changes, applied to production**: steward booking-UPDATE policy
-> dropped, `audit_logs.user_email` server-stamped, `bookings.status`
-> CHECK-constrained, vestigial anon RPC grant revoked. See
-> [Next Steps](#8-next-steps) item 58). Preceding releases: v7.3.1 docs, v7.3.0
-> developer tooling, v7.2.0 the Payment Tracker modal fix (the last release
-> before this one to change anything users touch).
+> Current release: **v7.5.0** (tagged 2026-07-20; **database change, applied to
+> production**: dropped the orphaned `location_power` table — but read
+> [Next Steps](#8-next-steps) item 59 before trusting a repo-only "no
+> references" check on anything performer-adjacent again, since that's exactly
+> what went wrong on the first pass here). v7.4.0 (also database changes —
+> item 58) and v7.4.1 (CI config only) preceded it; v7.3.1 docs, v7.3.0
+> developer tooling, v7.2.0 the Payment Tracker modal fix before that.
 > **The version line jumps 5.1.13 → 7.0.0
 > — there is no 6.x series**, and 7.0.0 contains a bug fix, not breaking changes;
 > the major bump was a deliberate owner decision, so don't read it as a schema or
@@ -2386,9 +2383,12 @@ it as a live concern.
     the same name, confirm which table each belongs to before concluding
     anything.
 
-    **Not done, deliberately** (also from that review): `location_power` has no
-    PK or FK — but it has **zero references in `js/` or any HTML**, so the real
-    question is whether to drop the table, not constrain it. And consolidating
+    **`location_power`'s no-PK/no-FK finding was resolved differently than
+    first planned — see item 59.** My first-pass "zero references in `js/` or
+    any HTML" conclusion was wrong for this specific table; don't reuse that
+    check as a general orphan-detection method.
+
+    **Still not done, deliberately**: consolidating
     `user_roles.role` (text + CHECK) with the parallel `user_role` enum would
     let the `eq_text_user_role` operator shim be dropped — high value, since
     that shim is the invisible-call-site footgun in the Gotchas above, but it
@@ -2397,6 +2397,34 @@ it as a live concern.
     times for unnamed performers; column grants stop ID→name resolution) and
     `schedules` is shared with the external performer app, so a table-policy
     change needs checking against that consumer first.
+
+59. **Dropped the orphaned `location_power` table (2026-07-20, PR #46,
+    migration `20260720120000_drop_location_power.sql`) — but read this
+    before trusting "orphaned" again.** Item 58's own writeup concluded
+    `location_power` had "zero real usage anywhere" from grepping `js/` and
+    every HTML file. **That check was wrong for this table specifically.**
+    Before dropping anything, a live production dump showed it held **five
+    rows of deliberately written data** — power-availability notes for
+    `Music Stage`, `On the street`, `Beach`, `After party`, `Green` — and its
+    own `COMMENT` read *"Power availability at each performance location."*
+    Those are **performer venues**, not stall pitches (`locations` is a
+    different table entirely, with numeric pitch IDs and lat/lng). The
+    performers feature is served by a **separate app**
+    (`ellafestperformersadmin.vercel.app`) this repo cannot audit — the exact
+    failure mode already warned about elsewhere in this document for that
+    feature, and this is now a second concrete instance of it. **"No
+    references in this repo" is not evidence of orphaned status for anything
+    performer-adjacent** — check with whoever maintains that app, which is
+    what happened here before dropping anything.
+    Made reversible before acting: `supabase/sql-archive/restore_location_power.sql`
+    recreates the table, both policies, all three grants and all five rows
+    exactly as captured immediately before the drop — run it if the performer
+    app turns out to have depended on this after all. Removed the two
+    `tests/security.test.mjs` assertions that exercised its grants rather than
+    leaving them to fail against a dropped table. Verified: 118/118 on the
+    test project (120 minus the two removed tests); production drift-free
+    before, and the after-diff was exactly the table's two policies and three
+    grants — confirmed absent in a fresh production dump afterward.
 
 **Explicitly deferred, not started:** Slack/Discord/Sentry-style alerting for Edge
 Function errors — the project owner said "I'll do it later," don't assume it's wanted
