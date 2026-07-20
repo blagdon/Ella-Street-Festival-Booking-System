@@ -1,7 +1,23 @@
 name: CI
 
 on:
+  # `push` is deliberately scoped to main. An unscoped `push:` fired a second,
+  # duplicate run for every branch that also had a PR open, which interacts
+  # badly with the integration-tests concurrency group below: GitHub only keeps
+  # ONE pending run per group, and cancels any previously-pending one when a
+  # newer run queues behind the in-progress one. The cancelled run still
+  # reports a non-success `integration-tests` check against the head commit, so
+  # branch protection treats the PR as failing and blocks the merge - for a run
+  # that was never actually executed. Seen live on 2026-07-20 (PR #43), where
+  # the pull_request run passed, the push run was cancelled, and the merge was
+  # rejected until that one job was re-run by hand.
+  #
+  # Scoping to main gives exactly one run per PR (the pull_request event) plus
+  # one on merge, which also halves contention on the shared test database.
+  # Note this means pushing a branch with no PR open runs no CI - open the PR,
+  # which is this repo's convention anyway.
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
@@ -43,8 +59,10 @@ jobs:
       - name: Check RLS policies/grants match the committed snapshot
         run: bash scripts/check-rls-grants-snapshot.sh
 
-  # tests/integration.test.mjs, tests/workflow.test.mjs, tests/security.test.mjs,
-  # tests/stripe-payment.test.mjs - all run only against the disposable "test
+  # Every file under tests/ (nine of them as of 2026-07-20 - integration,
+  # workflow, security, stripe-payment, bank-transfer-payment, cors,
+  # email-retry, google-reviews-cache, privilege-hardening) - all run only
+  # against the disposable "test
   # backup" Supabase project (qeplpcnrkgpaawfyliap), every file hard-refuses
   # to run against anything else. Needs that project's URL/anon/service-role
   # keys, the seeded test admin's email/password, and a Stripe TEST-mode
@@ -63,6 +81,12 @@ jobs:
     # ~3s apart caused spurious "Booking not found" 404s and a missing
     # email_queue row). Queue this job globally instead of overlapping;
     # grep-guard and rls-grants-check stay parallel.
+    #
+    # `cancel-in-progress: false` must stay false: cancelling a run mid-suite
+    # would abandon its fixtures in the shared database for the next run to
+    # trip over. Note it does NOT prevent a *pending* run being cancelled when
+    # a newer one queues behind - that is a separate GitHub behaviour, and the
+    # reason the `push` trigger above is scoped to main.
     concurrency:
       group: integration-tests-shared-db
       cancel-in-progress: false
