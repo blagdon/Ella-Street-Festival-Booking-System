@@ -127,11 +127,17 @@ client via a CDN `<script>` tag (not npm); admin pages use native ES module impo
 │       ├── cancel-booking/      ← Public: self-service cancellation
 │       ├── send-email/          ← Single choke point for all outbound email
 │       ├── queue-bulk-email/    ← Admin: bulk-email confirmed bookings
-│       ├── get-reviews/         ← Admin: Google Maps review lookup (SerpApi)
+│       ├── get-reviews/         ← Admin: Google Maps review lookup (SerpApi), server-side cached
 │       ├── get-booking-documents/ ← Admin: sign document storage paths for viewing
+│       ├── retry-queued-email/  ← Admin: re-send one failed email_queue row (viewer's Retry button)
 │       ├── create-checkout-session/ ← Admin: create a Stripe Checkout Session, email the payment link
 │       └── stripe-webhook/      ← Public (Stripe-signature-gated): processes successful/expired payments
-├── supabase-public.js           ← Credentials + config for PUBLIC pages (non-module)
+├── scripts/                     ← Dev/CI tooling: dev-server.mjs (npm run dev — static server +
+│                                   same-origin Supabase proxy), seed-test-project.mjs,
+│                                   check-rls-grants-snapshot.sh, check-unescaped-innerhtml.mjs
+├── tests/                       ← Integration tests against the disposable test project (npm run test:integration)
+├── supabase-public.js           ← Credentials + config for PUBLIC pages (non-module).
+│                                   Also holds the localhost-only test-project override.
 ├── email_templates.js           ← LEGACY fallback templates (real ones are in the DB)
 ├── vercel.json                  ← Vercel Cron config
 ├── payment_success.html / payment_cancelled.html ← Static, no-auth Stripe Checkout redirect targets
@@ -182,7 +188,8 @@ hardcoded default at all** — they're `null`/`[]` until the settings table load
 | `cancel-booking` | None (`--no-verify-jwt`), gated by Cloudflare Turnstile | Verifies the Turnstile token, calls `cancel_booking_secure()` RPC, then sends the cancellation-confirmation email itself (`sendCancellationEmail()`, calls `sendViaZoho()` in-process, same as `queue-bulk-email`). |
 | `send-email` | Admin JWT **or** the raw `SUPABASE_SERVICE_ROLE_KEY` as Bearer token ("trusted service call") | The only function that actually talks to Zoho. Delegates to `_shared/zoho.ts`. |
 | `queue-bulk-email` | Admin JWT only | Atomically inserts N `email_queue` rows as `Pending`, responds immediately, then drains them **in-process** (calls `sendViaZoho()` directly, not over HTTP) via `EdgeRuntime.waitUntil()` in the background. |
-| `get-reviews` | Admin JWT or trusted service call | SerpApi Google Maps review lookup for a business name, used by the performer-review-check feature. |
+| `get-reviews` | Admin JWT or trusted service call | SerpApi Google Maps review lookup for a business name, used by the performer-review-check feature. **Results are cached server-side** in `google_reviews_cache` (default 7 days, `reviews_cache_ttl_hours` settings override) — SerpApi is metered and the detail pane auto-searches on every open. `force: true` in the body bypasses the cache; see [Next Steps](#8-next-steps) item 53. |
+| `retry-queued-email` | Admin JWT only (deliberately **no** service-role bypass — retrying is a human recovery action) | Re-sends one failed `email_queue` row for the Email Queue viewer's Retry button. Must be server-side: `authenticated` has no UPDATE on `email_queue`, and the Zoho credentials are server-side. Claims the row (`Error → Processing`) before sending so two retries can't both deliver; only `Error` rows are retryable. Calls `sendViaZoho()` in-process. See [Next Steps](#8-next-steps) item 55 for the exact concurrency guarantees. |
 | `get-booking-documents` | Admin JWT only | Resolves a booking's `documents` storage paths to time-limited (1hr) signed URLs via `createSignedUrls()` — `esf-documents` is a private bucket. Called from `js/shared.js`'s `populateDetailPane()` when rendering the Kanban/Summary detail pane. |
 | `create-checkout-session` | Admin JWT only | Creates a Stripe Checkout Session for any not-yet-resolved booking (called directly from the chargeable-confirm modal, or again on "Resend Payment Request" from `Payment Requested`), saves the resolved `stall_cost`, updates the booking to `Payment Requested`, and emails the `payment_requested` template with the session URL. Picks the `stripe_secret_key_test`/`_live` settings-table row by whether `instance_prefix` contains `-DEV-` (or the `stripe_test_mode` override — see below). See [Stripe Payment Collection](#stripe-payment-collection) below. |
 | `stripe-webhook` | None (`--no-verify-jwt`); gated instead by Stripe signature verification (tries the `stripe_webhook_secret_test` then `_live` settings-table rows) | On `checkout.session.completed`, calls `mark_stripe_payment_received()` then `finalize_stripe_confirmation()` RPCs, then best-effort emails `confirmed_chargeable` (deduped via `stripe_webhook_events`, in-process `sendViaZoho()`, never `functions.invoke`). No-ops on expired/failed payment events — the booking is already correctly sitting at `Payment Requested`. |
@@ -522,6 +529,10 @@ the direct query path (`locations` + `public_bookings_info`).
   closing their browser mid-send, drains in the background (fixed and verified this session)
 - Audit log viewer (`audit_log.html`, admin-only) — search/browse every recorded
   `auditLog()` action across all instances; see item 40 in [Next Steps](#8-next-steps)
+- Email Queue viewer (`email_queue.html`, admin-only) — browse/search every send
+  attempt with its error message, **and retry failed ones** (v7.1.0, item 55)
+- Google Maps ratings/reviews on the booking detail pane, server-side cached to
+  keep SerpApi usage down (v5.1.13, item 53)
 
 ### Partially built / not integrated into this repo
 - **Performer booking feature**: `performers` and `schedules` tables exist in the same
@@ -536,8 +547,13 @@ the direct query path (`locations` + `public_bookings_info`).
   reference only. The real, editable templates live in the `email_templates` DB table.
 
 ### Known gaps (not bugs, just unbuilt)
-- No `email_queue` browse/retry admin UI — `js/page-email-admin.js` only manages
-  `email_templates`, despite `ARCHITECTURE.md` claiming otherwise.
+- ~~No `email_queue` browse/retry admin UI~~ — **both parts are now built.**
+  Browsing landed in v5.1.0 (`email_queue.html`, admin-only, search/filter/
+  paginate) and the Retry action for failed sends in v7.1.0 (see
+  [Next Steps](#8-next-steps) item 55). Note the entry that used to be here
+  blamed `js/page-email-admin.js` — that file only ever managed
+  `email_templates`; the queue viewer is `js/page-email-queue.js`, a separate
+  page.
 - No error/alerting integration (Slack/Discord/Sentry) for Edge Function failures —
   explicitly deferred by the project owner ("I'll do it later").
 - No refund support — no refund UI, no Stripe refund API call anywhere, and
@@ -651,13 +667,27 @@ mechanism for the actual payment processing — see
 
 ### `email_queue`
 Doubles as a send log and (for bulk sends) a real queue. Columns: `recipient`,
-`subject`, `body`, `status`, `error_message`, `instance_prefix`. **`status` has four
+`subject`, `body`, `status`, `error_message`, `instance_prefix`, plus
+`retry_count`/`last_retry_at` (added 2026-07-19 for the viewer's Retry action —
+`retry_count` is 0 for every send that has never been manually retried).
+**`status` has four
 values, not two**: `Pending` → `Processing` (bulk-send claim step, see
-`claim_pending_emails()`) → `Sent` or `Error`. Individual sends (booking
+`claim_pending_emails()`, and also the claim step `retry-queued-email` uses)
+→ `Sent` or `Error`. Individual sends (booking
 confirmation/rejection/location emails, the "received" auto-responder, cancellation
 confirmation) are all send-then-log — they call Zoho synchronously and insert the row
 with the *final* status already known. Only the bulk-email path (`queue-bulk-email`)
 ever inserts a genuinely `Pending` row that something processes later.
+
+### `google_reviews_cache`
+Server-side cache of SerpApi Google Maps lookups (added 2026-07-19).
+`business_key` (PK — the normalized, lowercased/trimmed business name),
+`payload` (`jsonb`, the exact response body `get-reviews` serves, including
+`found:false` results — those cost a SerpApi call too), `fetched_at`. RLS
+enabled with **zero policies**, `service_role` only — same access pattern as
+`stripe_webhook_events`; `anon`/`authenticated` get nothing, and cached payloads
+only ever reach a browser through `get-reviews`' own admin check. Safe to
+truncate at any time: a cold cache just means the next lookup costs an API call.
 
 ### `email_templates`
 Editable via `more.html`. `id` (template key, e.g. `application_received`,
@@ -805,7 +835,15 @@ with a real run via `gh run watch` — all three green.
   `npm run check:rls-grants -- --update` and commit the refreshed snapshot if
   the change is expected.
 - `npm run test:integration` (`node --test --test-concurrency=1`, Node's
-  built-in `node:test`) runs three test files:
+  built-in `node:test`) runs **eight** test files (108 tests as of
+  2026-07-20). The three below are the originals; the rest were added
+  alongside their features — `tests/stripe-payment.test.mjs`,
+  `tests/bank-transfer-payment.test.mjs`, `tests/cors.test.mjs`,
+  `tests/email-retry.test.mjs` (item 55) and
+  `tests/google-reviews-cache.test.mjs` (item 53, which proves cache
+  hit/bypass/TTL behaviour **without ever making a real SerpApi call** — the
+  test project has no key, so a "not configured" failure is the cache-miss
+  detector):
   - `tests/integration.test.mjs` — the deployed `submit-booking` (including
     its temp→booking-folder document moves and the failed-move temp-path
     fallback, see [Next Steps](#8-next-steps) item 51), `cancel-booking`, and
@@ -836,8 +874,8 @@ with a real run via `gh run watch` — all three green.
     this session.
 
   **`--test-concurrency=1` is required, not optional** — Node's test runner
-  runs separate test *files* concurrently by default, but all three files
-  share one remote disposable database. Found live: `integration.test.mjs`'s
+  runs separate test *files* concurrently by default, but every file
+  shares one remote disposable database. Found live: `integration.test.mjs`'s
   cleanup wildcard deleted `security.test.mjs`'s and `workflow.test.mjs`'s
   fixture rows mid-run when they happened to share the `ESF26-TEST%` prefix,
   producing confusing failures that had nothing to do with the app. Any new
