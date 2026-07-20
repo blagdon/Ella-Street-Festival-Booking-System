@@ -9,7 +9,10 @@
 > verification first, and the short list that needs an explicit instruction every
 > time. Default to acting.
 > Last updated: 2026-07-20.
-> Current release: **v7.4.0** (tagged 2026-07-20; schema/permissions hardening —
+> Current release: **v7.4.1** (tagged 2026-07-20; CI configuration only — see
+> the Gotchas entry on the duplicate-run/branch-protection interaction).
+> Last release to change the live site or database: **v7.4.0**
+> (tagged 2026-07-20; schema/permissions hardening —
 > **database changes, applied to production**: steward booking-UPDATE policy
 > dropped, `audit_logs.user_email` server-stamped, `bookings.status`
 > CHECK-constrained, vestigial anon RPC grant revoked. See
@@ -2533,6 +2536,23 @@ stay in the separate `ellafestperformersadmin.vercel.app` codebase.
   current, correct behavior is a manual "send" button on `hcc_dashboard.html` that
   redirects to the logged-in admin's own inbox when the active instance is `DEV`, and
   audit-logs every send.
+
+- **A cancelled CI run still reports a failing required check and blocks the
+  merge — and `cancel-in-progress: false` does not prevent it.** GitHub keeps
+  only ONE *pending* run per concurrency group: when a newer run queues behind
+  the in-progress one, the previously-pending run is cancelled. Because
+  `integration-tests` is globally serialised on the shared test database, that
+  eviction used to happen whenever a branch produced two runs (an unscoped
+  `push:` plus `pull_request`), leaving a non-success `integration-tests` check
+  on the head commit for a job that never executed — and branch protection
+  refuses the merge on it. Hit live on PR #43. **Fixed 2026-07-20 by scoping
+  `push:` to `main`** so each PR produces exactly one run; don't reintroduce an
+  unscoped `push:`. Equally, **don't "fix" a recurrence by setting
+  `cancel-in-progress: true`** — that governs a different case entirely, and
+  killing a run mid-suite abandons fixtures in the shared database for the next
+  run to trip over (the 2026-07-17 failure that created the group). If you do
+  see a merge blocked by a 1-second cancelled job, re-run that single job:
+  `gh run rerun <run-id> --job <job-id>`.
 
 - **Tailwind v4 broke `transform` as a stacking-context trick, and it fails
   silently — suspect this first on any "the screen goes blank" report.** The
