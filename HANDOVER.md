@@ -9,14 +9,17 @@
 > verification first, and the short list that needs an explicit instruction every
 > time. Default to acting.
 > Last updated: 2026-07-20.
-> Current release: **v7.7.0** (tagged 2026-07-20; **frontend-only, no schema/
-> Edge Function change**: bounded every unbounded admin list query with a
-> cap-and-notice pattern — see [Next Steps](#8-next-steps) item 61 for why
-> payments got a cap instead of the pagination first proposed for it).
-> v7.6.0 was a database change (`user_roles.role` consolidated onto the
-> `user_role` enum, the `eq_text_user_role` shim dropped — item 60, plus two
-> new Gotchas entries on `ALTER POLICY`'s pg_depend trap and the snapshot
-> script's first-line-only blind spot). v7.5.0 dropped the orphaned
+> Current release: **v7.8.0** (tagged 2026-07-20; **database change, applied to
+> production**: `get_is_admin()` consolidated into
+> `check_user_role('admin'::user_role)` and dropped, plus a fix for
+> `check-rls-grants-snapshot.sh`'s first-line-only blind spot — see
+> [Next Steps](#8-next-steps) item 62, the two follow-ups item 60 left open).
+> v7.7.0 was frontend-only (bounded admin list queries — item 61, see it for
+> why payments got a cap instead of the pagination first proposed). v7.6.0 was
+> also a database change (`user_roles.role` consolidated onto the `user_role`
+> enum, the `eq_text_user_role` shim dropped — item 60, plus two Gotchas
+> entries on `ALTER POLICY`'s pg_depend trap and the snapshot script's
+> first-line-only blind spot, now fixed by v7.8.0). v7.5.0 dropped the orphaned
 > `location_power` table (item 59, read it before trusting a repo-only "no
 > references" check on anything performer-adjacent again) — also database
 > changes, as was v7.4.0 (item 58); v7.4.1 was CI config only; v7.3.1 docs,
@@ -2534,9 +2537,10 @@ it as a live concern.
     was checked too — correct text, zero child elements confirming it went
     through `innerText`, not `innerHTML`.
 
-62. **The two follow-ups item 60 left open (2026-07-20, migration
-    `20260720140000_consolidate_get_is_admin_into_check_user_role.sql`, not yet
-    tagged in a release).** Neither was written down as a formal TODO anywhere
+62. **The two follow-ups item 60 left open (2026-07-20, PR #52, released as
+    v7.8.0, migration
+    `20260720140000_consolidate_get_is_admin_into_check_user_role.sql`).**
+    Neither was written down as a formal TODO anywhere
     — both fell out of re-reading item 60's own Gotchas entries and asking
     "is this actually finished."
     - **Consolidated `get_is_admin()` into `check_user_role('admin'::user_role)`.**
