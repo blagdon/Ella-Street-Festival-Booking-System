@@ -8,18 +8,22 @@
 > including applying additive migrations to production), which require specific
 > verification first, and the short list that needs an explicit instruction every
 > time. Default to acting.
-> Last updated: 2026-07-20.
-> Current release: **v7.8.0** (tagged 2026-07-20; **database change, applied to
-> production**: `get_is_admin()` consolidated into
+> Last updated: 2026-07-21.
+> Current release: **v7.9.0** (tagged 2026-07-21; **database change, applied to
+> production**: scoped anon's `schedules` access to Scheduled/Paid performers
+> — see [Next Steps](#8-next-steps) item 63, which closes the last of item 58's
+> three deferred findings, and the new Gotchas entry on why a
+> successful-but-wrong migration needs `migration repair`, not just a retry).
+> v7.8.0 was also a database change (`get_is_admin()` consolidated into
 > `check_user_role('admin'::user_role)` and dropped, plus a fix for
-> `check-rls-grants-snapshot.sh`'s first-line-only blind spot — see
-> [Next Steps](#8-next-steps) item 62, the two follow-ups item 60 left open).
-> v7.7.0 was frontend-only (bounded admin list queries — item 61, see it for
-> why payments got a cap instead of the pagination first proposed). v7.6.0 was
-> also a database change (`user_roles.role` consolidated onto the `user_role`
-> enum, the `eq_text_user_role` shim dropped — item 60, plus two Gotchas
-> entries on `ALTER POLICY`'s pg_depend trap and the snapshot script's
-> first-line-only blind spot, now fixed by v7.8.0). v7.5.0 dropped the orphaned
+> `check-rls-grants-snapshot.sh`'s first-line-only blind spot — item 62, the
+> two follow-ups item 60 left open). v7.7.0 was frontend-only (bounded admin
+> list queries — item 61, see it for why payments got a cap instead of the
+> pagination first proposed). v7.6.0 was also a database change
+> (`user_roles.role` consolidated onto the `user_role` enum, the
+> `eq_text_user_role` shim dropped — item 60, plus two Gotchas entries on
+> `ALTER POLICY`'s pg_depend trap and the snapshot script's first-line-only
+> blind spot, now fixed by v7.8.0). v7.5.0 dropped the orphaned
 > `location_power` table (item 59, read it before trusting a repo-only "no
 > references" check on anything performer-adjacent again) — also database
 > changes, as was v7.4.0 (item 58); v7.4.1 was CI config only; v7.3.1 docs,
@@ -2594,7 +2598,7 @@ it as a live concern.
     project afterward.
 
 63. **Closed the third finding item 58 left open: anon's `schedules` policy
-    was `USING (true)` (2026-07-21, migration
+    was `USING (true)` (2026-07-21, PR #54, released as v7.9.0, migration
     `20260721081500_scope_anon_schedules_policy.sql`).** `public_schedule_info`
     has always filtered to Scheduled/Paid performers only; the base table
     never enforced that itself, so a caller reading `schedules` directly
