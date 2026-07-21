@@ -4,7 +4,7 @@ import { auditLog } from './api.js';
 import { CONFIG } from './config.js';
 import { ESF_PUBLIC_CONFIG } from '../supabase-public.js';
 import { parseEdgeFunctionError, escapeHtml } from './utils.js';
-import { buildStripeCredentialUpdates } from './stripe-credentials.js';
+import { buildStripeCredentialUpdates, STRIPE_CREDENTIAL_KEYS } from './stripe-credentials.js';
 
 const sb = getSupabaseClient();
 
@@ -188,6 +188,10 @@ async function initStripeSettings() {
     // Zoho's credentials already work in this same table. Save is
     // permissive (no "all required" check) since an admin may legitimately
     // want to save just the Test-mode pair first and add Live later.
+    //
+    // WRITE-ONLY: these inputs are never populated with the stored credential.
+    // The page learns only whether each key is set, never its value — see
+    // refreshCredentialStatus() below and the comment in settings.html.
     const txtSecretTest = document.getElementById('stripe-secret-key-test');
     const txtSecretLive = document.getElementById('stripe-secret-key-live');
     const txtWebhookTest = document.getElementById('stripe-webhook-secret-test');
@@ -195,39 +199,63 @@ async function initStripeSettings() {
     const btnSaveStripe = document.getElementById('btn-save-stripe');
 
     if (txtSecretTest && txtSecretLive && txtWebhookTest && txtWebhookLive && btnSaveStripe) {
-        // Whether the four fields below reflect what is actually stored. If the
-        // load fails the inputs stay empty, which is INDISTINGUISHABLE from an
-        // admin deliberately clearing them — so saving from that state would
-        // overwrite live credentials with blanks. Refuse to save at all rather
-        // than guess.
-        let credentialsLoaded = false;
+        const fieldsByKey = {
+            stripe_secret_key_test: txtSecretTest,
+            stripe_secret_key_live: txtSecretLive,
+            stripe_webhook_secret_test: txtWebhookTest,
+            stripe_webhook_secret_live: txtWebhookLive
+        };
 
-        try {
-            const { data, error } = await sb.from('settings').select('key, value').in('key', [
-                'stripe_secret_key_test', 'stripe_secret_key_live',
-                'stripe_webhook_secret_test', 'stripe_webhook_secret_live'
-            ]);
-            if (error) throw error;
+        /**
+         * Renders whether each credential is set, WITHOUT ever fetching its
+         * value. Only the `key` column is selected, and the "is it set" test is
+         * a server-side filter (.neq('value', '')), so the secrets themselves
+         * never cross the wire and never enter the DOM. NULL values fail that
+         * filter too, which is correct — an absent value is "not set".
+         *
+         * Do not be tempted to select `value` here to show a masked preview
+         * ("sk_live_…abcd"): that puts the full secret back in the page, which
+         * is exactly what this change removes.
+         */
+        async function refreshCredentialStatus() {
+            const setStatus = (key, text, className) => {
+                const el = document.getElementById(`${fieldsByKey[key].id}-status`);
+                if (el) {
+                    el.textContent = text;
+                    el.className = `text-xs mt-1 ${className}`;
+                }
+            };
 
-            (data || []).forEach(item => {
-                if (item.key === 'stripe_secret_key_test') txtSecretTest.value = item.value || '';
-                else if (item.key === 'stripe_secret_key_live') txtSecretLive.value = item.value || '';
-                else if (item.key === 'stripe_webhook_secret_test') txtWebhookTest.value = item.value || '';
-                else if (item.key === 'stripe_webhook_secret_live') txtWebhookLive.value = item.value || '';
-            });
-            credentialsLoaded = true;
-        } catch (err) {
-            showToast("Failed to load Stripe credentials: " + err.message + " — saving is disabled until this loads. Reload the page.", 'error');
-            btnSaveStripe.disabled = true;
-            btnSaveStripe.title = "Stripe credentials could not be loaded — reload the page before saving.";
+            try {
+                const { data, error } = await sb.from('settings')
+                    .select('key')
+                    .in('key', STRIPE_CREDENTIAL_KEYS)
+                    .neq('value', '');
+                if (error) throw error;
+
+                const configured = new Set((data || []).map(row => row.key));
+                STRIPE_CREDENTIAL_KEYS.forEach(key => {
+                    if (configured.has(key)) setStatus(key, '✓ Configured', 'text-green-700');
+                    else setStatus(key, 'Not set', 'text-gray-400');
+                });
+            } catch (err) {
+                // Non-fatal, and deliberately does NOT disable saving. Before
+                // these fields were write-only, a failed load left them looking
+                // blank when they were actually populated, so saving from that
+                // state wiped them — hence the hard block this replaces. Now the
+                // fields are ALWAYS blank on load and a blank one is never
+                // written (buildStripeCredentialUpdates filters it out), so a
+                // failed status check cannot cause a wipe. Blocking saves here
+                // would only stop an admin configuring Stripe for no safety gain.
+                STRIPE_CREDENTIAL_KEYS.forEach(key =>
+                    setStatus(key, 'Could not check', 'text-amber-600'));
+                showToast("Couldn't check which Stripe credentials are set: " + err.message, 'error');
+            }
         }
 
-        btnSaveStripe.addEventListener('click', async () => {
-            if (!credentialsLoaded) {
-                showToast("Stripe credentials could not be loaded, so saving would overwrite them with blanks. Reload the page.", 'error');
-                return;
-            }
+        await refreshCredentialStatus();
 
+        btnSaveStripe.addEventListener('click', async () => {
             btnSaveStripe.disabled = true;
             btnSaveStripe.textContent = "Saving...";
 
@@ -237,22 +265,29 @@ async function initStripeSettings() {
                 const now = new Date().toISOString();
 
                 // A blank field means "leave this one alone", not "clear it" —
-                // see stripe-credentials.js for the two ways the previous
-                // write-all-four behaviour wiped stored credentials.
-                const updates = buildStripeCredentialUpdates({
-                    stripe_secret_key_test: txtSecretTest.value,
-                    stripe_secret_key_live: txtSecretLive.value,
-                    stripe_webhook_secret_test: txtWebhookTest.value,
-                    stripe_webhook_secret_live: txtWebhookLive.value
-                }, { updatedAt: now, updatedBy: userEmail });
+                // see stripe-credentials.js. With write-only fields this is the
+                // normal case: every field starts blank on load, so a save only
+                // ever writes the ones actually typed into.
+                const updates = buildStripeCredentialUpdates(
+                    Object.fromEntries(
+                        STRIPE_CREDENTIAL_KEYS.map(key => [key, fieldsByKey[key].value])
+                    ),
+                    { updatedAt: now, updatedBy: userEmail }
+                );
 
                 if (updates.length === 0) {
-                    showToast("Nothing to save — all four fields are blank.", 'error');
+                    showToast("Nothing to save — type a credential to replace it. Blank fields are left unchanged.", 'error');
                     return;
                 }
 
                 const { error } = await sb.from('settings').upsert(updates);
                 if (error) throw error;
+
+                // Don't leave the typed secrets sitting in the DOM afterwards —
+                // the whole point of write-only fields is that the page holds a
+                // credential for as short a time as possible.
+                updates.forEach(row => { fieldsByKey[row.key].value = ''; });
+                await refreshCredentialStatus();
 
                 showToast(`Saved ${updates.length} Stripe credential${updates.length === 1 ? '' : 's'}`);
                 await auditLog('update_stripe_settings', 'system', {

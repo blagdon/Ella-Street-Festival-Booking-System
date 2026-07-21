@@ -128,27 +128,45 @@
                     </p>
                 </div>
 
+                <!--
+                    WRITE-ONLY. These four fields are never populated with the stored
+                    credential — settings.html used to read the live secret key straight
+                    into the DOM, where type="password" hid it visually but devtools, an
+                    XSS on this page, or a browser extension could all read it back. The
+                    page now only ever learns WHETHER each key is set (see
+                    refreshCredentialStatus() in js/page-settings.js), never its value.
+                    A blank field means "leave this one alone".
+                -->
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                         <label for="stripe-secret-key-test" class="block text-xs font-semibold text-gray-500 mb-1">STRIPE SECRET KEY (TEST MODE)</label>
-                        <input type="password" id="stripe-secret-key-test" class="w-full p-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:outline-none" placeholder="sk_test_...">
+                        <input type="password" id="stripe-secret-key-test" autocomplete="off" class="w-full p-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:outline-none" placeholder="sk_test_… (blank = unchanged)">
+                        <p id="stripe-secret-key-test-status" class="text-xs text-gray-400 mt-1">Checking…</p>
                     </div>
                     <div>
                         <label for="stripe-secret-key-live" class="block text-xs font-semibold text-gray-500 mb-1">STRIPE SECRET KEY (LIVE MODE)</label>
-                        <input type="password" id="stripe-secret-key-live" class="w-full p-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:outline-none" placeholder="sk_live_...">
+                        <input type="password" id="stripe-secret-key-live" autocomplete="off" class="w-full p-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:outline-none" placeholder="sk_live_… (blank = unchanged)">
+                        <p id="stripe-secret-key-live-status" class="text-xs text-gray-400 mt-1">Checking…</p>
                     </div>
                     <div>
                         <label for="stripe-webhook-secret-test" class="block text-xs font-semibold text-gray-500 mb-1">STRIPE WEBHOOK SIGNING SECRET (TEST MODE)</label>
-                        <input type="password" id="stripe-webhook-secret-test" class="w-full p-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:outline-none" placeholder="whsec_...">
+                        <input type="password" id="stripe-webhook-secret-test" autocomplete="off" class="w-full p-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:outline-none" placeholder="whsec_… (blank = unchanged)">
+                        <p id="stripe-webhook-secret-test-status" class="text-xs text-gray-400 mt-1">Checking…</p>
                     </div>
                     <div>
                         <label for="stripe-webhook-secret-live" class="block text-xs font-semibold text-gray-500 mb-1">STRIPE WEBHOOK SIGNING SECRET (LIVE MODE)</label>
-                        <input type="password" id="stripe-webhook-secret-live" class="w-full p-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:outline-none" placeholder="whsec_...">
+                        <input type="password" id="stripe-webhook-secret-live" autocomplete="off" class="w-full p-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:outline-none" placeholder="whsec_… (blank = unchanged)">
+                        <p id="stripe-webhook-secret-live-status" class="text-xs text-gray-400 mt-1">Checking…</p>
                     </div>
                 </div>
                 <p class="text-xs text-gray-400 mt-3">
                     Webhook signing secrets come from registering this project's deployed <code>stripe-webhook</code>
                     function URL as an endpoint in the Stripe Dashboard — once under Test mode, once under Live mode.
+                </p>
+                <p class="text-xs text-gray-400 mt-2">
+                    Stored credentials are never displayed here, only whether each one is set. Type a new value to
+                    replace one; leave a field blank to keep it as it is. To remove a credential entirely, clear it
+                    directly in the <code>settings</code> table.
                 </p>
                 <button id="btn-save-stripe" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded transition text-xs tracking-wider uppercase mt-4 cursor-pointer shadow-sm">
                     Save Stripe Settings

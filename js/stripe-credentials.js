@@ -19,9 +19,15 @@
  *   2. The documented, intended workflow — "fill in the Test pair now, add
  *      Live later" — wiped the Live keys every time, because they were blank.
  *
- * Case 1 is now blocked by the caller refusing to save at all when the load
- * failed. Case 2 is fixed here: a blank field means "leave this row alone",
- * so a save only ever writes the credentials actually present.
+ * Both are fixed by the rule below: a blank field means "leave this row
+ * alone", so a save only ever writes the credentials actually present.
+ *
+ * That rule is now load-bearing for more than the wipe bug. The settings
+ * fields are WRITE-ONLY — they are never populated with the stored credential,
+ * so they start blank on every load and "blank" is the normal state rather
+ * than an error state. The filter here is what makes that safe, and it is the
+ * ONLY thing standing between a routine save and four wiped credentials.
+ * Treat it as such: tests/stripe-credentials-save.test.mjs pins it.
  *
  * The tradeoff is that a credential can no longer be CLEARED through the
  * settings UI, only replaced. That is deliberate: clearing one is a rare
