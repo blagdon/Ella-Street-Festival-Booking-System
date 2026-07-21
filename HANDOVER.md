@@ -378,6 +378,11 @@ possible. Every other instance (FOOD/NONFOOD/MISC, "Food/General") → Live mode
 default, **unless** the `stripe_test_mode` settings-table row (text `'true'`/`'false'`,
 same "Stripe Payments" card toggle) is `'true'` — turning that on forces Test mode for
 Food/General bookings too, e.g. a full rehearsal before going live with real payments.
+**That override is currently `'true'` in production, and the live credentials are
+unset — production takes no real card payments today.** Before flipping it, follow
+[the go-live checklist](#-going-live-with-real-stripe-payments--checklist-not-yet-done),
+because the order of those steps matters: flipping this first breaks payment
+collection until the live key exists.
 `_shared/stripe.ts`'s `resolveStripeMode(instancePrefix, forceTestModeSetting)`
 implements this exactly; `create-checkout-session` is the only caller that reads the
 setting — the webhook doesn't need it, since it already tries both Test and Live webhook
@@ -843,6 +848,59 @@ registrations, two secrets. For the disposable test project
 (`qeplpcnrkgpaawfyliap`), `scripts/seed-test-project.mjs` does the equivalent
 automatically (test-mode credentials only, from `TEST_STRIPE_SECRET_KEY`/
 `TEST_STRIPE_WEBHOOK_SECRET`) — see [Testing](#testing) below.
+
+### ⚠ Going live with real Stripe payments — checklist, NOT yet done
+
+**As of 2026-07-21, production takes NO real card payments.** Verified directly
+against the live `settings` table, not inferred:
+
+| setting | state |
+|---|---|
+| `stripe_test_mode` | `'true'` |
+| `stripe_secret_key_test` | configured (`sk_test…`) |
+| `stripe_webhook_secret_test` | configured (`whsec_…`) |
+| `stripe_secret_key_live` | **not set** |
+| `stripe_webhook_secret_live` | **not set** |
+
+That combination is coherent, not broken: `stripe_test_mode = 'true'` forces
+Test mode for Food/General too (DEV is always Test regardless), so
+`_shared/stripe.ts` never reaches for the live credentials and their absence
+costs nothing. Every "real" payment taken so far has been a Stripe **test**
+payment.
+
+**The three steps below must happen together, and ORDER MATTERS.** The moment
+`stripe_test_mode` flips to `'false'`, `getStripeSecretKey()` demands
+`stripe_secret_key_live` and throws loudly if it is missing — deliberately, per
+that module's "no partial/silent fallback" rule. Doing (3) first therefore
+breaks payment collection outright until (1) is done.
+
+1. **Set both live credentials** in `settings.html` → "Stripe Payments":
+   `stripe_secret_key_live` and `stripe_webhook_secret_live`.
+2. **Register the production webhook URL as a LIVE-mode endpoint** in the
+   Stripe Dashboard — the same
+   `https://rsnxhuhibglieofikkpo.supabase.co/functions/v1/stripe-webhook` URL,
+   registered *separately* under Live mode, producing its own signing secret
+   (that secret is what step 1 needs). **Enable the same events the Test-mode
+   endpoint has**, which currently means `checkout.session.completed`,
+   `checkout.session.expired`, and `charge.refunded` — miss the last one and
+   refunds issued in the Stripe dashboard silently stop reconciling (see
+   [Next Steps](#8-next-steps) item 64).
+3. **Only then** set `stripe_test_mode` to `'false'`.
+
+**How to check the live endpoint's events without guessing** — read-only, moves
+no money, and the same call used to verify the Test-mode endpoints on
+2026-07-21:
+```bash
+curl -s https://api.stripe.com/v1/webhook_endpoints \
+  -H "Authorization: Bearer $STRIPE_LIVE_SECRET_KEY" \
+  | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{for(const e of JSON.parse(d).data)console.log(e.url,e.status,e.enabled_events.join(','))})"
+```
+
+**Note the Sandbox trap**: Stripe's newer "Sandbox" is isolated from classic
+Test mode — endpoints registered in a sandbox do not appear in Test mode and
+vice versa. If the endpoint list looks unexpectedly empty or unfamiliar, check
+which context the Dashboard is actually in (account switcher, top-left) before
+concluding anything is missing.
 
 ### Creating an admin/steward user
 1. Create a Supabase Auth user (dashboard, or let them sign up if signup is enabled —
