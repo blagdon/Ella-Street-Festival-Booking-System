@@ -4,6 +4,7 @@ import { auditLog } from './api.js';
 import { CONFIG } from './config.js';
 import { ESF_PUBLIC_CONFIG } from '../supabase-public.js';
 import { parseEdgeFunctionError, escapeHtml } from './utils.js';
+import { buildStripeCredentialUpdates } from './stripe-credentials.js';
 
 const sb = getSupabaseClient();
 
@@ -194,6 +195,13 @@ async function initStripeSettings() {
     const btnSaveStripe = document.getElementById('btn-save-stripe');
 
     if (txtSecretTest && txtSecretLive && txtWebhookTest && txtWebhookLive && btnSaveStripe) {
+        // Whether the four fields below reflect what is actually stored. If the
+        // load fails the inputs stay empty, which is INDISTINGUISHABLE from an
+        // admin deliberately clearing them — so saving from that state would
+        // overwrite live credentials with blanks. Refuse to save at all rather
+        // than guess.
+        let credentialsLoaded = false;
+
         try {
             const { data, error } = await sb.from('settings').select('key, value').in('key', [
                 'stripe_secret_key_test', 'stripe_secret_key_live',
@@ -207,11 +215,19 @@ async function initStripeSettings() {
                 else if (item.key === 'stripe_webhook_secret_test') txtWebhookTest.value = item.value || '';
                 else if (item.key === 'stripe_webhook_secret_live') txtWebhookLive.value = item.value || '';
             });
+            credentialsLoaded = true;
         } catch (err) {
-            showToast("Failed to load Stripe credentials: " + err.message, 'error');
+            showToast("Failed to load Stripe credentials: " + err.message + " — saving is disabled until this loads. Reload the page.", 'error');
+            btnSaveStripe.disabled = true;
+            btnSaveStripe.title = "Stripe credentials could not be loaded — reload the page before saving.";
         }
 
         btnSaveStripe.addEventListener('click', async () => {
+            if (!credentialsLoaded) {
+                showToast("Stripe credentials could not be loaded, so saving would overwrite them with blanks. Reload the page.", 'error');
+                return;
+            }
+
             btnSaveStripe.disabled = true;
             btnSaveStripe.textContent = "Saving...";
 
@@ -220,22 +236,27 @@ async function initStripeSettings() {
                 const userEmail = session?.user?.email || 'admin';
                 const now = new Date().toISOString();
 
-                const updates = [
-                    { key: 'stripe_secret_key_test', value: txtSecretTest.value.trim(), updated_at: now, updated_by: userEmail },
-                    { key: 'stripe_secret_key_live', value: txtSecretLive.value.trim(), updated_at: now, updated_by: userEmail },
-                    { key: 'stripe_webhook_secret_test', value: txtWebhookTest.value.trim(), updated_at: now, updated_by: userEmail },
-                    { key: 'stripe_webhook_secret_live', value: txtWebhookLive.value.trim(), updated_at: now, updated_by: userEmail }
-                ];
+                // A blank field means "leave this one alone", not "clear it" —
+                // see stripe-credentials.js for the two ways the previous
+                // write-all-four behaviour wiped stored credentials.
+                const updates = buildStripeCredentialUpdates({
+                    stripe_secret_key_test: txtSecretTest.value,
+                    stripe_secret_key_live: txtSecretLive.value,
+                    stripe_webhook_secret_test: txtWebhookTest.value,
+                    stripe_webhook_secret_live: txtWebhookLive.value
+                }, { updatedAt: now, updatedBy: userEmail });
+
+                if (updates.length === 0) {
+                    showToast("Nothing to save — all four fields are blank.", 'error');
+                    return;
+                }
 
                 const { error } = await sb.from('settings').upsert(updates);
                 if (error) throw error;
 
-                showToast("Stripe credentials saved successfully");
+                showToast(`Saved ${updates.length} Stripe credential${updates.length === 1 ? '' : 's'}`);
                 await auditLog('update_stripe_settings', 'system', {
-                    has_secret_key_test: !!txtSecretTest.value.trim(),
-                    has_secret_key_live: !!txtSecretLive.value.trim(),
-                    has_webhook_secret_test: !!txtWebhookTest.value.trim(),
-                    has_webhook_secret_live: !!txtWebhookLive.value.trim()
+                    updated_keys: updates.map(row => row.key)
                 });
             } catch (err) {
                 showToast(`Failed to save Stripe credentials: ${err.message}`, 'error');

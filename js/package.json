@@ -1,0 +1,4 @@
+{
+  "//": "Everything in js/ is browser ES module code, loaded via <script type=\"module\">. The root package.json declares \"type\": \"commonjs\" (for postcss.config.js/tailwind.config.js), which would otherwise make Node parse these files as CommonJS and refuse to import their named exports from a test. Browsers ignore this file entirely - it exists so `node --test` can import js/ modules directly, as tests/stripe-credentials-save.test.mjs does. Do not add dependencies or scripts here.",
+  "type": "module"
+}
