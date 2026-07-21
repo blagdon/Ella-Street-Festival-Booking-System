@@ -2,6 +2,20 @@
 
 All notable changes to this project are documented in this file.
 
+## [v7.10.5] - 2026-07-21
+
+### Fixed
+
+- **`charge.refunded` recorded the Stripe *charge* id where a *refund* id belongs.** `refund_reference`'s schema comment documents it as holding a Stripe refund id (`re_…`); every dashboard-issued refund was writing a charge id (`ch_…`) instead. The cause was `charge.refunds?.data?.[0]?.id || charge.id`, which reads as a defensive fallback but wasn't one: **`charge.refunds` is absent from the `charge.refunded` payload on current Stripe API versions** — verified live against `2026-06-24.dahlia`, which carries neither `refunds` nor `latest_refund` — so the `|| charge.id` branch was the *only* one that ever ran. The refund id now comes from an API lookup, using a client built for whichever mode's secret actually verified the signature (previously not captured at all, and necessary because querying live Stripe about a test-mode object just 404s). The embedded list is still checked first so an API version that does include it costs no extra round trip, and `charge.id` remains the last resort — recording a refund against a weaker reference beats failing the webhook and leaving the refund unrecorded, which is the hole this handler exists to close.
+
+  Blast radius was small (a charge id is still traceable in Stripe, and the schema only supports one refund per booking), but it silently violated its own documented contract while reading as though the good path normally won.
+
+### Note
+
+**This is what the end-to-end refund test found.** HANDOVER had flagged, across four releases, that no refund had ever been watched end to end against a real Stripe charge. Running it — a real test-mode charge, refunded in Stripe exactly as a dashboard refund would be — reconciled correctly in every respect *except* this field, on both a partial (£30 of £80) and a full refund. Everything else the last four releases built held up against data the webhook wrote rather than data constructed for the test: the badge flipped to REFUNDED, `paid` stayed `true`, the dashboard header read Paid £100.00 / Refunded £30.00, and the CSV's Net Paid column summed to the header total.
+
+The remaining untested link is `refund-payment` itself (the admin-initiated path), which by deliberate design requires a human: *"Admin JWT only, with no service-role bypass: issuing a refund moves real money and must always be a deliberate human action."*
+
 ## [v7.10.4] - 2026-07-21
 
 ### Fixed
