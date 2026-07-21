@@ -1209,6 +1209,34 @@ message/PR body before the fix was confirmed live (e.g. "tightened database acce
 policies" rather than describing the specific hole) — kept generic even after, as a
 habit.
 
+### Cutting a release
+
+The sequence matters, and getting it wrong has produced a tag pointing at the wrong
+commit **twice** (see the Gotchas entry). Do these as **separate steps**, checking the
+result of each before starting the next:
+
+1. Branch `release/vX.Y.Z`; add the CHANGELOG entry, update HANDOVER's current-release
+   line, bump `package.json`.
+2. Open the PR, wait for **all** checks, merge it.
+3. **Verify the merge landed** — `gh pr view <n> --json state` must read `MERGED`. Do
+   not infer this from the merge command's exit code.
+4. Only then tag, and gate on the release **content** actually being present at the
+   target commit:
+   ```bash
+   TARGET=$(git rev-parse origin/main)
+   git show "$TARGET:package.json" | grep -q '"version": "X.Y.Z"' || { echo refusing; exit 1; }
+   git show "$TARGET:CHANGELOG.md"  | grep -q '\[vX.Y.Z\]'        || { echo refusing; exit 1; }
+   gh release create vX.Y.Z --target "$TARGET" ...
+   ```
+   A non-empty-SHA check is **not** sufficient — both incidents had a perfectly valid
+   SHA that was simply the previous commit.
+5. Verify the tag (`git rev-parse "vX.Y.Z^{commit}"` equals `origin/main`, and the
+   version/changelog are right *at the tag*), then delete the release branch.
+
+Recovery if a tag lands on the wrong commit: `gh release delete vX.Y.Z --yes
+--cleanup-tag`, fix the underlying problem, re-tag. Deleting and recreating is fine
+here — these tags are only ever minutes old when the mistake is caught.
+
 ### SQL fix files (historical) / migrations (current)
 `.sql` files named `verb_target.sql` (`fix_bookings_rls_exposure.sql`,
 `add_schedules_location_fk.sql`, `drop_unused_admin_functions.sql`), archived in
@@ -2990,6 +3018,27 @@ stay in the separate `ellafestperformersadmin.vercel.app` codebase.
 ---
 
 ## 9. Gotchas
+
+- **Never chain a merge and a tag in one command — this has produced a tag on the wrong
+  commit TWICE.** `gh pr merge` can report a transport failure (HTTP 502/504) or be
+  refused by branch protection while the *shell* command chain carries on regardless,
+  so the tag gets created against whatever `origin/main` happens to be — the previous
+  release's commit, with the old version number and no changelog entry for the version
+  being tagged.
+  - **2026-07-20, v7.4.0**: merge blocked by branch protection, chained cleanup ran
+    anyway, deleting the branch and tagging the wrong commit. Recovered via
+    `refs/pull/43/head`.
+  - **2026-07-21, v7.10.5**: `gh pr merge` returned HTTP 504, PR stayed `OPEN`, tag and
+    GitHub release were created at v7.10.4's commit. Caught immediately, deleted with
+    `gh release delete --cleanup-tag`, merged properly, re-tagged.
+  **The second time is the instructive one**: the lesson from the first was known and
+  had been stated, but never written down here, and repeating it took no effort at all.
+  **The guard that was in use — refusing to tag on an empty `$TARGET` — does not catch
+  this**, because the target is never empty; it is a perfectly valid SHA that happens to
+  be the wrong one. Gate on the release *content* instead (version string and changelog
+  heading present at the target commit), and verify `state == MERGED` from the API
+  rather than trusting a command's exit code. Full sequence in
+  [Cutting a release](#cutting-a-release).
 
 - **`payments.paid = true` does NOT mean the money is held — every reader must
   subtract `refund_amount` itself.** `paid` deliberately stays `true` after a refund:
