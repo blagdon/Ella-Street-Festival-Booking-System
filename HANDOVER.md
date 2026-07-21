@@ -232,6 +232,20 @@ of truth is the `settings` key/value table, loaded once per session via
 hardcoded default at all** — they're `null`/`[]` until the settings table loads
 (`getStallCost()` warns to console and returns `0` if called before that).
 
+**Two consequences, both hit for real:**
+- **Never hardcode a price as a shortcut.** `js/stats.js` computed Revenue from a
+  hardcoded £50/£25 until v7.10.4 (item 68), so editing a stall cost in Settings would
+  have left that page reporting the old one indefinitely, with nothing on screen to
+  indicate it had gone stale. Prefer the booking's own `stall_cost` where it exists —
+  the amount actually agreed, and what Payments bills against — and fall back to
+  `getStallCost()` only for bookings not yet priced.
+- **Order matters, and getting it wrong fails silently.** Because `getStallCost()`
+  returns `0` rather than throwing, calling it before the settings have loaded makes
+  money read as **£0** with only a console warning. On admin pages the ordering is
+  already safe — `initAdminPage` awaits `requireAuth`, which awaits `loadStallCosts`,
+  before the page callback runs — but verify that chain still holds before calling it
+  from anywhere new.
+
 ### Edge Functions (Deno, `supabase/functions/`)
 
 | Function | Auth | Purpose |
@@ -2824,15 +2838,113 @@ it as a live concern.
     issued real refunds with no prompt. Verified the fix in a browser: the
     dialog appears with the right amount, and cancelling leaves
     `refund_amount` null.
-    **ONE MANUAL STEP REMAINS, not doable from here**: `charge.refunded` must
-    be enabled on the Stripe webhook endpoint (Dashboard → Developers →
-    Webhooks → the endpoint → Update details → Select events). Until then,
-    refunds issued *in the Stripe dashboard* won't auto-record — everything
-    else works, and the manual path covers it meanwhile.
+    **The manual Stripe step is DONE for Test mode** (owner enabled
+    `charge.refunded` on both Test-mode endpoints, 2026-07-21), so
+    dashboard-issued refunds auto-record there. **It is still outstanding for
+    Live mode**, which has no configured endpoint yet — see the
+    [go-live checklist](#-going-live-with-real-stripe-payments--checklist-not-yet-done).
+    Miss it when going live and refunds issued in the Stripe dashboard
+    silently stop reconciling, with the manual path as the only cover.
+
+65. **The refund button shipped invisible (2026-07-21, PRs #59 + #60, released
+    as v7.10.1).** v7.10.0's refund button was present, clickable and
+    correctly wired, and rendered as **white text on a transparent
+    background**. `css/output.css` is a committed build artefact served
+    as-is, and the amber classes the button used had never appeared anywhere
+    else in the project, so Tailwind had never compiled them — the markup
+    referenced CSS rules that did not exist. Rebuilding was purely additive;
+    it also restored `disabled:cursor-not-allowed`, missing since v7.1.0's
+    Retry button and unnoticed for days.
+    **Two lessons worth more than the fix:**
+    - **A new `css-build-check` CI job** now rebuilds Tailwind and fails on a
+      stale committed file. `git status` cannot catch this: the stale file
+      *is* committed, so the tree is clean. Nor does it error at runtime — a
+      class with no rule renders as nothing at all.
+    - **My own verification was what failed**, not just the build step. I had
+      checked `offsetParent !== null` and `textContent`, both of which pass
+      for a completely invisible element. Checking that a control *exists* is
+      not checking that a human can see it.
+    Also added the [Stripe go-live checklist](#-going-live-with-real-stripe-payments--checklist-not-yet-done),
+    recording that production takes **no real card payments** today — a
+    coherent deliberate state that was written down nowhere.
+
+66. **The Paid total ignored refunds (2026-07-21, PR #62, released as
+    v7.10.2).** The Payments header summed the full `stall_cost` of every row
+    with `paid = true`, and `paid` deliberately *stays* true after a refund,
+    so a refunded booking went on inflating the headline figure forever — the
+    dashboard reported money the festival no longer held. The per-row display
+    had always been correct (badge flips to `REFUNDED`, amount and date
+    shown), which made it easy to miss and worse when hit: the row said
+    REFUNDED while the total directly above it still counted the cash. Paid
+    is now net of refunds, with a **Refunded** tile accounting for the
+    difference — netting money out with nothing explaining where it went
+    would only swap a wrong number for an unexplained one. Hidden at zero,
+    the normal case.
+
+67. **Swept every consumer of `paid` (2026-07-21, PR #64, released as
+    v7.10.3).** Prompted by item 66 being the *second* bug from one root
+    cause. Two more readers were wrong:
+    - **The CSV export had no refund awareness at all** — a refunded booking
+      exported as `Paid: Yes` at full cost. Worse than the on-screen version,
+      because the export is what gets reconciled against the bank: a wrong
+      number that leaves the building. Now carries Refund Amount / Refunded
+      On / **Net Paid**, the last of which sums to the dashboard's Paid total
+      by construction.
+    - **The export also ignored three of the six payment filters.** Its
+      filter logic was a *duplicate* of the table's that had drifted, knowing
+      only `paid`/`unpaid`: choosing Awaiting Payment, Needs Refund Follow-Up
+      or Refunded and clicking Export said *"No data to export"* while the
+      table on screen was visibly full of rows. Its `unpaid` branch had also
+      lost `!awaitingPayment`. **The predicate is now shared** — duplication
+      is what let it drift, so patching the copy would have preserved the
+      cause. Unrelated to refunds and broken since those filters were added;
+      found only by reading the whole function rather than grepping for
+      `paid`.
+    Also softened the raw Postgres text an admin saw when unticking Paid on a
+    refunded booking. The `payments_refund_requires_payment` CHECK correctly
+    refuses it (verified against the test project — blocked, no corruption);
+    the UI catch is **wording only** and deliberately not enforcement, since a
+    client-side check that resembles a guarantee invites misplaced trust.
+    Checked and found correct: both badges, the refund button's
+    `paid && !refunded` gating, `refund-payment`'s `paid !== true` guard, and
+    `stripe-webhook` (Stripe's own unrelated `payment_status`).
+
+68. **Stats revenue used hardcoded prices (2026-07-21, PR #66, released as
+    v7.10.4).** `calculateRevenue()` hardcoded £50 food / £25 non-food,
+    ignoring the configured stall costs entirely — change a price in Settings
+    and the page kept reporting the old one indefinitely, with nothing on
+    screen to suggest its figures had stopped matching what traders were
+    charged. Now prefers the booking's own `stall_cost` (the amount actually
+    agreed, and the field Payments bills against, so the two pages cannot
+    disagree about a booking they both know the price of), falling back to
+    the configured price for bookings not yet priced — `stall_cost` is only
+    set when payment is requested, so Pending bookings legitimately have
+    none. That split is deliberate: a price change moves the *potential*
+    figure without retroactively rewriting what priced bookings were agreed
+    at.
+    **Impact was narrower than it sounds, and worth stating plainly**:
+    production is configured at exactly 50/25, so this changed **no displayed
+    number**. The divergence removed was *latent* — it would have surfaced
+    silently the first time someone edited a price. Figures do change for any
+    booking whose agreed `stall_cost` differs from list; whether production
+    has any could not be established without an admin session, as anon is
+    correctly refused by RLS on `bookings`.
+    **The trap avoided**: `getStallCost()` returns `0` and warns when
+    settings haven't loaded, so calling it too early would have made Revenue
+    silently read **£0** — worse than the bug being fixed, and not something
+    review reliably catches. The chain (`initAdminPage` → `requireAuth` →
+    `await loadStallCosts` → callback) was verified by reading it.
 
 **Explicitly deferred, not started:** Slack/Discord/Sentry-style alerting for Edge
 Function errors — the project owner said "I'll do it later," don't assume it's wanted
 now without asking.
+
+**Not yet done, and not doable from here — the refunds feature's remaining loose end:**
+an **end-to-end refund against a real booking** has never been watched happen. Every
+layer is verified (RPC tests, webhook tests, browser verification of the modal, the
+totals and export by construction), but nobody has yet issued a real refund and
+confirmed Paid drops, the Refunded tile appears, and the export's Net Paid agrees.
+Worth doing once before the festival rather than discovering it live.
 
 **Open gap, not yet requested by the owner:** no admin UI in this repo for the
 `performers`/`schedules` feature. If a future task asks to "add performer management"
@@ -2843,6 +2955,31 @@ stay in the separate `ellafestperformersadmin.vercel.app` codebase.
 ---
 
 ## 9. Gotchas
+
+- **`payments.paid = true` does NOT mean the money is held — every reader must
+  subtract `refund_amount` itself.** `paid` deliberately stays `true` after a refund:
+  the payment really did happen, and the refund is separate state layered on top of it
+  (see the refund migration's header). The decision is sound and worth keeping, but it
+  silently changed what a `true` there *means*, and **three consecutive releases
+  (v7.10.1–v7.10.3) were bugs from readers that hadn't been updated** — the dashboard
+  total, the CSV export, and the Edit Payment path. Anything that sums money, exports
+  it, reports it or reasons about whether a booking is settled has to account for
+  `refund_amount`; `refunded` (derived as `refund_amount != null` in `fetchPayments`)
+  is the convenient boolean. **The general lesson, which is the reason this entry
+  exists**: when you change what an existing field *means* rather than adding a new
+  one, the compiler, the tests and code review all stay silent — nothing breaks, things
+  just quietly become wrong. Grep every reader in the same change, and treat a second
+  bug from the same root as a signal to sweep exhaustively rather than fix and move on.
+  Note grepping alone was not sufficient here: the export's broken filter (item 67) was
+  found only by reading the whole function, and had nothing to do with refunds.
+
+- **Verifying that a UI control *exists* is not verifying that a human can see it.**
+  v7.10.0's refund button was checked with `offsetParent !== null` and `textContent` —
+  both pass for white text on a transparent background, which is exactly what shipped
+  (item 65). A missing Tailwind class produces no error and no layout change; it
+  renders as nothing. For anything visual, look at it, or assert on computed colour
+  against its background — and see the `css/output.css` build-artefact entry below,
+  which is the usual cause.
 
 - **`eq_text_user_role()` and its custom operator no longer exist (removed 2026-07-20,
   item 60) — this entry is now historical, kept for the general lesson.** It was invoked
