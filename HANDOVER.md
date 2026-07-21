@@ -9,7 +9,14 @@
 > verification first, and the short list that needs an explicit instruction every
 > time. Default to acting.
 > Last updated: 2026-07-21.
-> Current release: **v7.10.4** (tagged 2026-07-21; frontend only — the **Stats
+> Current release: **v7.10.5** (tagged 2026-07-21; **`stripe-webhook` redeployed
+> to BOTH projects** — `charge.refunded` was writing the Stripe *charge* id into
+> `refund_reference`, which is documented as holding a *refund* id.
+> `charge.refunds` turns out to be absent from that event on current API
+> versions, so the `|| charge.id` fallback was the only branch that ever ran.
+> Found by finally running the **end-to-end refund test** this file had flagged
+> as never done across four releases — everything else held up; see item 69.)
+> v7.10.4 was frontend only — the **Stats
 > page computed Revenue from hardcoded £50/£25**, ignoring the stall costs
 > configured in Settings, so changing a price there left it reporting the old
 > one indefinitely. It now prefers the booking's own `stall_cost` — the same
@@ -2939,12 +2946,40 @@ it as a live concern.
 Function errors — the project owner said "I'll do it later," don't assume it's wanted
 now without asking.
 
-**Not yet done, and not doable from here — the refunds feature's remaining loose end:**
-an **end-to-end refund against a real booking** has never been watched happen. Every
-layer is verified (RPC tests, webhook tests, browser verification of the modal, the
-totals and export by construction), but nobody has yet issued a real refund and
-confirmed Paid drops, the Refunded tile appears, and the export's Net Paid agrees.
-Worth doing once before the festival rather than discovering it live.
+69. **Ran the end-to-end refund test, and it found a bug (2026-07-21, PR #69,
+    released as v7.10.5, `stripe-webhook` redeployed to BOTH projects).** The
+    loose end flagged across items 65–68 finally closed for the webhook half:
+    a real Stripe **test-mode** charge, refunded in Stripe exactly as a
+    dashboard refund would be, on both a partial (£30 of £80) and a full
+    refund.
+    **Everything built over the previous four releases held up** against data
+    the webhook wrote rather than data constructed for the test — badge
+    flipped to REFUNDED, `paid` stayed `true`, header read Paid £100.00 /
+    Refunded £30.00, CSV Net Paid summed to the header total.
+    **The one thing wrong**: `refund_reference` held a Stripe *charge* id
+    (`ch_…`) where its own schema comment documents a *refund* id (`re_…`).
+    `charge.refunds?.data?.[0]?.id || charge.id` reads as a defensive
+    fallback but was not one — `charge.refunds` is **absent** from the
+    `charge.refunded` payload on current API versions (verified live against
+    `2026-06-24.dahlia`: no `refunds`, no `latest_refund`), so `|| charge.id`
+    was the only branch that ever ran. Now looked up via the API, with a
+    client built for whichever mode's secret verified the signature — which
+    the handler did not previously capture, and needs, since querying live
+    Stripe about a test-mode object just 404s.
+    **The lesson worth keeping**: a `||` fallback whose left side is always
+    undefined is indistinguishable, in code review, from one that usually
+    works. Nothing errored, nothing looked wrong, and four releases of
+    refund work passed over it. It took exercising the real path against a
+    real provider payload to see it.
+
+**Still not done, and deliberately not automatable — the last untested link:**
+`refund-payment` itself, the admin-initiated path. Its own header states the
+constraint: *"Admin JWT only, with no service-role bypass: issuing a refund moves
+real money and must always be a deliberate human action."* Item 64 separately
+records that an automated suite able to move money in any mode isn't worth having.
+So this one needs a person: log into the Payments page (test-project override), hit
+**Refund** on a booking with a real test-mode charge, and confirm the modal, the
+Stripe call and the recorded row. Worth doing once before the festival.
 
 **Open gap, not yet requested by the owner:** no admin UI in this repo for the
 `performers`/`schedules` feature. If a future task asks to "add performer management"
