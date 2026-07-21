@@ -77,6 +77,17 @@
                             class="text-[10px] md:text-xs text-gray-500 font-bold uppercase tracking-wider">Pending</span>
                         <span id="total-outstanding" class="text-xs md:text-sm font-bold text-red-600">£0.00</span>
                     </div>
+                    <!-- Refunded is netted out of Paid above, so it is shown here to
+                         account for the difference - otherwise money appears to vanish
+                         from the header. Hidden by renderTable when the total is zero,
+                         which is the normal case. `hidden` beats `flex` here because
+                         Tailwind emits .hidden after .flex in css/output.css; the class
+                         order in this attribute is NOT what decides it. -->
+                    <div id="total-refunded-wrap" class="hidden flex items-center justify-end gap-1 md:gap-2">
+                        <span
+                            class="text-[10px] md:text-xs text-gray-500 font-bold uppercase tracking-wider">Refunded</span>
+                        <span id="total-refunded" class="text-xs md:text-sm font-bold text-amber-600">£0.00</span>
+                    </div>
                 </div>
                 <button id="btn-refresh" class="text-gray-500 hover:text-blue-600 p-2 border-l pl-2 md:pl-4">
                     <i class="fas fa-sync-alt text-sm md:text-base"></i>
