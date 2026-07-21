@@ -1,8 +1,16 @@
-# Fest 26 / Ella Street Festival — Booking System Architecture
+# Ella Street Festival — Booking System Architecture
 
-> **Audience:** Developers maintaining or extending this system.  
-> **Version:** v3.0 (Cloud Native / Tailwind)  
-> **Last updated:** February 2026
+> **Audience:** Developers maintaining or extending this system.
+> **Reflects:** v7.10.5
+> **Last verified against the code:** 21 July 2026
+
+> **Where this sits among the docs**
+> - **`ARCHITECTURE.md`** (this file) — the shape of the system: what exists, how the pieces fit, where to look.
+> - **`HANDOVER.md`** — the deep reference and the authority when the two disagree. Every non-obvious behaviour, past incident and "Gotcha" is written up there in detail. It is long; use its table of contents.
+> - **`CHANGELOG.md`** — what changed and when.
+> - **`USER_GUIDE.md`** — how to *operate* the system, for festival organisers rather than developers.
+>
+> Keep this file at the level of "what exists and why" — behaviour that needs a paragraph of caveats belongs in HANDOVER.md, linked from here.
 
 ---
 
@@ -15,37 +23,49 @@
 5. [Authentication & Roles](#5-authentication--roles)
 6. [Module Architecture (JS)](#6-module-architecture-js)
 7. [Page Catalogue](#7-page-catalogue)
-8. [Database Schema (Supabase)](#8-database-schema-supabase)
-9. [Email System](#9-email-system)
-10. [Public Booking Forms](#10-public-booking-forms)
-11. [Deployment](#11-deployment)
-12. [Key Configuration Files](#12-key-configuration-files)
-13. [Common Maintenance Tasks](#13-common-maintenance-tasks)
+8. [Edge Functions](#8-edge-functions)
+9. [Database Schema (Supabase)](#9-database-schema-supabase)
+10. [Email System](#10-email-system)
+11. [Payments & Refunds](#11-payments--refunds)
+12. [Public Booking Forms](#12-public-booking-forms)
+13. [Configuration & Settings](#13-configuration--settings)
+14. [Deployment](#14-deployment)
+15. [Testing & CI](#15-testing--ci)
+16. [Common Maintenance Tasks](#16-common-maintenance-tasks)
 
 ---
 
 ## 1. System Overview
 
-This is the **Ella Street Festival 2026 Stall Booking System** — a web-based admin panel that lets festival organisers manage trader applications from submission through to confirmed stall allocation.
+The **Ella Street Festival stall booking system** — a public application form for traders plus an admin panel for organisers, covering the whole life of a booking from submission to a paid, located stall.
 
 ### High-level flow
 
 ```
-Public Trader                                Admin Team
-─────────                                    ──────────
-Fills in booking form           ──►  Booking appears in Kanban board
-(Food/General/Misc)                    ↓
-                                   Admin reviews + changes status
-                                   (Pending → Confirmed / Rejected)
-                                       ↓
-                                   Confirmation email sent directly
-                                   via Edge Function (Zoho Mail API)
-                                       ↓
-                                   Admin assigns physical location
-                                       ↓
-                                   Location email sent directly
-                                       ↓
-                                   Payment tracked (paid / unpaid)
+Public Trader                              Admin Team
+─────────────                              ──────────
+Fills in booking form            ──►  Booking appears on the Kanban board
+(Food / General)                          │
+   │                                      ▼
+   ▼                              Admin reviews, sets status
+"Application received" email              │
+(auto, via submit-booking)                ▼
+                                  ┌───────┴────────┐
+                                  ▼                ▼
+                          Payment Requested    Confirmed (free)
+                          (Stripe Checkout      or Rejected
+                           link emailed)            │
+                                  │                 │
+                                  ▼                 │
+                          Trader pays ──► webhook   │
+                          finalises payment,        │
+                          books to Confirmed        │
+                                  └────────┬────────┘
+                                           ▼
+                                  Admin assigns pitch(es)
+                                  → location email sent
+                                           ▼
+                                  Refunds/cancellations as needed
 ```
 
 ---
@@ -54,14 +74,17 @@ Fills in booking form           ──►  Booking appears in Kanban board
 
 | Layer | Technology |
 |---|---|
-| **Frontend** | Vanilla HTML + JavaScript (ES Modules) |
-| **Styling** | Tailwind CSS (compiled to `css/output.css`) |
-| **Database / Auth** | Supabase (PostgreSQL + Row Level Security) |
-| **File Storage** | Supabase Storage bucket (`esf-documents`) |
-| **Email Delivery** | Zoho Mail API via Supabase Edge Function (`send-email`) |
-| **Hosting** | Vercel (`stallbookingstailwinds.vercel.app`) |
-| **Bot Protection** | Cloudflare Turnstile (on public forms) |
-| **Map** | Leaflet.js (visitor-facing map view) |
+| **Frontend** | Vanilla HTML + JavaScript (ES Modules), no framework |
+| **Styling** | Tailwind CSS v4 (`@tailwindcss/cli`), compiled to `css/output.css` and **committed** |
+| **Database / Auth** | Supabase (PostgreSQL + Row Level Security + Supabase Auth) |
+| **File Storage** | Supabase Storage, private bucket (default `esf-documents`) |
+| **Server-side logic** | Supabase Edge Functions (Deno / TypeScript) |
+| **Email Delivery** | Zoho Mail API, called from Edge Functions |
+| **Payments** | Stripe Checkout + Stripe webhooks; bank transfer recorded manually |
+| **Hosting** | Vercel — `https://app.ellastreet.co.uk` |
+| **Scheduled jobs** | Vercel Cron → `api/ping.js` (Supabase keep-alive) |
+| **Bot Protection** | Cloudflare Turnstile (public forms) |
+| **Map** | Leaflet.js |
 
 ---
 
@@ -69,135 +92,158 @@ Fills in booking form           ──►  Booking appears in Kanban board
 
 ```
 /
-├── index.html                  ← Admin Hub (home page, requires login)
-├── login.html                  ← Admin login page
+├── index.html                  ← Admin hub (requires login)
+├── login.html                  ← Admin login
 ├── kanban_m.html               ← Kanban board (main workflow view)
-├── summary.html                ← List/table view of all bookings
-├── payments.html               ← Payment tracking page
-├── stats.html                  ← Statistics/charts page
-├── location_admin.html         ← Assign bookings to physical spots
-├── visitor_map.html            ← Public preview map (Leaflet)
-├── hcc_dashboard.html          ← HCC Council checks tracker
-├── more.html                   ← Email templates + booking editor
+├── summary.html                ← List/table view with detail pane
+├── payments.html               ← Payments, bank transfers, refunds
+├── stats.html                  ← Statistics/charts
+├── location_admin.html         ← Assign bookings to pitches
+├── visitor_map.html            ← Leaflet map of stall locations
+├── hcc_dashboard.html          ← HCC council food-safety checks
+├── more.html                   ← Admin tools index
+├── settings.html               ← System settings (see §13)
+├── booking_forms.html          ← Booking form links/status
 ├── update_details.html         ← Edit an individual booking
-├── add_misc.html               ← Add misc facility (barriers, etc.)
-├── email_admin.html            ← Browse and manage the email queue
-├── manage_users.html           ← Manage admin/steward user roles
-├── steward.html                ← Steward view (schedule management)
-├── steward_login.html          ← Separate login for stewards
+├── add_misc.html               ← Add a misc facility (barriers, first aid…)
+├── email_admin.html            ← Email template management
+├── email_queue.html            ← Email queue viewer + retry
+├── audit_log.html              ← Audit log viewer
+├── manage_users.html           ← Manage admin/steward roles
+├── steward.html                ← Offline-capable steward app
+├── steward_login.html          ← Steward login
+├── sw.js / manifest.json       ← Service worker + PWA manifest (steward app only)
 │
-├── General_Booking.html        ← PUBLIC: General/Non-Food booking form
-├── Food_Stall_booking.html     ← PUBLIC: Food stall booking form
-├── cancel_booking.html         ← PUBLIC: Self-service cancellation page
+├── General_Booking.html        ← PUBLIC: general/non-food application
+├── Food_Stall_booking.html     ← PUBLIC: food stall application
+├── cancel_booking.html         ← PUBLIC: self-service cancellation
+├── payment_success.html        ← PUBLIC: Stripe success return page
+├── payment_cancelled.html      ← PUBLIC: Stripe cancel return page
 │
-├── supabase-public.js          ← Supabase credentials for public pages
-├── email_templates.js          ← Fallback/legacy email template config
+├── supabase-public.js          ← ⭐ Single source of truth for public config
+├── email_templates.js          ← Legacy fallback templates (DB is primary)
+│
+├── api/
+│   └── ping.js                 ← Vercel Cron keep-alive endpoint
 │
 ├── css/
-│   ├── input.css               ← Tailwind directives (source)
-│   └── output.css              ← Compiled Tailwind (load this in HTML)
+│   ├── input.css               ← Tailwind source
+│   └── output.css              ← Compiled Tailwind — COMMITTED build artefact
 │
-├── js/                         ← All admin JavaScript modules
-│   ├── config.js               ← ⭐ Single source of truth for all config
-│   ├── supabase.js             ← Supabase client + auth helpers
-│   ├── api.js                  ← All database operations (CRUD)
-│   ├── shared.js               ← Shared business logic (email, status)
-│   ├── utils.js                ← Validation, sanitisation, rate limiting
-│   ├── ui.js                   ← Toast notifications + UI helpers
+├── js/                         ← Admin/public JavaScript modules (ES modules)
+│   ├── package.json            ← Marks js/ as ESM for Node tooling only
+│   ├── config.js               ← Derived config constants
+│   ├── supabase.js             ← Client + requireAuth/initAdminPage
+│   ├── api.js                  ← Database operations (CRUD + audit)
+│   ├── shared.js               ← Cross-page business logic
+│   ├── utils.js                ← Validation, escaping, safe errors
+│   ├── ui.js                   ← Toasts and UI helpers
 │   ├── nav.js                  ← Injected navigation header
-│   ├── kanban.js               ← Kanban board render/drag-drop logic
-│   ├── summary.js              ← List view + detail pane logic
-│   ├── payments.js             ← Payment grid logic
-│   ├── stats.js                ← Statistics charts logic
-│   ├── locations.js            ← Location admin drag-drop assignment
-│   ├── map.js                  ← Leaflet map rendering
-│   ├── details.js              ← Detail/edit pane shared component
-│   ├── page-*.js               ← Entry-point scripts (one per HTML page)
-│   └── ...
+│   ├── kanban.js / summary.js / payments.js / stats.js / locations.js /
+│   │   map.js / details.js     ← Feature modules
+│   ├── fsa-ratings.js          ← FSA food-hygiene lookup (detail pane)
+│   ├── google-reviews.js       ← Google reviews lookup (detail pane)
+│   ├── stripe-credentials.js   ← Stripe settings save rule
+│   ├── page-*.js               ← Entry point per HTML page
+│   └── vendor/supabase.js      ← Vendored Supabase browser SDK
 │
-└── GAS/                        ← Google Apps Script (keep-alive)
-    └── Main.gs                 ← Keep-alive database pinger (pingDatabase)
+├── supabase/
+│   ├── functions/              ← Edge Functions (see §8)
+│   │   └── _shared/            ← zoho.ts, stripe.ts, cors.ts, bucket.ts, format.ts
+│   ├── migrations/             ← Ordered SQL migrations
+│   └── config.toml
+│
+├── scripts/                    ← Guards, dev server, test seeding
+├── tests/                      ← Node test runner suites (see §15)
+├── .githooks/pre-commit        ← Guards mirrored in CI
+├── schema.sql                  ← Full schema dump (reference)
+└── rls_grants_snapshot.txt     ← Committed RLS/grants snapshot, checked in CI
 ```
+
+> There is **no `GAS/` folder**. The old Google Apps Script keep-alive was replaced by `api/ping.js` driven by Vercel Cron — see §14.
 
 ---
 
 ## 4. Instances & Data Separation
 
-The system manages **multiple booking types** within a single Supabase database by using an `instance_prefix` column on every booking record. This means you can switch between datasets without touching the database.
+Multiple booking types live in one database, separated by an `instance_prefix` column on every booking.
 
 | Instance Key | Prefix | Description |
 |---|---|---|
-| `DEV` | `ESF26-DEV-` | Test/development data (safe to experiment on) |
+| `DEV` | `ESF26-DEV-` | Test/development data (always uses Stripe **Test** mode) |
 | `FOOD` | `ESF26-FOOD-` | Food stall applications |
 | `GENERAL` | `ESF26-NONFOOD-` | General/non-food trader applications |
-| `MISC` | `ESF26-MISC-` | Non-bookable facilities (barriers, first aid, etc.) |
+| `MISC` | `ESF26-MISC-` | Non-bookable facilities (barriers, first aid…) |
 
-The **active instance** is stored in `localStorage` under the key `ESF_INSTANCE`. The nav header provides a dropdown to switch between them — the page reloads and all queries use the new prefix automatically.
+The `ESF26` part is **not hardcoded** — it comes from the `booking_prefix` setting (falling back to `ESF26`), so the festival year can be rolled over without a code change.
 
-### Key rule
-> Booking IDs follow the format `ESF26-{TYPE}-{NNNN}` (e.g. `ESF26-FOOD-0042`).  
-> The validator in `utils.js → validateBookingId()` enforces this pattern.
+The active instance is stored in `localStorage` under `ESF_INSTANCE`; the nav header switches it and reloads.
+
+> **Key rule:** booking IDs are `{PREFIX}-{TYPE}-{NNNN}` (e.g. `ESF26-FOOD-0042`), enforced by `utils.js → validateBookingId()`. IDs are allocated server-side by the `get_next_booking_id` RPC, with retry-on-conflict in `submit-booking` — see that function's comments for why the lock alone isn't enough.
 
 ---
 
 ## 5. Authentication & Roles
 
-Authentication uses **Supabase Auth** (email + password). There are two user types, stored in the `user_roles` table:
+Supabase Auth (email + password). Roles live in `user_roles`, typed by the `user_role` enum:
 
 | Role | Access |
 |---|---|
-| `admin` | Full access to all admin pages |
-| `steward` | Access only to `steward.html` (schedule management) |
+| `admin` | All admin pages |
+| `steward` | `steward.html` |
 
-### How auth works on each page
+### How auth works
 
-1. **Admin pages** include `<script type="module" src="./js/page-xxx.js">` which calls `requireAuth('admin')` from `supabase.js` before loading any data.
-2. `requireAuth()` checks the Supabase session, then queries `user_roles` to verify the role.
-3. If not logged in → redirected to `login.html`.
-4. If logged in but wrong role → redirected to `login.html?error=unauthorized`.
+1. Admin pages load `js/page-*.js`, which calls `initAdminPage(callback)` from `supabase.js`.
+2. That calls `requireAuth(requiredRole = 'admin')`: checks the session, then reads `user_roles`.
+3. Access is granted if the user's role is `admin` **or** matches `requiredRole` — so an admin can also use steward pages, but not vice versa.
+4. Not logged in → redirected to `login.html` (or `steward_login.html` for steward pages).
+5. Wrong role → same page with `?error=unauthorized`.
 
-### Public pages (no auth required)
-`General_Booking.html`, `Food_Stall_booking.html`, and `cancel_booking.html` use `supabase-public.js` (non-module script) and Cloudflare Turnstile for bot protection. They do **not** use ES modules.
+`requireAuth()` also loads the settings-driven config (`loadStallCosts`) before the page renders, which is why costs and stall types are available synchronously afterwards.
+
+### Public pages
+`General_Booking.html`, `Food_Stall_booking.html`, `cancel_booking.html` and the two Stripe return pages need no session. Their entry scripts use `initPublicPage()` / `getPublicSupabaseClient()` from **`supabase-public.js`** (not `js/supabase.js`).
 
 ### Audit logging
-Every significant admin action is written to the `audit_logs` table via `api.js → auditLog()`. This includes: login, logout, status changes, emails sent, location assignments, payment updates.
+Significant admin actions are written to `audit_logs` via `api.js → auditLog()`, and viewable at `audit_log.html`.
 
 ---
 
 ## 6. Module Architecture (JS)
 
-The `js/` folder uses **ES Modules** (`type="module"` scripts). There is a clear dependency hierarchy:
-
 ```
-config.js          (no imports — top of the tree)
+supabase-public.js   (public config + public client — top of the tree)
     ↑
-utils.js           (no imports from this project)
+config.js            (imports ESF_PUBLIC_CONFIG)
     ↑
-supabase.js        (imports config.js)
+utils.js  /  ui.js   (validation, escaping / toasts)
     ↑
-api.js             (imports supabase.js, config.js, utils.js)
+supabase.js          (client, requireAuth, initAdminPage)
     ↑
-ui.js              (no project imports)
-shared.js          (imports supabase.js, api.js, ui.js, utils.js, config.js)
-nav.js             (imports config.js, supabase.js)
+api.js               (all DB reads/writes, audit logging)
     ↑
-[feature modules]  (kanban.js, summary.js, payments.js, etc.)
+shared.js            (cross-page business logic)
     ↑
-page-*.js          (entry points — one per HTML page)
+[feature modules]    (kanban.js, summary.js, payments.js, locations.js, …)
+    ↑
+page-*.js            (entry points — one per HTML page)
 ```
-
-### Module responsibilities
 
 | File | Purpose |
 |---|---|
-| `config.js` | **Single source of truth** for all constants: instance prefixes, URLs, bank details, stall costs, status lists, Supabase credentials |
-| `supabase.js` | Creates/caches the Supabase client; `requireAuth()` guards protected pages; `signOut()` logs audit trail then redirects |
-| `api.js` | All direct database reads/writes. Every function validates input before touching the DB. Audit-logs every mutation. |
-| `shared.js` | Business logic used by multiple pages: status update workflow, email template rendering, location email queuing, detail pane population |
-| `utils.js` | Input validation (`validateString`, `validateEmail`, `validateBookingId`, `validateStatus`), HTML escaping (`escapeHtml`), URL sanitisation, email rate limiter |
-| `ui.js` | `showToast()` — displays bottom-right notification. Auto-injects the toast container if not present in DOM. |
-| `nav.js` | `initNavigation()` — injects the header HTML into `#nav-container`, wires up the instance selector and sign-out buttons |
-| `page-*.js` | Entry point for each HTML page. Calls `requireAuth()`, then calls `initNavigation()`, then initialises the page-specific feature module |
+| `supabase-public.js` | **Single source of truth for public configuration** — Supabase URL/anon key, base/cancel/portal URLs, Turnstile site key, booking prefix. Also provides the public client and `initPublicPage()`. |
+| `config.js` | Derives `CONFIG` from `ESF_PUBLIC_CONFIG` plus the settings table: instance map, status list/colours, stall costs, allowed types. Contains **no hardcoded prices or bank details**. |
+| `supabase.js` | Creates/caches the admin client; `requireAuth()`; `initAdminPage()`; `signOut()`. |
+| `api.js` | All direct database access. Validates input, audit-logs mutations. |
+| `shared.js` | Status-change workflow, email template rendering, detail pane population. |
+| `utils.js` | `escapeHtml`, `sanitizeUrl`, `validateString/Email/BookingId/Status`, `safeError` (strips DB internals out of user-facing errors). |
+| `ui.js` | `showToast()`. |
+| `nav.js` | `initNavigation()` — injects the header, instance switcher, sign-out. |
+| `stripe-credentials.js` | The rule for which Stripe credential rows a settings save writes. Deliberately import-free so it is unit-testable. |
+| `page-*.js` | Entry point per page. |
+
+> **XSS rule:** anything interpolated into `innerHTML` must go through `escapeHtml()`. This is enforced by `scripts/check-unescaped-innerhtml.mjs`, which runs in the pre-commit hook *and* CI — it exists because of four real XSS gaps. Note it only scans files ending in `.js`.
 
 ---
 
@@ -205,260 +251,291 @@ page-*.js          (entry points — one per HTML page)
 
 ### Admin pages (require login)
 
-| Page | File | Purpose |
+| Page | Entry script | Purpose |
 |---|---|---|
-| **Hub** | `index.html` | Landing page with links to all modules |
-| **Kanban Board** | `kanban_m.html` + `kanban.js` | Drag-and-drop workflow: columns per status (Pending, Confirmed, etc.) |
-| **List View** | `summary.html` + `summary.js` | Searchable/filterable table of all bookings with a slide-in detail pane |
-| **Location Manager** | `location_admin.html` + `locations.js` | Assign confirmed bookings to numbered pitch slots; shows power requirements |
-| **Payment Tracker** | `payments.html` + `payments.js` | Mark bookings as paid/unpaid, record bank reference |
-| **Statistics** | `stats.html` + `stats.js` | Charts and counts broken down by status, type, etc. |
-| **Visitor Map** | `visitor_map.html` + `map.js` | Leaflet map showing confirmed stall locations |
-| **HCC Dashboard** | `hcc_dashboard.html` + `page-hcc-dashboard.js` | Tracks council (HCC) food safety checks — only visible if there are entries |
-| **More** | `more.html` | Email template editor + booking detail editor |
-| **Email Admin** | `email_admin.html` | View/retry emails in the queue |
-| **Manage Users** | `manage_users.html` | Add/remove admin and steward role assignments |
-| **Steward View** | `steward.html` + `page-steward.js` | Schedule drag-and-drop (restricted to steward role) |
+| Hub | `page-index.js` | Landing page linking all modules |
+| Kanban Board | `page-kanban.js` | Drag-and-drop workflow by status |
+| List View | `page-summary.js` | Searchable table + slide-in detail pane |
+| Location Manager | `page-location-admin.js` | Assign bookings to pitches |
+| Payments | `page-payments.js` | Stripe + bank transfer, refunds, CSV export |
+| Statistics | `page-stats.js` | Charts and revenue (from real prices) |
+| Visitor Map | `page-visitor-map.js` | Leaflet map of stall locations |
+| HCC Dashboard | `page-hcc-dashboard.js` | Council food-safety check tracking |
+| More | `page-more.js` | Index of admin tools |
+| Settings | `page-settings.js` | System settings (§13) |
+| Booking Forms | `page-booking-forms.js` | Form links and open/closed status |
+| Update Details | `page-update-details.js` | Edit one booking |
+| Add Misc | `page-add-misc.js` | Add a non-bookable facility |
+| Email Admin | `page-email-admin.js` | Manage email templates |
+| Email Queue | `page-email-queue.js` | View sent/failed emails, retry |
+| Audit Log | `page-audit-log.js` | Browse the audit trail |
+| Manage Users | `page-manage-users.js` | Assign admin/steward roles |
+| Steward App | `page-steward.js` | **Offline-capable** — works from `localStorage` with a sync queue, for on-site use with poor signal. The only page using `sw.js`/`manifest.json` (installable as a PWA) |
 
 ### Public pages (no login)
 
 | Page | Purpose |
 |---|---|
-| `General_Booking.html` | Booking form for general/non-food traders |
-| `Food_Stall_booking.html` | Booking form for food vendors |
-| `cancel_booking.html` | Traders can self-cancel using their unique `cancel_token` link |
+| `General_Booking.html` | General/non-food application |
+| `Food_Stall_booking.html` | Food stall application |
+| `cancel_booking.html` | Self-cancellation via `cancel_token` link |
+| `payment_success.html` / `payment_cancelled.html` | Stripe Checkout return pages |
 
 ---
 
-## 8. Database Schema (Supabase)
+## 8. Edge Functions
 
-### Core tables
+All under `supabase/functions/`. Shared helpers live in `_shared/`.
 
-#### `bookings`
-The main table. Every booking (regardless of type) lives here, distinguished by `instance_prefix`.
-
-| Column | Type | Notes |
+| Function | Auth | Purpose |
 |---|---|---|
-| `id` | text (PK) | e.g. `ESF26-FOOD-0042` |
-| `instance_prefix` | text | e.g. `ESF26-FOOD-` — separates data sets |
-| `status` | text | `Pending`, `Confirmed`, `Rejected`, `Cancelled`, `On Hold`, `HCC Checks` |
-| `business_name` | text | Trading name |
-| `owner_name` | text | Contact name |
-| `email` | text | Contact email |
-| `phone` | text | Contact phone |
-| `category` | text | e.g. `Street Food`, `Clothing` |
-| `stall_type` | text | e.g. `Food`, `Non-Food`, `Attraction` |
-| `description` | text | Trader's description of their stall |
-| `power_required` | text | Power requirement or `No power` |
-| `address` | text | Trader's address |
-| `is_resident` | boolean | Is the trader a local resident? |
-| `is_charity` | text | `Commercial`, `Charity`, or `Not for profit` |
-| `location_id` | text | Assigned pitch (e.g. `A12`) — null until allocated |
-| `stall_cost` | numeric | Final confirmed cost |
-| `admin_notes` | text | Internal notes visible only to admins |
-| `documents` | text/array | URLs to uploaded documents in Supabase Storage |
-| `cancel_token` | text | Unique token for self-cancellation link |
-| `created_at` | timestamptz | Auto-set |
-| `date_confirmed` | timestamptz | Set when status → Confirmed |
-| `rejection_reason` | text | Set when status → Rejected |
+| `submit-booking` | Public (Turnstile) | Validates the CAPTCHA, builds a booking row from an **allow-list** of fields, allocates the ID, moves uploaded files into the booking's folder, sends the "received" email |
+| `cancel-booking` | Public — Turnstile **and** `cancel_token` | Self-service cancellation (via `cancel_booking_secure`) + confirmation email |
+| `create-checkout-session` | Admin JWT | Creates a Stripe Checkout Session, emails the payment request, moves the booking to `Payment Requested` |
+| `stripe-webhook` | Stripe signature | Finalises payments, records refunds (§11) |
+| `refund-payment` | Admin JWT | Issues a real Stripe refund, then records it |
+| `send-email` | Admin JWT | Single-email send path |
+| `queue-bulk-email` | Admin JWT | Drains `email_queue` in the background |
+| `retry-queued-email` | Admin JWT | Re-sends one failed `email_queue` row |
+| `get-booking-documents` | Admin JWT | Signs private-bucket document paths into time-limited URLs |
+| `get-reviews` | Admin JWT | Google reviews lookup, cached in `google_reviews_cache` |
 
-#### `payments`
-Created automatically when a booking is confirmed as chargeable.
+> Only `submit-booking` and `cancel-booking` are reachable without an admin session, and both sit behind Turnstile. Everything else verifies the JWT **and** re-checks the `admin` role against `user_roles` — the role check is not inherited from the gateway.
 
-| Column | Notes |
-|---|---|
-| `booking_id` | FK to `bookings.id` |
-| `stall_cost` | Cost at time of confirmation |
-| `paid` | boolean |
-| `date_paid` | When payment was received |
-| `bank_ref` | Bank transfer reference |
-| `editor` | Who marked it as paid |
+> **Never call one Edge Function from another over HTTP.** Put shared logic in `_shared/` and call it in-process. This pattern caused three production bugs in one session; `.githooks/pre-commit` greps for `functions.invoke(` under `supabase/functions/` and fails the commit. See HANDOVER.md's sibling-function Gotcha.
 
-#### `locations`
-Reference data for physical pitches on the festival site.
-
-| Column | Notes |
-|---|---|
-| `id` | Pitch identifier (e.g. `A12`) |
-| `dataset` | `DEV` or `LIVE` — keeps test and production maps separate |
-| `lat` / `lng` | GPS coordinates for the map |
-| `type` | Pitch type (food, general, etc.) |
-| `power` | Indicates if power is available |
-
-#### `email_queue`
-Log of emails sent (or failed) via the Supabase Edge Function.
-
-| Column | Notes |
-|---|---|
-| `recipient` | Email address |
-| `subject` | Email subject line |
-| `body` | HTML email body |
-| `status` | `Sent`, `Error` |
-| `instance_prefix` | Identifies which festival instance sent the email |
-| `error_message` | Set if sending fails |
-
-#### `email_templates`
-HTML email templates stored in the database (editable via the More page).
-
-| Column | Notes |
-|---|---|
-| `id` | Template key e.g. `confirmed_chargeable`, `rejected`, `location_update`, `payment_reminder` |
-| `subject` | Subject with `{{placeholders}}` |
-| `body_html` | HTML body with `{{placeholders}}` |
-
-Supported placeholders: `{{owner_name}}`, `{{business_name}}`, `{{booking_id}}`, `{{cancel_link}}`, `{{cost}}`, `{{bank_details}}`, `{{location_id}}`, `{{reason}}`
-
-#### `audit_logs`
-Immutable record of all admin actions.
-
-| Column | Notes |
-|---|---|
-| `action` | e.g. `update_status`, `email_queued`, `admin_login` |
-| `target_id` | The booking ID acted on (or `system`) |
-| `user_email` | Admin who performed the action |
-| `details` | JSON blob with action-specific data |
-| `instance` | Which instance was active |
-
-#### `hcc_checks`
-Entries automatically created when a booking is moved to `HCC Checks` status.
-
-#### `user_roles`
-Row per user granting admin or steward access.
-
-| Column | Notes |
-|---|---|
-| `id` | Must match the Supabase Auth `user.id` |
-| `role` | `admin` or `steward` |
+> **CORS** is centralised in `_shared/cors.ts` as a single production origin. It is a browser-side protection, not an auth boundary — local dev has no fixed origin and therefore loses browser CORS access to these functions by design.
 
 ---
 
-## 9. Email System
+## 9. Database Schema (Supabase)
 
-Emails are sent using a **secure serverside Edge Function**:
+### Tables
+
+| Table | Purpose |
+|---|---|
+| `bookings` | The main table — every application, separated by `instance_prefix` |
+| `payments` | Payment/refund state, one row per paid booking |
+| `booking_locations` | **Join table** mapping bookings → pitches (a booking may hold several) |
+| `locations` | Reference data for physical pitches |
+| `email_queue` | Log of every email sent or failed |
+| `email_templates` | HTML templates, editable in the admin UI |
+| `audit_logs` | Admin action trail |
+| `hcc_checks` | Council food-safety check entries |
+| `user_roles` | Role per Supabase Auth user (`admin` / `steward`) |
+| `settings` | Key/value runtime configuration (§13) |
+| `stripe_webhook_events` | Processed Stripe event ledger — the email-send idempotency boundary |
+| `google_reviews_cache` | Cached Google reviews lookups |
+| `performers`, `schedules` | **Owned by a separate application** — see below |
+
+### Enums
+
+`user_role` (`admin`, `steward`) · `booking_fee_type` (`Commercial`, `Charity`, `Not for profit`) · `performance_type` · `performer_status`
+
+### `bookings` — selected columns
+
+`id` · `instance_prefix` · `status` · `business_name` · `registered_business_name` · `owner_name` · `email` · `phone` · `address` · `category` · `stall_type` · `description` · `other_requirements` · `docs_checklist` · `power_required` · `is_resident` · `is_charity` · `documents` · `cancel_token` · `stall_cost` · `admin_notes` · `rejection_reason` · `created_at` · `date_confirmed` · `stripe_checkout_session_id` · `stripe_payment_intent_id` · `stripe_payment_requested_at`
+
+> There is **no `bookings.location_id`** — it was dropped once a booking could hold multiple pitches. Locations are read/written through `booking_locations` and the `rpc_set_booking_locations` RPC, which also guards against two admins claiming the same pitch concurrently.
+
+### Statuses
+
+`Pending` · `Payment Requested` · `Confirmed` · `Rejected` · `Cancelled` · `HCC Checks`
+
+> `On Hold` no longer exists — it was removed by migration. `Payment Requested` was added with Stripe.
+
+### Key RPCs
+
+| RPC | Purpose |
+|---|---|
+| `get_next_booking_id` | Allocates the next sequential booking ID |
+| `rpc_get_next_misc_id` | Same, for misc facilities |
+| `finalize_stripe_payment` | Atomic status change + payments upsert on successful payment |
+| `rpc_record_bank_transfer_payment` | Records a manual bank transfer |
+| `rpc_record_refund` | Records a refund (rejects a double refund) |
+| `rpc_set_booking_locations` | Sets a booking's pitches, race-safe |
+| `cancel_booking_secure` | Token-authenticated public cancellation |
+| `claim_pending_emails` | Lets the bulk drainer claim queue rows |
+
+### Row Level Security
+
+RLS is the **only** thing protecting the database — the anon key is public by design. Policies and grants are captured in `rls_grants_snapshot.txt` and diffed against the live project on every CI run, so an unintended policy change fails the build.
+
+> The snapshot is authoritative **from the production project only**. See HANDOVER.md before regenerating it.
+
+### The performers/schedules subsystem
+
+`performers` and `schedules` are in this database but are **managed by a separate external application**, linked from `more.html`. No code in this repo reads or writes them. This repo's responsibility for them is limited to their RLS scoping — `tests/schedules-anon-scope.test.mjs` proves anon can only see slots belonging to approved performers. Don't assume a schema change here is safe for that other app.
+
+---
+
+## 10. Email System
 
 ```
-Admin action (e.g. Confirm booking)
+Trigger (admin action, or an Edge Function)
         │
         ▼
-api.js → sendEmail()
+_shared/zoho.ts → sendViaZoho()   ← called IN-PROCESS, never over HTTP
         │
-        ▼
-Supabase Edge Function (send-email)
-→ Requests Zoho Mail API token
-→ Sends email via Zoho API
-→ Logs transaction to email_queue table (status: Sent/Error)
+        ├── Zoho Mail API
+        └── row written to email_queue (status: Sent / Error)
 ```
 
-### Email templates
-Templates live in the `email_templates` Supabase table. The function `shared.js → getEmailFromTemplate()` fetches the template, substitutes `{{placeholder}}` variables, and returns the final `{subject, body}`.
+Templates live in the `email_templates` table and are edited at `email_admin.html`. `email_templates.js` in the repo root is a legacy fallback only.
 
-### When emails are triggered automatically
+Each Edge Function does its own placeholder substitution rather than sharing one renderer — a deliberate, documented choice.
 
-| Trigger | Template used |
+Supported placeholders: `{{owner_name}}` `{{business_name}}` `{{booking_id}}` `{{cancel_link}}` `{{cost}}` `{{bank_details}}` `{{location_id}}` `{{reason}}` (plus the individual bank fields for the payment-request template).
+
+| Trigger | Template |
 |---|---|
-| Booking status → `Confirmed` (chargeable) | `confirmed_chargeable` |
-| Booking status → `Confirmed` (free) | `confirmed_free` |
-| Booking status → `Rejected` | `rejected` |
-| Location assigned (manual action) | `location_update` |
-| Manual resend by admin | varies |
-| Manual payment reminder | `payment_reminder` |
+| Booking submitted | `application_received` |
+| Payment requested | `payment_requested` |
+| Confirmed (chargeable) — incl. after Stripe payment | `confirmed_chargeable` |
+| Confirmed (free) | `confirmed_free` |
+| Rejected | `rejected` |
+| Self-service cancellation | `cancellation_confirmed` |
+| Location assigned | `location_update` |
+| Payment reminder | `payment_reminder` |
+| HCC batch check submission | `hcc_batch_check` |
 
-### Google Apps Script setup
-The GAS folder contains a keep-alive script (`GAS/Main.gs`) with the `pingDatabase` function. It is designed to be set up on a daily time-driven trigger in Google Apps Script to keep the free-tier Supabase database from pausing due to inactivity.
-
----
-
-## 10. Public Booking Forms
-
-The three public-facing pages (`General_Booking.html`, `Food_Stall_booking.html`, `cancel_booking.html`) work differently from admin pages:
-
-- They use `<script src="supabase-public.js">` (a **non-module** script) because they need to be accessible to the public without an auth session
-- They include Cloudflare Turnstile widget for bot protection (`TURNSTILE_SITE_KEY` in `supabase-public.js`)
-- Files uploaded by traders go to the **Supabase Storage** bucket `esf-documents`
-- File size limit is **12 MB**
-- Booking IDs are auto-generated on the client in the format `ESF26-FOOD-NNNN` (sequentially, by checking the highest existing ID)
-
-> ⚠️ The public Supabase anon key is intentionally visible in the client. Security is enforced entirely by **Row Level Security (RLS) policies** in Supabase, not by keeping the key secret.
+> Values interpolated into emails are HTML-escaped. A failed email must never fail the action that triggered it — sends are best-effort and logged, and `email_queue.html` offers a retry.
 
 ---
 
-## 11. Deployment
+## 11. Payments & Refunds
 
-The app is deployed on **Vercel**. Every push to the connected Git branch triggers an automatic deployment.
+Two payment methods, deliberately asymmetric:
 
-- **Production URL:** `https://stallbookingstailwinds.vercel.app`
-- Configuration: `.vercel/` directory contains project/environment linkage
-- Tailwind CSS must be **compiled before committing** — run `npm run build` (or the equivalent in `package.json`) to regenerate `css/output.css` from `css/input.css`
+**Stripe** — admin clicks *Request Payment* → `create-checkout-session` creates a Checkout Session, emails the link, and moves the booking to `Payment Requested`. When the trader pays, `stripe-webhook` receives `checkout.session.completed` and calls `finalize_stripe_payment` (one atomic transaction: status → `Confirmed`, plus the `payments` row), then sends the confirmation email once, guarded by the `stripe_webhook_events` ledger.
 
-### Building Tailwind CSS
+**Bank transfer** — no API exists, so the money moves when a human moves it. Admins record it via `rpc_record_bank_transfer_payment` on the Payments page.
+
+### Refunds
+
+`refund-payment` (admin JWT, Stripe only) calls Stripe **first**, then records the result. That order is deliberate: a Stripe-succeeded/DB-failed state self-heals via the webhook, whereas the reverse would have the app claiming a refund that never happened. Bank transfers stay record-only.
+
+`stripe-webhook` also handles `charge.refunded`, which is what catches refunds issued directly in the Stripe dashboard. Getting the real refund id there needs an extra API call — read the comments before touching it.
+
+### Test vs Live mode
+
+Both modes' credentials live in the `settings` table. DEV-instance bookings always use Test mode; the `stripe_test_mode` setting forces Test mode for Food/General too, for a full rehearsal before going live. The webhook tries both signing secrets and remembers which one verified, so follow-up API calls hit the right Stripe account.
+
+---
+
+## 12. Public Booking Forms
+
+- Non-module scripts loading `supabase-public.js`; Cloudflare Turnstile for bot protection.
+- Submissions go through the **`submit-booking` Edge Function**, not a direct client insert.
+- Uploads land in a private Supabase Storage bucket; admin views resolve them to signed URLs via `get-booking-documents`.
+- Forms can be opened/closed at runtime via the `food_bookings_open` / `general_bookings_open` settings.
+
+> ⚠️ The anon key is intentionally public. Security is enforced entirely by **RLS**, not by hiding the key.
+>
+> ⚠️ Turnstile proves *a human made a request* — not that the request body matches what the form would have sent. `submit-booking` therefore builds its insert from an explicit field allow-list and re-validates filenames server-side. Never insert a public request body as-is.
+
+---
+
+## 13. Configuration & Settings
+
+Configuration lives in three places, in order of authority:
+
+**1. `settings` table (runtime, admin-editable)** — the primary source for anything operational: stall costs, allowed stall types, bank details, Stripe and Zoho credentials, base/cancel URLs, booking prefix, bucket name, map centre, form open/closed flags, festival display name. Edited at `settings.html`; no redeploy needed.
+
+**2. `supabase-public.js` (repo)** — the **single source of truth for public/bootstrap config**: Supabase URL and anon key, base/cancel/portal URLs, Turnstile site key, booking prefix. It configures **both** the public pages and, via `js/config.js`, the admin dashboard.
+
+> ⚠️ Changing the Supabase project here repoints the **entire application**. This has caused a real outage — see HANDOVER.md.
+
+**3. `js/config.js` (derived)** — imports `ESF_PUBLIC_CONFIG` and layers the settings table on top. It holds **no** hardcoded prices or bank details; `getStallCost()` reads from settings and falls back to 0 with a console warning.
+
+Anon can read only an **allow-listed subset** of settings keys — credentials are not in that list.
+
+---
+
+## 14. Deployment
+
+Vercel, deployed automatically on push. Production: `https://app.ellastreet.co.uk`.
+
+### css/output.css is a committed build artefact
+
+There is **no build step at deploy time** — Vercel serves the committed file. Tailwind only emits classes it finds in the source, so adding a class the project has never used and forgetting to rebuild ships markup referencing CSS that doesn't exist.
+
+That failure is **silent and can be invisible rather than merely unstyled** — a coloured button with no background rule renders as white text on nothing. CI rebuilds and diffs to catch it; `git status` won't, because the stale file is committed and therefore clean.
+
 ```bash
-npm install
-npx tailwindcss -i ./css/input.css -o ./css/output.css --watch
-# or for one-off build:
-npx tailwindcss -i ./css/input.css -o ./css/output.css
+npm run build:css
 ```
+
+### Keeping Supabase awake
+
+`api/ping.js`, invoked by Vercel Cron (schedule in `vercel.json`), queries `locations` to reset the free-tier inactivity timer. It queries `locations` rather than `bookings` because anon lost direct `bookings` access in a security fix. Protected by `CRON_SECRET`.
 
 ---
 
-## 12. Key Configuration Files
+## 15. Testing & CI
 
-### `js/config.js` — The single source of truth
+### Guards (`.githooks/pre-commit`, also run in CI)
 
-Everything environment-specific lives here. **If you change the Vercel URL or Supabase credentials, update this file first.**
+1. **Sibling-function HTTP calls** — greps for `functions.invoke(` under `supabase/functions/`.
+2. **Unescaped `innerHTML`** — `scripts/check-unescaped-innerhtml.mjs`.
 
+Both run in CI too, because a local hook can be bypassed.
+
+### CI jobs (`.github/workflows/ci.yml`)
+
+| Job | What it does |
+|---|---|
+| `grep-guard` | Runs the pre-commit guards |
+| `css-build-check` | Rebuilds Tailwind and fails if the committed CSS is stale |
+| `rls-grants-check` | Read-only schema dump vs `rls_grants_snapshot.txt` |
+| `integration-tests` | The `tests/` suites against the disposable test project |
+
+`push` is scoped to `main` deliberately — an unscoped trigger produced duplicate runs that interacted badly with the concurrency group and blocked merges. **Pushing a branch with no PR runs no CI; open the PR.**
+
+### Tests
+
+Everything in `tests/` runs against the **disposable test Supabase project only**; every file hard-refuses to run against anything else. Seed fixtures first:
+
+```bash
+npm run test:setup
+npm run test:integration
 ```
-CONFIG.SUPABASE.URL / KEY      ← Supabase project credentials
-CONFIG.URLS.BASE               ← Vercel deployment URL
-CONFIG.URLS.CANCEL_URL         ← Direct link to cancel_booking.html
-CONFIG.BANK_ACCOUNT_NAME/SORT_CODE/ACCOUNT_NUMBER ← Bank details printed in emails (loaded from the settings table, not hardcoded)
-CONFIG.UI.STATUS_LIST          ← Valid status values
-CONFIG.INSTANCE_MAP            ← Maps instance keys to DB prefixes
-```
 
-This file contains the Supabase credentials and other global configuration settings. It is the single source of truth for public configurations, as `js/config.js` imports and references `ESF_PUBLIC_CONFIG` from this file.
+`integration-tests` uses a global concurrency group because all runs share that one project — two at once corrupt each other's fixtures. **A local run can clash with a CI run** for the same reason.
 
-### `email_templates.js` — Legacy fallback
-
-This file contains hardcoded email template strings as a fallback. The primary templates are now stored in the Supabase `email_templates` table and managed via the admin UI. This file is kept for reference / emergency fallback.
+Most suites are integration tests needing credentials in `.env.test`. Pure unit tests (e.g. `stripe-credentials-save.test.mjs`) need none and run anywhere.
 
 ---
 
-## 13. Common Maintenance Tasks
+## 16. Common Maintenance Tasks
 
-### Rotating the Supabase anon key
-1. Generate new key in Supabase dashboard → Project Settings → API
-2. Update `SUPABASE_KEY` (and `SUPABASE_URL` if needed) in `supabase-public.js`
-3. Re-deploy to Vercel
+### Change stall prices, bank details, or allowed stall types
+`settings.html`. No code change — there are no hardcoded defaults.
 
-### Changing the bank account details
-Update the "Bank Transfer Payment Details" card on `settings.html` (writes `bank_account_name`/`bank_sort_code`/`bank_account_number` to the `settings` table). These are automatically composed into the `{{bank_details}}` placeholder used by confirmation emails, and individually available as `{{bank_account_name}}`/`{{bank_sort_code}}`/`{{bank_account_number}}` for the payment-request email.
+### Change the Vercel/production URL
+Update `base_url`, `cancel_url` and `portal_url` in the `settings` table, and the matching values in `supabase-public.js` (the bootstrap fallback). Also update `ALLOWED_ORIGIN` in `supabase/functions/_shared/cors.ts` and redeploy the functions, or browser calls will fail CORS.
 
-### Changing stall prices
-Update the Stall Costs section on `settings.html` (writes `stall_cost_food`/`stall_cost_general`/`stall_cost_dev` to the `settings` table). There are no hardcoded defaults in code — `getStallCost()` reads entirely from the settings table (falling back to 0 with a console warning if a value hasn't loaded).
+### Rotate the Supabase anon key
+Update `supabase-public.js` and redeploy. Remember it configures the admin dashboard too.
 
-### Adding a new admin user
-1. The user must first create a Supabase Auth account (or be invited via Supabase dashboard)
-2. Go to `manage_users.html` and add their Supabase user ID with role `admin`
+### Rotate Stripe or Zoho credentials
+`settings.html`. No redeploy.
 
-### Adding a new email template
-1. Insert a row into the `email_templates` table in Supabase
-2. Give it a unique `id` string (e.g. `my_new_template`)
-3. Use `{{owner_name}}`, `{{business_name}}`, etc. as placeholders
-4. Call `getEmailFromTemplate('my_new_template', booking, id)` from JS
+### Add an admin user
+The user needs a Supabase Auth account first, then assign the role at `manage_users.html`.
 
-### Changing the Vercel URL
-1. Update the `base_url` and `cancel_url` values in the database `settings` table.
-2. Update `BASE_URL` and `CANCEL_URL` in `supabase-public.js` (which serves as the local configuration and emergency fallback).
+### Add an email template
+Insert a row in `email_templates` with a unique `id`, then render it with the placeholders in §10.
 
-### Adding a new booking status
-1. Add the new status string to `CONFIG.UI.STATUS_LIST` in `config.js`
-2. Add a colour mapping to `CONFIG.UI.STATUS_COLORS`
-3. Add a colour to the `VALID_STATUSES` array in `utils.js`
-4. Update the Kanban column definitions in `kanban.js` if it needs its own column
+### Add a booking status
+1. Add it to `CONFIG.UI.STATUS_LIST` and `STATUS_COLORS` in `config.js`
+2. Check `utils.js → validateStatus()` accepts it (it reads the same list)
+3. Add a Kanban column in `kanban.js` if it needs one
+4. Consider the RLS policies and any status-guarded RPC
 
-### Keeping Supabase active (free tier)
-The GAS `Main.gs` includes a `pingDatabase()` function. Set it up as a daily time-driven trigger in GAS to prevent Supabase pausing the project after 7 days of inactivity.
+### Regenerate the RLS snapshot
+Only from the production project, and relink afterwards. Read HANDOVER.md first — the test project has known drift.
 
 ---
 
-*For questions about specific features, refer to the inline JSDoc comments in each file in `js/`.*
+*Deeper behavioural detail, incident write-ups and gotchas live in `HANDOVER.md`. Inline JSDoc in `js/` and the Edge Function docstrings are unusually detailed and are worth reading before changing anything — most of them exist because something broke.*
