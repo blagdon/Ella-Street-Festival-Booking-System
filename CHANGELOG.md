@@ -2,6 +2,20 @@
 
 All notable changes to this project are documented in this file.
 
+## [v7.10.4] - 2026-07-21
+
+### Fixed
+
+- **The Stats page computed Revenue from hardcoded £50 food / £25 non-food**, ignoring the stall costs configured in Settings entirely. Changing a price there left this page reporting the old one indefinitely, with nothing on screen to suggest its figures had stopped matching what traders were actually being charged. It now prefers the booking's own `stall_cost` — the amount genuinely agreed, and the same field the Payments dashboard bills and reconciles against, so the two pages can't disagree about a booking they both know the price of — falling back to the configured price for the instance when a booking hasn't been priced yet. `stall_cost` is only set when payment is requested, so Pending bookings legitimately have none and the configured price is the right estimate for them. That split also means a price change in Settings moves the *potential* revenue figure without retroactively rewriting what already-priced bookings were agreed at, which is the behaviour you want from a forecast.
+
+  **Impact is narrower than it sounds:** production is configured at exactly 50/25 today, so switching to the settings changes no displayed number — the divergence removed is *latent*, and would have surfaced silently the first time someone edited a price. The figures **do** change for any booking whose agreed `stall_cost` differs from list price, which is the case the old code got wrong. Whether production has such bookings could not be established without an admin session; anon is correctly refused by RLS on `bookings`.
+
+  Also incidentally removed: a missing DEV branch that made DEV bookings worth £0. It was dead code — `calculateRevenue` is only ever called with the combined FOOD + NONFOOD set.
+
+### Note
+
+`getStallCost()` returns 0 and warns when the settings haven't loaded, so calling it before `loadStallCosts` had run would have made Revenue silently display **£0** — worse than the bug being fixed, and not the sort of thing that shows up in review. The ordering was verified by reading the call chain: `initAdminPage` awaits `requireAuth`, which awaits `loadStallCosts`, before the page callback runs.
+
 ## [v7.10.3] - 2026-07-21
 
 ### Fixed
