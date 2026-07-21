@@ -77,6 +77,33 @@ async function loadData() {
     }
 }
 
+/**
+ * The one place that decides which records the current filter selects.
+ *
+ * This used to be duplicated between renderTable and exportCSV, and the two
+ * copies drifted: the export's copy only ever knew 'paid' and 'unpaid', so
+ * picking any of the three filters added later ('awaiting', 'needs-refund',
+ * 'refunded') matched NOTHING and Export reported "No data to export" while
+ * the table on screen was visibly full of rows. Its 'unpaid' branch had also
+ * missed the `!r.awaitingPayment` clause, so the export silently included
+ * mid-Stripe-flow bookings the table was excluding.
+ *
+ * Both are the same failure: an export that doesn't match what the admin is
+ * looking at. Keep this shared - if a filter is added to the dropdown, it
+ * needs handling here once, not once per consumer.
+ */
+function matchesFilters(r, statusFilter, searchTerm) {
+    const matchesStatus = (statusFilter === 'all') ||
+        (statusFilter === 'paid' && r.paid) ||
+        (statusFilter === 'unpaid' && !r.paid && !r.awaitingPayment) ||
+        (statusFilter === 'awaiting' && r.awaitingPayment) ||
+        (statusFilter === 'needs-refund' && r.needsRefundFollowUp) ||
+        (statusFilter === 'refunded' && r.refunded);
+    const matchesSearch = (r.business || r.business_name || '').toLowerCase().includes(searchTerm) ||
+        (r.owner || r.owner_name || '').toLowerCase().includes(searchTerm);
+    return matchesStatus && matchesSearch;
+}
+
 function renderTable() {
     const statusFilter = document.getElementById('filter-status').value;
     const searchTerm = document.getElementById('search-input').value.toLowerCase();
@@ -84,17 +111,7 @@ function renderTable() {
     const mobileContainer = document.getElementById('mobile-cards');
 
     // Filter Data
-    const filtered = allRecords.filter(r => {
-        const matchesStatus = (statusFilter === 'all') ||
-            (statusFilter === 'paid' && r.paid) ||
-            (statusFilter === 'unpaid' && !r.paid && !r.awaitingPayment) ||
-            (statusFilter === 'awaiting' && r.awaitingPayment) ||
-            (statusFilter === 'needs-refund' && r.needsRefundFollowUp) ||
-            (statusFilter === 'refunded' && r.refunded);
-        const matchesSearch = (r.business || r.business_name || '').toLowerCase().includes(searchTerm) ||
-            (r.owner || r.owner_name || '').toLowerCase().includes(searchTerm);
-        return matchesStatus && matchesSearch;
-    });
+    const filtered = allRecords.filter(r => matchesFilters(r, statusFilter, searchTerm));
 
     // Calculate Totals
     //
@@ -530,6 +547,19 @@ async function savePayment() {
     const ref = document.getElementById('modal-ref').value;
     const editor = document.getElementById('modal-editor').value;
 
+    // Unticking Paid on a refunded booking is refused by the database's
+    // payments_refund_requires_payment CHECK, which is correct - a refund
+    // against a payment that never happened is meaningless. Without this
+    // branch the admin just gets the raw Postgres text ("new row for relation
+    // \"payments\" violates check constraint ...") in a toast, which reads
+    // like a fault rather than a rule. Caught here purely for the wording; the
+    // constraint remains the actual guarantee.
+    const record = allRecords.find(r => r.id === id);
+    if (record && record.refunded && !paid) {
+        showToast("This booking has a refund recorded against it, so it can't be marked unpaid — the refund is already what records the money going back. Undoing a refund isn't supported here.", 'error');
+        return;
+    }
+
     if (paid && (!date || !ref.trim() || !editor.trim())) {
         showToast("Date Paid, Bank Reference, and Updated By are required when marking as Paid.", 'error');
         return;
@@ -580,14 +610,7 @@ function exportCSV() {
     const statusFilter = document.getElementById('filter-status')?.value || 'all';
     const searchTerm = (document.getElementById('search-input')?.value || '').toLowerCase();
 
-    const filtered = allRecords.filter(r => {
-        const matchesStatus = (statusFilter === 'all') ||
-            (statusFilter === 'paid' && r.paid) ||
-            (statusFilter === 'unpaid' && !r.paid);
-        const matchesSearch = (r.business || r.business_name || '').toLowerCase().includes(searchTerm) ||
-            (r.owner || r.owner_name || '').toLowerCase().includes(searchTerm);
-        return matchesStatus && matchesSearch;
-    });
+    const filtered = allRecords.filter(r => matchesFilters(r, statusFilter, searchTerm));
 
     if (filtered.length === 0) {
         showToast('No data to export.', 'info');
@@ -601,18 +624,32 @@ function exportCSV() {
             ? `"${str.replace(/"/g, '""')}"` : str;
     };
 
-    const headers = ['Booking ID', 'Business', 'Owner', 'Email', 'Stall Cost', 'Paid', 'Date Paid', 'Bank Reference', 'Updated By'];
-    const rows = filtered.map(r => [
-        r.id,
-        r.business || r.business_name,
-        r.owner || r.owner_name,
-        r.email,
-        r.stall_cost || '',
-        r.paid ? 'Yes' : 'No',
-        r.date_paid ? new Date(r.date_paid).toLocaleDateString('en-GB') : '',
-        r.bank_ref || '',
-        r.editor || ''
-    ].map(escape).join(','));
+    // "Paid" stays a truthful record of whether a payment was ever taken, so
+    // a refunded booking still reads Yes - but on its own that made the export
+    // claim money the festival had already given back, which matters more here
+    // than anywhere else on the page: this file is what gets reconciled against
+    // the bank. The refund columns and Net Paid exist so the number someone
+    // sums in a spreadsheet is the number actually held.
+    const headers = ['Booking ID', 'Business', 'Owner', 'Email', 'Stall Cost', 'Paid', 'Date Paid',
+        'Refund Amount', 'Refunded On', 'Net Paid', 'Bank Reference', 'Updated By'];
+    const rows = filtered.map(r => {
+        const cost = parseFloat(r.stall_cost) || 0;
+        const refund = parseFloat(r.refund_amount) || 0;
+        return [
+            r.id,
+            r.business || r.business_name,
+            r.owner || r.owner_name,
+            r.email,
+            r.stall_cost || '',
+            r.paid ? 'Yes' : 'No',
+            r.date_paid ? new Date(r.date_paid).toLocaleDateString('en-GB') : '',
+            refund ? refund.toFixed(2) : '',
+            r.refunded_at ? new Date(r.refunded_at).toLocaleDateString('en-GB') : '',
+            (r.paid ? cost - refund : 0).toFixed(2),
+            r.bank_ref || '',
+            r.editor || ''
+        ].map(escape).join(',');
+    });
 
     const csv = [headers.join(','), ...rows].join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
