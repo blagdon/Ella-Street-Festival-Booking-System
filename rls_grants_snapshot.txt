@@ -43,6 +43,8 @@ GRANT ALL ON FUNCTION "public"."rpc_get_next_misc_id"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rpc_get_next_misc_id"() TO "service_role";
 GRANT ALL ON FUNCTION "public"."rpc_record_bank_transfer_payment"("p_booking_id" "text", "p_payment_reference" "text", "p_notes" "text") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rpc_record_bank_transfer_payment"("p_booking_id" "text", "p_payment_reference" "text", "p_notes" "text") TO "service_role";
+GRANT ALL ON FUNCTION "public"."rpc_record_refund"("p_booking_id" "text", "p_refund_amount" numeric, "p_refund_reference" "text", "p_notes" "text", "p_refunded_by" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."rpc_record_refund"("p_booking_id" "text", "p_refund_amount" numeric, "p_refund_reference" "text", "p_notes" "text", "p_refunded_by" "text") TO "service_role";
 GRANT ALL ON FUNCTION "public"."rpc_set_booking_locations"("p_booking_id" "text", "p_location_ids" "text"[]) TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rpc_set_booking_locations"("p_booking_id" "text", "p_location_ids" "text"[]) TO "service_role";
 GRANT ALL ON FUNCTION "public"."stamp_audit_log_user_email"() TO "service_role";
@@ -157,6 +159,7 @@ REVOKE ALL ON FUNCTION "public"."claim_pending_emails"("p_batch_size" integer) F
 REVOKE ALL ON FUNCTION "public"."finalize_stripe_payment"("p_booking_id" "text", "p_payment_intent_id" "text") FROM PUBLIC;
 REVOKE ALL ON FUNCTION "public"."is_booking_confirmed"("p_booking_id" "text") FROM PUBLIC;
 REVOKE ALL ON FUNCTION "public"."rpc_record_bank_transfer_payment"("p_booking_id" "text", "p_payment_reference" "text", "p_notes" "text") FROM PUBLIC;
+REVOKE ALL ON FUNCTION "public"."rpc_record_refund"("p_booking_id" "text", "p_refund_amount" numeric, "p_refund_reference" "text", "p_notes" "text", "p_refunded_by" "text") FROM PUBLIC;
 REVOKE ALL ON FUNCTION "public"."rpc_set_booking_locations"("p_booking_id" "text", "p_location_ids" "text"[]) FROM PUBLIC;
 REVOKE ALL ON TABLE "storage"."buckets" FROM "supabase_storage_admin";
 REVOKE ALL ON TABLE "storage"."objects" FROM "supabase_storage_admin";
