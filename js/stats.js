@@ -1,4 +1,5 @@
 import { fetchStatsData, STATS_CAP } from './api.js';
+import { getStallCost } from './config.js';
 import { showToast, notifyIfTruncated } from './ui.js';
 import { escapeHtml } from './utils.js';
 
@@ -252,20 +253,38 @@ function renderCharts(allRows, combinedData, foodData, nonFoodData) {
     }, 100);
 }
 
+/**
+ * Sums what a set of bookings is worth.
+ *
+ * This used to hardcode £50 food / £25 non-food, which silently ignored the
+ * stall costs configured in Settings: changing a price there left this page
+ * reporting the old one indefinitely, with nothing on screen to suggest the
+ * figures had stopped matching what traders were actually being charged.
+ *
+ * Prefers the booking's OWN `stall_cost` - the amount genuinely agreed for
+ * that booking, and the same field the Payments dashboard bills and
+ * reconciles against, so the two pages can't disagree about a booking they
+ * both know the price of. Falls back to the configured price for the
+ * instance when a booking hasn't been priced yet: `stall_cost` is only set
+ * when payment is requested, so Pending bookings legitimately have none and
+ * the configured price is the right estimate for them.
+ *
+ * That split also means a price change in Settings moves the *potential*
+ * revenue figure without retroactively rewriting what already-priced
+ * bookings were agreed at, which is the behaviour you want from a forecast.
+ *
+ * Calling getStallCost() here is safe: initAdminPage awaits requireAuth,
+ * which awaits loadStallCosts, before this page's callback ever runs.
+ */
 function calculateRevenue(bookings) {
     let total = 0;
     bookings.forEach(b => {
-        let cost = 0;
-        if (b.instance_prefix === PREFIX_FOOD) {
-            cost = 50;
-        } else if (b.instance_prefix === PREFIX_NONFOOD) {
-            cost = 25;
-        }
-
+        // Charities aren't charged, whatever the booking or the settings say.
         const isCharity = b.is_charity === 'Charity' || b.is_charity === 'Not for profit';
-        if (!isCharity) {
-            total += cost;
-        }
+        if (isCharity) return;
+
+        const agreed = parseFloat(b.stall_cost);
+        total += Number.isFinite(agreed) ? agreed : getStallCost(b.instance_prefix);
     });
     return total;
 }
