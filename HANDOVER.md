@@ -9,7 +9,16 @@
 > verification first, and the short list that needs an explicit instruction every
 > time. Default to acting.
 > Last updated: 2026-07-21.
-> Current release: **v7.10.3** (tagged 2026-07-21; frontend only — a deliberate
+> Current release: **v7.10.4** (tagged 2026-07-21; frontend only — the **Stats
+> page computed Revenue from hardcoded £50/£25**, ignoring the stall costs
+> configured in Settings, so changing a price there left it reporting the old
+> one indefinitely. It now prefers the booking's own `stall_cost` — the same
+> field Payments bills against — falling back to the configured price for
+> bookings not yet priced. Note this changed **no** displayed number on
+> production, which is configured at exactly 50/25; the divergence removed was
+> latent. Watch the ordering hazard recorded in the CHANGELOG: `getStallCost()`
+> silently returns 0 before `loadStallCosts` has run.)
+> v7.10.3 was a deliberate
 > sweep of **every consumer of `paid`**, closing out the run of bugs from
 > v7.10.0. The **CSV export** had no refund awareness at all, exporting a
 > refunded booking as `Paid: Yes` at full cost — worse than the on-screen
@@ -19,13 +28,11 @@
 > its filter logic was a *duplicate* of the table's that had drifted; the
 > predicate is now shared. Read the CHANGELOG entry before touching either.
 >
-> **The standing rule this run of releases established:** `paid` stays `true`
+> **The standing rule that run of releases established:** `paid` stays `true`
 > after a refund by design, so **every reader of `paid` must subtract
 > `refund_amount` itself** — `paid = true` does not mean the money is held.
 > v7.10.2 fixed the dashboard totals under that rule, v7.10.3 the export and
-> the Edit Payment path. Known remaining gap, unrelated to refunds:
-> `js/stats.js` computes Revenue from hardcoded £50/£25 and never loads
-> payments, so it ignores the configurable stall-cost settings entirely.)
+> the Edit Payment path.
 > v7.10.1 was frontend + CI only — it rebuilt
 > the committed `css/output.css`, without which v7.10.0's refund button rendered
 > **invisible** in production, plus a new `css-build-check` CI job so that class
