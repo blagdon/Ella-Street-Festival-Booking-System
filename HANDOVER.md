@@ -9,8 +9,12 @@
 > verification first, and the short list that needs an explicit instruction every
 > time. Default to acting.
 > Last updated: 2026-07-21.
-> Current release: **v7.9.0** (tagged 2026-07-21; **database change, applied to
-> production**: scoped anon's `schedules` access to Scheduled/Paid performers
+> Current release: **v7.10.0** (tagged 2026-07-21; **new feature — database
+> changes and two Edge Function deploys, applied to production**: refunds, plus
+> a follow-up flag for bookings cancelled after payment — see
+> [Next Steps](#8-next-steps) item 64, and note the one manual Stripe Dashboard
+> step it needs before dashboard-issued refunds auto-reconcile).
+> v7.9.0 scoped anon's `schedules` access to Scheduled/Paid performers
 > — see [Next Steps](#8-next-steps) item 63, which closes the last of item 58's
 > three deferred findings, and the new Gotchas entry on why a
 > successful-but-wrong migration needs `migration repair`, not just a retry).
@@ -207,7 +211,8 @@ hardcoded default at all** — they're `null`/`[]` until the settings table load
 | `retry-queued-email` | Admin JWT only (deliberately **no** service-role bypass — retrying is a human recovery action) | Re-sends one failed `email_queue` row for the Email Queue viewer's Retry button. Must be server-side: `authenticated` has no UPDATE on `email_queue`, and the Zoho credentials are server-side. Claims the row (`Error → Processing`) before sending so two retries can't both deliver; only `Error` rows are retryable. Calls `sendViaZoho()` in-process. See [Next Steps](#8-next-steps) item 55 for the exact concurrency guarantees. |
 | `get-booking-documents` | Admin JWT only | Resolves a booking's `documents` storage paths to time-limited (1hr) signed URLs via `createSignedUrls()` — `esf-documents` is a private bucket. Called from `js/shared.js`'s `populateDetailPane()` when rendering the Kanban/Summary detail pane. |
 | `create-checkout-session` | Admin JWT only | Creates a Stripe Checkout Session for any not-yet-resolved booking (called directly from the chargeable-confirm modal, or again on "Resend Payment Request" from `Payment Requested`), saves the resolved `stall_cost`, updates the booking to `Payment Requested`, and emails the `payment_requested` template with the session URL. Picks the `stripe_secret_key_test`/`_live` settings-table row by whether `instance_prefix` contains `-DEV-` (or the `stripe_test_mode` override — see below). See [Stripe Payment Collection](#stripe-payment-collection) below. |
-| `stripe-webhook` | None (`--no-verify-jwt`); gated instead by Stripe signature verification (tries the `stripe_webhook_secret_test` then `_live` settings-table rows) | On `checkout.session.completed`, calls `mark_stripe_payment_received()` then `finalize_stripe_confirmation()` RPCs, then best-effort emails `confirmed_chargeable` (deduped via `stripe_webhook_events`, in-process `sendViaZoho()`, never `functions.invoke`). No-ops on expired/failed payment events — the booking is already correctly sitting at `Payment Requested`. |
+| `stripe-webhook` | None (`--no-verify-jwt`); gated instead by Stripe signature verification (tries the `stripe_webhook_secret_test` then `_live` settings-table rows) | On `checkout.session.completed`, calls `mark_stripe_payment_received()` then `finalize_stripe_confirmation()` RPCs, then best-effort emails `confirmed_chargeable` (deduped via `stripe_webhook_events`, in-process `sendViaZoho()`, never `functions.invoke`). On `charge.refunded` (added 2026-07-21), maps the charge to a booking via `stripe_payment_intent_id` and records the refund via `rpc_record_refund` — this is what makes a refund issued in the Stripe *dashboard* reconcile back into the app; it treats "already been refunded" as success, see [Next Steps](#8-next-steps) item 64. No-ops on expired/failed payment events — the booking is already correctly sitting at `Payment Requested`. |
+| `refund-payment` | Admin JWT only (deliberately **no** service-role bypass — issuing a refund moves real money and must be a deliberate human action) | Issues a real Stripe refund for a booking, then records it via `rpc_record_refund`. Stripe-only: bank transfers have no API to call and stay record-only in the Payments UI. Calls Stripe **first**, database second, on purpose — see item 64 for why that ordering is the recoverable one. |
 | `_shared/zoho.ts` | n/a (imported, not deployed) | Zoho OAuth2 token refresh/cache + send logic, shared by `send-email` and `queue-bulk-email`. |
 | `_shared/bucket.ts` | n/a (imported, not deployed) | Resolves the document bucket name (env var, else `settings.bucket_name`, else `'esf-documents'`), shared by `submit-booking` and `get-booking-documents`. |
 | `_shared/stripe.ts` | n/a (imported, not deployed) | Loads all four Stripe credentials from the `settings` table (`loadStripeSettings()`) and resolves test-vs-live mode (keyed off `instance_prefix` + the `stripe_test_mode` override, mirroring the DEV/LIVE convention elsewhere), single Stripe SDK import point. Shared by `create-checkout-session` and `stripe-webhook`. |
@@ -571,10 +576,16 @@ the direct query path (`locations` + `public_bookings_info`).
   page.
 - No error/alerting integration (Slack/Discord/Sentry) for Edge Function failures —
   explicitly deferred by the project owner ("I'll do it later").
-- No refund support — no refund UI, no Stripe refund API call anywhere, and
-  `payments` has no `refund_status`/`refund_amount` columns. Flagged 2026-07-15
-  during a schema review; deliberately not built speculatively — add the columns
-  alongside the actual refund feature/code when this is prioritized, not before.
+- ~~No refund support~~ — **built 2026-07-21 (v7.10.0), see
+  [Next Steps](#8-next-steps) item 64.** The original note said to add the
+  columns alongside the actual refund code rather than speculatively, and that
+  is what happened: `payments` now carries `refund_amount`/`refunded_at`/
+  `refunded_by`/`refund_reference`/`refund_notes`, with `rpc_record_refund()`,
+  a `refund-payment` Edge Function for real Stripe refunds, and
+  `charge.refunded` webhook reconciliation. **Deliberately still unsupported**:
+  multiple separate refunds against one booking (the one-row-per-booking shape
+  only represents one) — see item 64 for why that was the right call for now
+  and what to do if it ever changes.
 - ~~No database backup coverage of any kind~~ — **corrected 2026-07-16, this was
   wrong.** Originally concluded from two facts, both true in isolation: the live
   Supabase project (`rsnxhuhibglieofikkpo`, "ESRA") is on the Free plan (excludes
@@ -672,6 +683,20 @@ client-supplied), `verified_at`, `notes`. All nullable/additive; existing rows
 backfilled `payment_method='stripe'` where `bank_ref LIKE 'Stripe:%'` (the only
 reliable historical signal, since that prefix has been hardcoded since the original
 Stripe migration).
+
+**Extended again 2026-07-21** for refunds (see Next Steps item 64):
+`refund_amount` (numeric — NULL means not refunded; may be less than
+`bookings.stall_cost` for a partial refund), `refunded_at`, `refunded_by` (admin
+email, or `'Stripe (automatic)'` when the `charge.refunded` webhook recorded it —
+mirrors `editor`'s existing provenance convention), `refund_reference` (Stripe
+refund id `re_…`, or the bank reference used for a manual transfer back), and
+`refund_notes`. A `payments_refund_requires_payment` CHECK enforces
+`refund_amount > 0 AND paid = true` at the database level, not just in the RPC,
+because this table is also written directly by `finalize_stripe_payment()` and the
+refund webhook. **Note `paid` stays `true` after a refund** — the payment genuinely
+happened; the refund is separate state, not a reversal of that fact.
+**Only ONE refund per booking is representable** by this shape; see item 64 for
+why that was deliberate and how to migrate to a child table if it ever changes.
 
 ### `stripe_webhook_events`
 Pure email-send dedup ledger for `stripe-webhook` (`event_id` PK, `event_type`,
@@ -2646,6 +2671,73 @@ it as a live concern.
     expression and a `service_role`-only grant on the new function, no
     `anon`/`authenticated` leakage. Snapshot regenerated, CLI relinked to
     test.
+
+64. **Refunds (2026-07-21, PRs #56 + #57, released as v7.10.0, migration
+    `20260721100000_add_refund_support.sql`).** Closes the "No refund support"
+    known gap that had stood since 2026-07-15. Built as the "option C" the
+    owner chose from a written set of options: record-only refunds **and**
+    Stripe API automation **and** `charge.refunded` webhook reconciliation.
+    Shipped as two PRs — foundation (#56), then Stripe automation on top
+    (#57) — because the second genuinely depends on the first and each is
+    independently verifiable.
+    **It also closed a live gap wider than "no refund button"**, found while
+    scoping: `cancel_booking_secure()` permits cancelling a `Confirmed`
+    booking and never touches `payments`, and no admin cancel path does
+    either — so a paid booking could be cancelled with its payments row still
+    reading `paid = true` and no refund trail anywhere. Per the owner's
+    decision, self-service cancellation of a paid booking **still succeeds**
+    (blocking it would strand the trader with no way to cancel at all); it now
+    surfaces as a **⚠ CANCELLED — REFUND?** flag on the Payments page,
+    *derived* from existing state (`paid` AND not refunded AND status
+    `Cancelled`) rather than stored, so there is no flag to set, forget to
+    clear, or let drift out of sync with the rows it describes.
+    **Design decisions worth knowing before changing any of this:**
+    - **Refund columns live on `payments`, not in a `refunds` child table.**
+      `payments` is keyed one-row-per-booking, so a refund is naturally a
+      state change on it, and an explicit `refund_amount` supports a PARTIAL
+      refund for free. What that shape cannot represent is MULTIPLE separate
+      refunds on one booking — deliberate, since a child table for a
+      9-payment festival is exactly the speculative complexity the original
+      gap note was avoiding. The columns carry enough (amount, timestamp,
+      actor, external reference) to backfill a child table later without loss.
+    - **`rpc_record_refund` moves no money — it records a refund issued
+      elsewhere.** Both the manual path and the Stripe path call it, so a
+      refund becomes a fact in exactly one place. It derives the actor from
+      the JWT and ignores a client-supplied one, *except* for service_role
+      callers (the webhook), which legitimately need to attribute to
+      `'Stripe (automatic)'` — a test asserts an admin's attempt to
+      attribute a refund to someone else is ignored.
+    - **`refund-payment` calls Stripe FIRST, then the database.** If Stripe
+      succeeds and the DB write fails, money has moved and the app doesn't
+      know — recoverable, because the webhook records it moments later and
+      the error surfaces the refund id. The reverse order would let the app
+      claim a refund that never happened, with nothing external to correct
+      it. One failure mode self-heals; the other is silent and permanent.
+    - **The webhook treats "already been refunded" as SUCCESS**, matching on
+      that exact wording. That is the expected path when `refund-payment`
+      initiated the refund and recorded it synchronously moments before
+      Stripe delivered the event; 500ing would make Stripe retry forever. If
+      that RPC's error message is ever reworded, update the webhook's match.
+    - **Bank transfers are record-only by nature**, not by omission — there
+      is no API that moves that money back.
+    **Testing note**: all 9 `refund-payment` tests assert REJECTIONS; none
+    reaches `stripe.refunds.create()`. Exercising the success path would
+    require creating a real charge to refund first, and an automated suite
+    that can move money in any mode isn't worth having. The success path is
+    covered by `rpc_record_refund`'s own tests plus browser verification.
+    159/159 on the test project.
+    **A bug caught in my own work, worth repeating as a pattern**:
+    `showConfirm()` in `js/ui.js` is CALLBACK-based, not promise-returning.
+    An `await showConfirm(...)` returns `undefined` immediately, so the
+    confirmation is skipped entirely — which in this case would have silently
+    issued real refunds with no prompt. Verified the fix in a browser: the
+    dialog appears with the right amount, and cancelling leaves
+    `refund_amount` null.
+    **ONE MANUAL STEP REMAINS, not doable from here**: `charge.refunded` must
+    be enabled on the Stripe webhook endpoint (Dashboard → Developers →
+    Webhooks → the endpoint → Update details → Select events). Until then,
+    refunds issued *in the Stripe dashboard* won't auto-record — everything
+    else works, and the manual path covers it meanwhile.
 
 **Explicitly deferred, not started:** Slack/Discord/Sentry-style alerting for Edge
 Function errors — the project owner said "I'll do it later," don't assume it's wanted
