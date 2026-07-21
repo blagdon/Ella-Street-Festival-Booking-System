@@ -2,6 +2,20 @@
 
 All notable changes to this project are documented in this file.
 
+## [v7.10.3] - 2026-07-21
+
+### Fixed
+
+- **The CSV export had no refund awareness.** A fully refunded booking exported as `Paid: Yes` at its full cost, with nothing recording that the money had gone back. This mattered more than the equivalent on-screen bug fixed in v7.10.2, because the export is the artefact that gets reconciled against the bank — a wrong number that leaves the building. Adds **Refund Amount**, **Refunded On** and **Net Paid** columns. `Paid` deliberately stays Yes/No as a truthful record that a payment was once taken; **Net Paid** is the column that sums to cash actually held, and it agrees with the dashboard's Paid total by construction.
+
+- **The CSV export ignored three of the six payment filters.** Its filtering logic was a *duplicate* of the table's that had drifted apart, knowing only `paid` and `unpaid`. Selecting **Awaiting Payment**, **⚠ Needs Refund Follow-Up** or **Refunded** and clicking Export reported *"No data to export"* while the table on screen was visibly full of matching rows. The same copy had also lost the `!awaitingPayment` clause from its `unpaid` branch, so exporting Unpaid silently included mid-Stripe-flow bookings that the table excluded. Both are one failure — an export that doesn't match what the admin is looking at — so the predicate is now shared between the two rather than duplicated, duplication being what allowed the drift.
+
+- **Unticking "Paid" on a refunded booking showed a raw Postgres constraint error.** The database refuses it via `payments_refund_requires_payment`, which is correct and caused no data corruption (verified against the test project), but the admin saw `new row for relation "payments" violates check constraint ...` in a toast — text that reads like a fault rather than a rule. Now caught in the UI for **wording only**; the constraint remains the actual guarantee, deliberately, since a client-side check that resembles enforcement invites misplaced trust.
+
+### Note
+
+These came from a deliberate sweep of every consumer of `paid` after v7.10.2, prompted by that release being the second bug in a row from the same root: `paid` stays `true` after a refund by design, so **every reader must subtract `refund_amount` itself**. Also checked and found correct: the desktop and mobile badges, the refund button's `paid && !refunded` gating, `refund-payment`'s `paid !== true` guard, and `stripe-webhook` (which reads Stripe's own unrelated `payment_status`). Separately noted but not changed: `js/stats.js` reports Revenue from hardcoded £50/£25 and never loads payments at all, so it ignores the configurable stall-cost settings — unrelated to refunds, but it means changing prices in Settings leaves that dashboard reporting the old ones.
+
 ## [v7.10.2] - 2026-07-21
 
 ### Fixed
