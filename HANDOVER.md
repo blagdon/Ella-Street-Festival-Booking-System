@@ -2593,6 +2593,56 @@ it as a live concern.
     regenerated from production and committed; CLI relinked to the test
     project afterward.
 
+63. **Closed the third finding item 58 left open: anon's `schedules` policy
+    was `USING (true)` (2026-07-21, migration
+    `20260721081500_scope_anon_schedules_policy.sql`).** `public_schedule_info`
+    has always filtered to Scheduled/Paid performers only; the base table
+    never enforced that itself, so a caller reading `schedules` directly
+    (rather than through the view) could see slot times and performer IDs
+    for Applied/Rejected performers too — column grants already stopped ID
+    resolution to a name, but the slot data itself was still exposed.
+    **Safe to apply with no external coordination**, unlike item 59's
+    `location_power` drop: verified against a live production dump
+    immediately before *and again immediately before* applying that
+    `schedules` held **zero rows** — nothing for the separate performer app
+    (`ellafestperformersadmin.vercel.app`, still unauditable from here) to
+    lose access to.
+    **A plain `EXISTS` subquery against `performers` does not work here, and
+    this was found empirically, not reasoned out correctly the first time.**
+    Anon already has a genuine row-level policy on `performers` for
+    Scheduled/Paid rows, which ruled out the `is_booking_confirmed()`-style
+    "anon has zero row access" problem — but anon's *column* grants on
+    `performers` don't include `deleted_at`, which the filter needs. An
+    inline subquery referencing it, evaluated as anon regardless of sitting
+    inside a policy expression, threw `permission denied for table
+    performers` on **every** anon query against `schedules`, not just a
+    mis-filter — a worse regression than the gap being fixed, caught on the
+    test project before it went anywhere near production. Fixed with
+    `is_performer_publicly_visible(p_performer_id)`, a `SECURITY DEFINER`
+    helper mirroring `is_booking_confirmed()` exactly, whose body runs as
+    the function owner and is therefore not subject to the caller's column
+    grants at all.
+    **The broken version was already committed to the test project's schema
+    before this was caught** (the `ALTER POLICY` itself succeeded — there
+    was nothing to roll back). Recovered by deleting the broken-content
+    migration file and re-adding the corrected content under a fresh
+    timestamp, then `supabase migration repair --status reverted
+    <old_version>` to clear the test project's migration-history record for
+    the file that no longer exists locally, before `db push` would apply
+    anything again. Matters if this pattern recurs: a *failed* migration
+    rolls back for free (this repo has hit that path more than once), a
+    *successful*-but-wrong one does not, and needs this repair step.
+    5 new tests (`tests/schedules-anon-scope.test.mjs`), seeded with real
+    Applied and Scheduled performers and their own schedule slots, since
+    production's zero rows meant there was nothing to verify correctness
+    against directly — includes a check that the view and the now-filtered
+    table agree on every row. 139/139 on the test project, then production:
+    drift-free before (re-confirmed zero `schedules` rows immediately
+    before applying too), after-diff exactly two lines — the policy's new
+    expression and a `service_role`-only grant on the new function, no
+    `anon`/`authenticated` leakage. Snapshot regenerated, CLI relinked to
+    test.
+
 **Explicitly deferred, not started:** Slack/Discord/Sentry-style alerting for Edge
 Function errors — the project owner said "I'll do it later," don't assume it's wanted
 now without asking.
@@ -2633,6 +2683,22 @@ stay in the separate `ellafestperformersadmin.vercel.app` codebase.
   → `CREATE POLICY` fresh. This is Postgres DDL, transactional either way, so a failed
   first attempt (mid-migration) rolls back completely — don't panic-diagnose a partially
   applied state that doesn't exist.
+
+- **A migration that runs without error but does the wrong thing does NOT roll back —
+  only a genuinely failed statement does.** Distinct from the point above, and easy to
+  conflate with it: a *failed* migration (a Postgres error mid-file) is transactional and
+  leaves nothing applied, verified more than once in this repo's history. A migration that
+  *succeeds* but was wrong in substance (e.g. an RLS policy that compiles fine and applies
+  cleanly, but throws a permission error for a reason only visible once real queries run
+  against it — hit live on item 63's `schedules` fix, where an inline `EXISTS` subquery
+  referenced a column anon has no grant on) is genuinely committed. Editing the same
+  migration file's content and re-running `db push` does **not** re-apply it — Supabase
+  tracks applied migrations by filename/timestamp, not content, so it sees that version as
+  already done and skips it, silently leaving the wrong version live. Fix: delete the
+  broken file, save the corrected content under a **new** timestamp, then
+  `supabase migration repair --status reverted <old_version>` before `db push` — repair
+  only clears the remote bookkeeping table, it does not touch the actual (still-wrong)
+  schema, so the corrected migration still has real work to do when it runs.
 
 - **`locations`' primary key is `(id, dataset)`, not `id`.** Never assume a bare
   `location_id` is globally unique. `booking_locations.location_id` deliberately has no

@@ -14,7 +14,7 @@ CREATE POLICY "Allow staff to read booking_locations" ON "public"."booking_locat
 CREATE POLICY "Applicants can view own" ON "public"."performers" FOR SELECT TO "authenticated" USING (("email" = ("auth"."jwt"() ->> 'email'::"text")));
 CREATE POLICY "Public can apply" ON "public"."performers" FOR INSERT TO "authenticated", "anon" WITH CHECK ((("status" = 'Applied'::"public"."performer_status") AND ("total_cost" = (0)::numeric) AND ("amount_paid" = (0)::numeric) AND ("insurance_verified" = false) AND ("insurance_verified_at" IS NULL) AND ("insurance_verified_by" IS NULL) AND ("status_updated_at" IS NULL) AND ("status_updated_by" IS NULL) AND ("admin_notes" IS NULL) AND ("payment_notes" IS NULL) AND ("deleted_at" IS NULL)));
 CREATE POLICY "Public can view scheduled" ON "public"."performers" FOR SELECT TO "authenticated", "anon" USING ((("status" = ANY (ARRAY['Scheduled'::"public"."performer_status", 'Paid'::"public"."performer_status"])) AND ("deleted_at" IS NULL)));
-CREATE POLICY "Public row-level access for schedules" ON "public"."schedules" FOR SELECT TO "anon" USING (true);
+CREATE POLICY "Public row-level access for schedules" ON "public"."schedules" FOR SELECT TO "anon" USING ("public"."is_performer_publicly_visible"("performer_id"));
 CREATE POLICY "Public view locations" ON "public"."locations" FOR SELECT USING (("dataset" = 'LIVE'::"text"));
 CREATE POLICY "Steward access" ON "public"."bookings" FOR SELECT USING ("public"."check_user_role"('steward'::"public"."user_role"));
 CREATE POLICY "Strict Public Uploads" ON "storage"."objects" FOR INSERT WITH CHECK ((("bucket_id" = 'esf-documents'::"text") AND (("storage"."extension"("name") = 'pdf'::"text") OR ("storage"."extension"("name") = 'jpg'::"text") OR ("storage"."extension"("name") = 'jpeg'::"text") OR ("storage"."extension"("name") = 'png'::"text")) AND CASE WHEN (("metadata" ->> 'size'::"text") IS NOT NULL) THEN ((("metadata" ->> 'size'::"text"))::integer <= 5242880) ELSE true END));
@@ -38,6 +38,7 @@ GRANT ALL ON FUNCTION "public"."get_next_booking_id"("p_prefix" "text") TO "serv
 GRANT ALL ON FUNCTION "public"."is_booking_confirmed"("p_booking_id" "text") TO "anon";
 GRANT ALL ON FUNCTION "public"."is_booking_confirmed"("p_booking_id" "text") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."is_booking_confirmed"("p_booking_id" "text") TO "service_role";
+GRANT ALL ON FUNCTION "public"."is_performer_publicly_visible"("p_performer_id" "uuid") TO "service_role";
 GRANT ALL ON FUNCTION "public"."rpc_get_next_misc_id"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rpc_get_next_misc_id"() TO "service_role";
 GRANT ALL ON FUNCTION "public"."rpc_record_bank_transfer_payment"("p_booking_id" "text", "p_payment_reference" "text", "p_notes" "text") TO "authenticated";
