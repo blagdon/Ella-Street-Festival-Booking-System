@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## [v7.10.2] - 2026-07-21
+
+### Fixed
+
+- **The Payments dashboard's Paid total ignored refunds.** It summed the full `stall_cost` of every row with `paid = true`, and since v7.10.0 `paid` deliberately *stays* true after a refund — the payment really did happen, and the refund is separate state layered on top of it. Nothing subtracted it back out, so a refunded booking went on inflating the headline figure forever and the dashboard reported money the festival no longer holds. The per-row display had always handled refunds correctly (the badge flips to `REFUNDED`, with the amount and date shown), which made the gap easy to miss and worse when hit: the row said REFUNDED while the total directly above it still counted the cash. Paid is now net of refunds, and a **Refunded** tile accounts for the difference — netting money out of Paid with nothing explaining where it went would only replace a wrong number with an unexplained one. The tile is hidden when the total is zero, which is the normal case. Refunded rows keep `paid = true` and so stay out of Pending, which is correct: a refunded cancellation is not money owed. `rpc_record_refund` caps a refund at the booking cost, so no row can contribute a negative amount.
+
+  This is the second bug in a row traceable to v7.10.0 changing what payment state *means* without updating everything that reads it. The design decision is sound, but its consequence is a standing obligation: **every consumer of `paid` must subtract `refund_amount` itself**, because `paid = true` no longer implies the money is held.
+
 ## [v7.10.1] - 2026-07-21
 
 ### Fixed
