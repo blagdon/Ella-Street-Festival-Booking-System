@@ -2985,6 +2985,24 @@ stay in the separate `ellafestperformersadmin.vercel.app` codebase.
   see a merge blocked by a 1-second cancelled job, re-run that single job:
   `gh run rerun <run-id> --job <job-id>`.
 
+- **`css/output.css` is a COMMITTED BUILD ARTEFACT — introduce a Tailwind class the
+  project has never used before without running `npm run build:css`, and it renders as
+  nothing at all.** There is no build step at deploy time; Vercel serves the committed
+  file directly. Tailwind only emits classes it finds by scanning the source, so a class
+  that exists in your markup but not in the compiled CSS simply has no rule. **For a
+  coloured button that means INVISIBLE, not unstyled**: `bg-amber-600 text-white` with no
+  `bg-amber-600` rule is white text on a transparent background. Hit live on 2026-07-21 —
+  the refund button was present, clickable, correctly wired, and completely unreadable.
+  The same rebuild also emitted `disabled:cursor-not-allowed`, missing since v7.1.0's
+  Retry button, unnoticed for days.
+  **Why the usual checks miss it**: `git status` is clean (the stale file *is* committed),
+  the element passes `offsetParent !== null` (it isn't hidden), and its `textContent` is
+  correct — so property-level browser assertions all pass. Only looking at it, or
+  comparing computed `backgroundColor` against `color`, catches it.
+  **Now guarded**: CI's `css-build-check` job rebuilds and fails if the committed file is
+  stale (verified to fail on a genuinely stale file and pass on a fresh one, not just
+  assumed). If it fires, run `npm run build:css` and commit the result.
+
 - **Tailwind v4 broke `transform` as a stacking-context trick, and it fails
   silently — suspect this first on any "the screen goes blank" report.** The
   Tailwind v2/v3 modal pattern (a `fixed inset-0` overlay, then a panel that is
