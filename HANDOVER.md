@@ -9,15 +9,23 @@
 > verification first, and the short list that needs an explicit instruction every
 > time. Default to acting.
 > Last updated: 2026-07-21.
-> Current release: **v7.10.1** (tagged 2026-07-21; frontend + CI only — rebuilt
+> Current release: **v7.10.2** (tagged 2026-07-21; frontend only — the Payments
+> dashboard's **Paid total ignored refunds**, so a refunded booking went on
+> inflating it forever and the header reported money the festival no longer
+> holds. Paid is now net of refunds, with a Refunded tile accounting for the
+> difference. This is the second bug in a row caused by v7.10.0 changing
+> payment state without updating everything that reads it — `paid` stays
+> `true` after a refund by design, so **every** consumer of `paid` has to
+> subtract `refund_amount` itself.)
+> v7.10.1 was frontend + CI only — it rebuilt
 > the committed `css/output.css`, without which v7.10.0's refund button rendered
 > **invisible** in production, plus a new `css-build-check` CI job so that class
 > of bug can't recur. Read the Gotchas entry on
 > `css/output.css` being a committed build artefact before adding any Tailwind
-> class the project hasn't used before. Also added the
+> class the project hasn't used before. It also added the
 > [Stripe go-live checklist](#-going-live-with-real-stripe-payments--checklist-not-yet-done)
 > — **production currently takes no real card payments**, which is deliberate
-> but was not written down anywhere until now.)
+> but was not written down anywhere until then.
 > v7.10.0 was the refunds feature (**database changes and two Edge Function
 > deploys, applied to production**), plus a follow-up flag for bookings
 > cancelled after payment — see
