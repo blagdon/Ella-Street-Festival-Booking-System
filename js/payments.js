@@ -97,7 +97,19 @@ function renderTable() {
     });
 
     // Calculate Totals
-    const totalPaid = filtered.reduce((sum, r) => sum + (r.paid ? (parseFloat(r.stall_cost) || 0) : 0), 0);
+    //
+    // `paid` deliberately stays true after a refund - the payment really did
+    // happen, and the refund is separate state layered on top of it (see the
+    // refund migration's header for why). The consequence is that Paid must
+    // net refunds out HERE, explicitly: without this, a fully refunded booking
+    // goes on inflating the headline figure forever, so the dashboard reports
+    // money the festival no longer holds. rpc_record_refund caps a refund at
+    // the booking cost, so a row can never contribute a negative amount.
+    const totalPaid = filtered.reduce((sum, r) =>
+        sum + (r.paid ? (parseFloat(r.stall_cost) || 0) - (parseFloat(r.refund_amount) || 0) : 0), 0);
+    const totalRefunded = filtered.reduce((sum, r) => sum + (parseFloat(r.refund_amount) || 0), 0);
+    // A refunded booking keeps paid = true, so it is already excluded from
+    // Outstanding - correct, since a refunded cancellation is not money owed.
     const totalOutstanding = filtered.reduce((sum, r) => sum + (!r.paid && r.status === 'Confirmed' ? (parseFloat(r.stall_cost) || 0) : 0), 0);
 
     // Update Totals Display
@@ -105,6 +117,14 @@ function renderTable() {
     const elOut = document.getElementById('total-outstanding');
     if (elPaid) elPaid.innerText = "£" + totalPaid.toLocaleString('en-GB', { minimumFractionDigits: 2 });
     if (elOut) elOut.innerText = "£" + totalOutstanding.toLocaleString('en-GB', { minimumFractionDigits: 2 });
+
+    // Refunded is shown only when there is something to show. Netting it out
+    // of Paid above would otherwise make money silently disappear from the
+    // header with nothing accounting for where it went.
+    const elRefunded = document.getElementById('total-refunded');
+    const elRefundedWrap = document.getElementById('total-refunded-wrap');
+    if (elRefunded) elRefunded.innerText = "£" + totalRefunded.toLocaleString('en-GB', { minimumFractionDigits: 2 });
+    if (elRefundedWrap) elRefundedWrap.classList.toggle('hidden', totalRefunded === 0);
 
     // Update Count
     const elCount = document.getElementById('count-display');
