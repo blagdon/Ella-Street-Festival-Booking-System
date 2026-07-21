@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## [v7.9.0] - 2026-07-21
+
+**Database change, already applied to production.**
+
+### Security
+
+- **Scoped anon's `schedules` access to Scheduled/Paid performers only, matching what `public_schedule_info` has always filtered to.** The base table's own anon policy was `USING (true)` — the view's status filter was never enforced at the table level, so a caller reading `schedules` directly (bypassing the view) could see slot times and performer IDs for Applied/Rejected performers too. Column grants already stopped resolving those IDs to a name, but the slot data itself was still exposed. Verified safe to apply with no external coordination: `schedules` held zero rows in production both when this was found and again immediately before applying, so nothing any consumer — including the separate performer app this repo can't audit — was already reading changed. Implemented with a new `SECURITY DEFINER` helper, `is_performer_publicly_visible()`, mirroring the existing `is_booking_confirmed()` pattern; a first attempt using a plain subquery hit a real permission error (anon's column grants on `performers` don't cover the field the filter needs), caught on the test project before it reached production.
+
 ## [v7.8.0] - 2026-07-20
 
 **Database change, already applied to production**, plus a CI tooling fix.
