@@ -1,4 +1,4 @@
-import { fetchPayments, updatePayment, resendPaymentRequest, recordBankTransferPayment, sendEmail, LIST_CAP } from './api.js';
+import { fetchPayments, updatePayment, resendPaymentRequest, recordBankTransferPayment, recordRefund, sendEmail, LIST_CAP } from './api.js';
 import { manualSendPaymentReminder, getEmailFromTemplate } from './shared.js';
 import { showToast, notifyIfTruncated } from './ui.js';
 import { escapeHtml } from './utils.js';
@@ -27,6 +27,10 @@ function setupEventListeners() {
     document.getElementById('btn-cancel-bank-transfer')?.addEventListener('click', closeBankTransferModal);
     document.getElementById('btn-save-bank-transfer')?.addEventListener('click', saveBankTransferPayment);
 
+    document.getElementById('refund-modal-overlay')?.addEventListener('click', closeRefundModal);
+    document.getElementById('btn-cancel-refund')?.addEventListener('click', closeRefundModal);
+    document.getElementById('btn-save-refund')?.addEventListener('click', saveRefund);
+
     // Event delegation for dynamic table/card buttons
     document.body.addEventListener('click', (e) => {
         const reminderBtn = e.target.closest('.btn-reminder');
@@ -50,6 +54,12 @@ function setupEventListeners() {
         const bankTransferBtn = e.target.closest('.btn-record-bank-transfer');
         if (bankTransferBtn) {
             openBankTransferModal(bankTransferBtn.dataset.id);
+            return;
+        }
+
+        const refundBtn = e.target.closest('.btn-record-refund');
+        if (refundBtn) {
+            openRefundModal(refundBtn.dataset.id);
             return;
         }
     });
@@ -78,7 +88,9 @@ function renderTable() {
         const matchesStatus = (statusFilter === 'all') ||
             (statusFilter === 'paid' && r.paid) ||
             (statusFilter === 'unpaid' && !r.paid && !r.awaitingPayment) ||
-            (statusFilter === 'awaiting' && r.awaitingPayment);
+            (statusFilter === 'awaiting' && r.awaitingPayment) ||
+            (statusFilter === 'needs-refund' && r.needsRefundFollowUp) ||
+            (statusFilter === 'refunded' && r.refunded);
         const matchesSearch = (r.business || r.business_name || '').toLowerCase().includes(searchTerm) ||
             (r.owner || r.owner_name || '').toLowerCase().includes(searchTerm);
         return matchesStatus && matchesSearch;
@@ -107,8 +119,14 @@ function renderTable() {
                 paidClass = 'bg-indigo-100 text-indigo-800';
                 paidText = 'AWAITING PAYMENT';
             }
+            // Refunded supersedes PAID: the money came back, so showing a
+            // bare "PAID" badge would actively misrepresent the current state.
+            if (r.refunded) {
+                paidClass = 'bg-amber-100 text-amber-800';
+                paidText = 'REFUNDED';
+            }
 
-            // Get Status Color 
+            // Get Status Color
             let statusColor = 'bg-gray-100 text-gray-800';
             if (CONFIG.UI && CONFIG.UI.STATUS_COLORS && CONFIG.UI.STATUS_COLORS[r.status]) {
                 statusColor = CONFIG.UI.STATUS_COLORS[r.status];
@@ -141,6 +159,14 @@ function renderTable() {
                     <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${paidClass}">
                         ${paidText}
                     </span>
+                    ${r.needsRefundFollowUp ? `
+                        <div class="mt-1 text-[10px] font-bold text-amber-700" title="This booking was cancelled after payment was taken. Decide whether to refund, then record it here.">
+                            ⚠ CANCELLED — REFUND?
+                        </div>` : ''}
+                    ${r.refunded ? `
+                        <div class="mt-1 text-[10px] text-gray-500">
+                            £${Number(r.refund_amount).toFixed(2)} on ${escapeHtml(r.refunded_at ? new Date(r.refunded_at).toLocaleDateString('en-GB') : '')}
+                        </div>` : ''}
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     ${r.date_paid ? new Date(r.date_paid).toLocaleDateString() : '-'}
@@ -162,6 +188,7 @@ function renderTable() {
                     : `
                         <div class="flex items-center justify-end gap-3">
                             ${!r.paid ? `<button data-id="${escapeHtml(r.id)}" class="btn-reminder text-purple-600 hover:text-purple-900 font-bold">Reminder</button>` : ''}
+                            ${r.paid && !r.refunded ? `<button data-id="${escapeHtml(r.id)}" class="btn-record-refund text-amber-600 hover:text-amber-900 font-bold">Refund</button>` : ''}
                             <button data-id="${escapeHtml(r.id)}" class="btn-edit text-blue-600 hover:text-blue-900">Edit</button>
                         </div>
                     `}
@@ -179,6 +206,11 @@ function renderTable() {
             if (r.awaitingPayment) {
                 paidBadgeClass = 'bg-indigo-100 text-indigo-800';
                 paidText = 'AWAITING PAYMENT';
+            }
+            // Same supersede rule as the desktop table above.
+            if (r.refunded) {
+                paidBadgeClass = 'bg-amber-100 text-amber-800';
+                paidText = 'REFUNDED';
             }
             let statusColor = (CONFIG.UI && CONFIG.UI.STATUS_COLORS && CONFIG.UI.STATUS_COLORS[r.status]) || 'bg-gray-100 text-gray-800';
 
@@ -235,6 +267,10 @@ function renderTable() {
                         ${!r.paid ? `
                         <button data-id="${escapeHtml(r.id)}" class="btn-reminder bg-purple-100 text-purple-700 px-3 py-2 rounded-lg text-sm font-semibold hover:bg-purple-200">
                             Reminder
+                        </button>` : ''}
+                        ${r.paid && !r.refunded ? `
+                        <button data-id="${escapeHtml(r.id)}" class="btn-record-refund bg-amber-100 text-amber-700 px-3 py-2 rounded-lg text-sm font-semibold hover:bg-amber-200">
+                            Refund
                         </button>` : ''}
                         <button data-id="${escapeHtml(r.id)}" class="btn-edit bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-700 transition">
                             Edit Payment
@@ -340,6 +376,73 @@ async function saveBankTransferPayment() {
     } finally {
         btn.disabled = false;
         btn.textContent = 'Record Payment & Confirm Booking';
+    }
+}
+
+function openRefundModal(id) {
+    const r = allRecords.find(item => item.id === id);
+    if (!r) return;
+
+    const paidAmount = r.stall_cost != null ? parseFloat(r.stall_cost) : null;
+
+    document.getElementById('refund-modal-id').value = r.id;
+    document.getElementById('refund-modal-booking-display').innerText = `${r.business || r.business_name} (${r.id})`;
+    document.getElementById('refund-modal-paid-display').innerText = paidAmount != null ? `£${paidAmount.toFixed(2)}` : '—';
+    document.getElementById('refund-modal-method-display').innerText =
+        r.payment_method === 'stripe' ? 'Stripe (refund via the Stripe dashboard)'
+            : r.payment_method === 'bank_transfer' ? 'Bank transfer (refund by transferring back)'
+                : 'Unknown';
+
+    // Default to a full refund — the common case — while leaving the field
+    // editable for a partial one.
+    document.getElementById('refund-modal-amount').value = paidAmount != null ? paidAmount.toFixed(2) : '';
+    document.getElementById('refund-modal-reference').value = '';
+    document.getElementById('refund-modal-notes').value = '';
+
+    document.getElementById('refund-modal').classList.remove('hidden');
+}
+
+function closeRefundModal() {
+    document.getElementById('refund-modal').classList.add('hidden');
+}
+
+async function saveRefund() {
+    const id = document.getElementById('refund-modal-id').value;
+    const amount = document.getElementById('refund-modal-amount').value;
+    const reference = document.getElementById('refund-modal-reference').value;
+    const notes = document.getElementById('refund-modal-notes').value;
+
+    if (!reference.trim()) {
+        showToast('Refund reference is required.', 'error');
+        return;
+    }
+
+    const parsedAmount = parseFloat(amount);
+    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+        showToast('Refund amount must be greater than zero.', 'error');
+        return;
+    }
+
+    const btn = document.getElementById('btn-save-refund');
+    btn.disabled = true;
+    btn.textContent = 'Recording...';
+
+    try {
+        await recordRefund({
+            booking_id: id,
+            refund_amount: parsedAmount,
+            refund_reference: reference,
+            notes: notes || null
+        });
+
+        closeRefundModal();
+        showToast('Refund recorded.');
+        await loadData();
+    } catch (err) {
+        showToast('Error recording refund: ' + err.message, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Record Refund';
     }
 }
 

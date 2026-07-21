@@ -93,6 +93,8 @@
                         <option value="paid">Paid</option>
                         <option value="unpaid">Unpaid</option>
                         <option value="awaiting">Awaiting Payment (Stripe)</option>
+                        <option value="needs-refund">⚠ Needs Refund Follow-Up</option>
+                        <option value="refunded">Refunded</option>
                     </select>
                     <input type="text" id="search-input" placeholder="Search business..."
                         class="border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm flex-1">
@@ -285,6 +287,75 @@
                         Record Payment &amp; Confirm Booking
                     </button>
                     <button type="button" id="btn-cancel-bank-transfer"
+                        class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="refund-modal" class="fixed z-10 inset-0 overflow-y-auto hidden" aria-labelledby="refund-modal-title" role="dialog"
+        aria-modal="true">
+        <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div id="refund-modal-overlay" class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"
+                aria-hidden="true"></div>
+            <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+            <!-- `relative z-50` is load-bearing, do not remove — see the identical
+                 comment on the bank-transfer modal above for why. -->
+            <div
+                class="relative z-50 inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+                <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                    <h3 class="text-lg leading-6 font-medium text-gray-900" id="refund-modal-title">Record Refund</h3>
+                    <p class="mt-1 text-sm text-gray-500">
+                        This records a refund that has <strong>already been issued</strong> — it does not move any money
+                        itself. Issue the refund in Stripe or by bank transfer first, then record it here.
+                    </p>
+                    <div class="mt-4 space-y-4">
+                        <input type="hidden" id="refund-modal-id">
+
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Booking</label>
+                            <div id="refund-modal-booking-display" class="mt-1 text-sm text-gray-900 bg-gray-50 p-2 rounded border border-gray-200"></div>
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Amount Paid</label>
+                            <div id="refund-modal-paid-display" class="mt-1 text-sm text-gray-900 bg-gray-50 p-2 rounded border border-gray-200"></div>
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Payment Method</label>
+                            <div id="refund-modal-method-display" class="mt-1 text-sm text-gray-900 bg-gray-50 p-2 rounded border border-gray-200"></div>
+                        </div>
+
+                        <div>
+                            <label for="refund-modal-amount" class="block text-sm font-medium text-gray-700">Refund Amount (£)</label>
+                            <input type="number" step="0.01" min="0.01" id="refund-modal-amount"
+                                class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border p-2">
+                            <p class="mt-1 text-xs text-gray-400">Defaults to the full amount paid — reduce it for a partial refund.</p>
+                        </div>
+
+                        <div>
+                            <label for="refund-modal-reference" class="block text-sm font-medium text-gray-700">Refund Reference</label>
+                            <input type="text" id="refund-modal-reference"
+                                class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border p-2">
+                            <p class="mt-1 text-xs text-gray-400">The Stripe refund ID (re_…) or the bank reference used for the transfer back.</p>
+                        </div>
+
+                        <div>
+                            <label for="refund-modal-notes" class="block text-sm font-medium text-gray-700">Notes</label>
+                            <textarea id="refund-modal-notes" rows="2"
+                                class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border p-2"></textarea>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+                    <button type="button" id="btn-save-refund"
+                        class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-amber-600 text-base font-medium text-white hover:bg-amber-700 focus:outline-none sm:ml-3 sm:w-auto sm:text-sm">
+                        Record Refund
+                    </button>
+                    <button type="button" id="btn-cancel-refund"
                         class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">
                         Cancel
                     </button>

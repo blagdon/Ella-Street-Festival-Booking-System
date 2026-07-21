@@ -334,12 +334,29 @@ export async function fetchPayments(currentInstance) {
     // way or another) — unchanged from the original behavior.
     const withPaymentRow = bookings.filter(b => payMap.has(b.id)).map(b => {
         const p = payMap.get(b.id);
+        const refunded = p.refund_amount != null;
         return {
             ...b,
             paid: p.paid,
             date_paid: p.date_paid,
             bank_ref: p.bank_ref,
             editor: p.editor,
+            payment_method: p.payment_method,
+            refunded,
+            refund_amount: p.refund_amount,
+            refunded_at: p.refunded_at,
+            refunded_by: p.refunded_by,
+            refund_reference: p.refund_reference,
+            // A cancelled booking whose payment was taken and never refunded
+            // needs a human to decide what happens to the money. Derived
+            // rather than stored: it's a function of state that's already
+            // recorded, so there's no flag to set, forget to clear, or let
+            // drift out of sync with the payment/booking rows it describes.
+            // Self-service cancellation deliberately still succeeds for a
+            // paid booking (blocking it would strand the trader with no way
+            // to cancel at all) — this is how the admin finds out they need
+            // to act.
+            needsRefundFollowUp: p.paid === true && !refunded && b.status === 'Cancelled',
         };
     });
 
@@ -457,6 +474,44 @@ export async function recordBankTransferPayment(payload) {
     await auditLog('bank_transfer_recorded', payload.booking_id, { payment_reference: reference, notes });
     await auditLog('bank_transfer_verified', payload.booking_id, { payment_reference: reference });
     await auditLog('booking_auto_confirmed_bank_transfer', payload.booking_id, { payment_reference: reference });
+
+    return { status: 'success' };
+}
+
+/**
+ * Records a refund that has ALREADY happened elsewhere — in the Stripe
+ * dashboard, or as a manual bank transfer back to the trader. This moves no
+ * money itself; it writes the refund into the payments row so the app's
+ * record matches reality.
+ *
+ * The refunded_by identity is deliberately NOT sent from here — the RPC
+ * derives it from the caller's JWT, the same way verified_by works for bank
+ * transfers, so an admin can't attribute a refund to someone else.
+ * @param {{booking_id: string, refund_amount: number|string, refund_reference: string, notes?: string}} payload
+ */
+export async function recordRefund(payload) {
+    validateBookingId(payload.booking_id);
+
+    const reference = validateString(payload.refund_reference, MAX_FIELD_LENGTHS.bank_ref);
+    if (!reference.trim()) throw new Error('Refund reference is required.');
+
+    const amount = parseFloat(payload.refund_amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+        throw new Error('Refund amount must be a number greater than zero.');
+    }
+
+    const notes = payload.notes ? validateString(payload.notes, MAX_FIELD_LENGTHS.note) : null;
+
+    const sb = getSupabaseClient();
+    const { error } = await sb.rpc('rpc_record_refund', {
+        p_booking_id: payload.booking_id,
+        p_refund_amount: amount,
+        p_refund_reference: reference,
+        p_notes: notes
+    });
+    if (error) throw error;
+
+    await auditLog('refund_recorded', payload.booking_id, { refund_amount: amount, refund_reference: reference, notes });
 
     return { status: 'success' };
 }
