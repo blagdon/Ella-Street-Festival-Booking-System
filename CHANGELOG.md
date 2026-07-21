@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented in this file.
 
+## [v7.10.0] - 2026-07-21
+
+**New feature — database changes and two Edge Function deploys, already applied to production.**
+
+### Added
+
+- **Refunds.** Previously there was no refund support of any kind: no UI, no API call, and no columns to record one — a trader who cancelled after paying meant a manual Stripe-dashboard refund with nothing recorded in the app. Now:
+  - **Record a refund** against any paid booking from the Payments page, for either payment method. Supports **partial refunds** (e.g. a late cancellation refunded at 50%). The actor is derived server-side from the admin's session rather than trusted from the browser, and an external reference (Stripe refund ID or bank reference) is required.
+  - **Issue Stripe refunds directly** from the app via a new `refund-payment` Edge Function, behind an explicit confirmation naming the amount, since it moves real money irreversibly. Bank transfers stay record-only — there is no API that moves that money back, so the asymmetry is inherent to the payment methods.
+  - **Refunds issued in the Stripe dashboard now reconcile automatically** via a new `charge.refunded` webhook handler, closing the "refunded externally, app never finds out" gap that a record-only flow can't cover on its own.
+- **A booking cancelled after payment is now flagged for follow-up.** `cancel_booking_secure()` allows cancelling a `Confirmed` booking and never touched `payments`, so a paid booking could be cancelled with its payment row still reading `paid = true` and no refund trail — a live gap independent of refunds. Self-service cancellation deliberately still succeeds (blocking it would strand the trader with no way to cancel), but the Payments page now shows a **⚠ CANCELLED — REFUND?** flag, plus filters for it and for refunded bookings. Derived from existing state rather than stored, so there is no flag to set, forget to clear, or let drift.
+
 ## [v7.9.0] - 2026-07-21
 
 **Database change, already applied to production.**
