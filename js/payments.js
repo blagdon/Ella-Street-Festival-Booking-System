@@ -1,6 +1,6 @@
-import { fetchPayments, updatePayment, resendPaymentRequest, recordBankTransferPayment, recordRefund, sendEmail, LIST_CAP } from './api.js';
+import { fetchPayments, updatePayment, resendPaymentRequest, recordBankTransferPayment, recordRefund, refundStripePayment, sendEmail, LIST_CAP } from './api.js';
 import { manualSendPaymentReminder, getEmailFromTemplate } from './shared.js';
-import { showToast, notifyIfTruncated } from './ui.js';
+import { showToast, showConfirm, notifyIfTruncated } from './ui.js';
 import { escapeHtml } from './utils.js';
 import { CONFIG } from './config.js';
 
@@ -384,14 +384,36 @@ function openRefundModal(id) {
     if (!r) return;
 
     const paidAmount = r.stall_cost != null ? parseFloat(r.stall_cost) : null;
+    // Only a Stripe payment with a recorded payment intent can be refunded
+    // through the API — everything else is record-only, because there is no
+    // API that moves the money back.
+    const isStripe = r.payment_method === 'stripe' && !!r.stripe_payment_intent_id;
 
     document.getElementById('refund-modal-id').value = r.id;
     document.getElementById('refund-modal-booking-display').innerText = `${r.business || r.business_name} (${r.id})`;
     document.getElementById('refund-modal-paid-display').innerText = paidAmount != null ? `£${paidAmount.toFixed(2)}` : '—';
     document.getElementById('refund-modal-method-display').innerText =
-        r.payment_method === 'stripe' ? 'Stripe (refund via the Stripe dashboard)'
-            : r.payment_method === 'bank_transfer' ? 'Bank transfer (refund by transferring back)'
+        r.payment_method === 'stripe' ? 'Stripe' + (isStripe ? '' : ' (no payment intent recorded — manual refund only)')
+            : r.payment_method === 'bank_transfer' ? 'Bank transfer'
                 : 'Unknown';
+
+    const intro = document.getElementById('refund-modal-intro');
+    const refWrap = document.getElementById('refund-modal-reference-wrap');
+    const saveBtn = document.getElementById('btn-save-refund');
+
+    if (isStripe) {
+        intro.innerText = 'This will issue a REAL refund through Stripe immediately, then record it. The money goes back to the trader\'s card.';
+        intro.className = 'mt-1 text-sm text-amber-700 font-medium';
+        // Stripe generates the refund id — asking the admin for one would be
+        // meaningless, and the RPC gets it from the API response instead.
+        refWrap.classList.add('hidden');
+        saveBtn.textContent = 'Issue Refund via Stripe';
+    } else {
+        intro.innerText = 'This records a refund that has already been issued — it does not move any money itself. Transfer the money back first, then record it here.';
+        intro.className = 'mt-1 text-sm text-gray-500';
+        refWrap.classList.remove('hidden');
+        saveBtn.textContent = 'Record Refund';
+    }
 
     // Default to a full refund — the common case — while leaving the field
     // editable for a partial one.
@@ -412,7 +434,12 @@ async function saveRefund() {
     const reference = document.getElementById('refund-modal-reference').value;
     const notes = document.getElementById('refund-modal-notes').value;
 
-    if (!reference.trim()) {
+    const r = allRecords.find(item => item.id === id);
+    const isStripe = r && r.payment_method === 'stripe' && !!r.stripe_payment_intent_id;
+
+    // Only the record-only path needs a reference from the admin — Stripe
+    // supplies its own refund id.
+    if (!isStripe && !reference.trim()) {
         showToast('Refund reference is required.', 'error');
         return;
     }
@@ -423,26 +450,56 @@ async function saveRefund() {
         return;
     }
 
+    // Issuing a real refund is irreversible, so it gets an explicit
+    // confirmation naming the amount — recording one doesn't, since that only
+    // writes a row that can be corrected. showConfirm is callback-based (not
+    // promise-returning), so the actual work is deferred into the callback
+    // rather than awaited.
+    if (isStripe) {
+        showConfirm(
+            'Issue Stripe refund?',
+            `This will immediately refund £${parsedAmount.toFixed(2)} to the trader's card via Stripe. This cannot be undone from here.`,
+            () => performRefund(id, parsedAmount, reference, notes, true)
+        );
+        return;
+    }
+
+    await performRefund(id, parsedAmount, reference, notes, false);
+}
+
+async function performRefund(id, parsedAmount, reference, notes, isStripe) {
     const btn = document.getElementById('btn-save-refund');
+    const originalLabel = btn.textContent;
+
     btn.disabled = true;
-    btn.textContent = 'Recording...';
+    btn.textContent = isStripe ? 'Refunding...' : 'Recording...';
 
     try {
-        await recordRefund({
-            booking_id: id,
-            refund_amount: parsedAmount,
-            refund_reference: reference,
-            notes: notes || null
-        });
+        if (isStripe) {
+            const result = await refundStripePayment({
+                booking_id: id,
+                amount: parsedAmount,
+                notes: notes || null
+            });
+            closeRefundModal();
+            showToast(`Refund of £${parsedAmount.toFixed(2)} issued via Stripe (${result?.refund_id || 'no id returned'}).`);
+        } else {
+            await recordRefund({
+                booking_id: id,
+                refund_amount: parsedAmount,
+                refund_reference: reference,
+                notes: notes || null
+            });
+            closeRefundModal();
+            showToast('Refund recorded.');
+        }
 
-        closeRefundModal();
-        showToast('Refund recorded.');
         await loadData();
     } catch (err) {
-        showToast('Error recording refund: ' + err.message, 'error');
+        showToast('Refund failed: ' + err.message, 'error');
     } finally {
         btn.disabled = false;
-        btn.textContent = 'Record Refund';
+        btn.textContent = originalLabel;
     }
 }
 

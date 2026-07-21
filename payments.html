@@ -306,11 +306,8 @@
             <div
                 class="relative z-50 inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
                 <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
-                    <h3 class="text-lg leading-6 font-medium text-gray-900" id="refund-modal-title">Record Refund</h3>
-                    <p class="mt-1 text-sm text-gray-500">
-                        This records a refund that has <strong>already been issued</strong> — it does not move any money
-                        itself. Issue the refund in Stripe or by bank transfer first, then record it here.
-                    </p>
+                    <h3 class="text-lg leading-6 font-medium text-gray-900" id="refund-modal-title">Refund</h3>
+                    <p class="mt-1 text-sm" id="refund-modal-intro"></p>
                     <div class="mt-4 space-y-4">
                         <input type="hidden" id="refund-modal-id">
 
@@ -336,11 +333,11 @@
                             <p class="mt-1 text-xs text-gray-400">Defaults to the full amount paid — reduce it for a partial refund.</p>
                         </div>
 
-                        <div>
+                        <div id="refund-modal-reference-wrap">
                             <label for="refund-modal-reference" class="block text-sm font-medium text-gray-700">Refund Reference</label>
                             <input type="text" id="refund-modal-reference"
                                 class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border p-2">
-                            <p class="mt-1 text-xs text-gray-400">The Stripe refund ID (re_…) or the bank reference used for the transfer back.</p>
+                            <p class="mt-1 text-xs text-gray-400">The bank reference used for the transfer back.</p>
                         </div>
 
                         <div>

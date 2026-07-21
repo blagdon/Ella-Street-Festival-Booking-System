@@ -224,6 +224,128 @@ describe('rpc_record_refund authorization', () => {
   });
 });
 
+describe('refund-payment Edge Function (guard rails only — never issues a real refund here)', () => {
+  // Every test below asserts a REJECTION. None reaches stripe.refunds.create(),
+  // deliberately: the test project has only Test-mode keys, but issuing even a
+  // test-mode refund would require first creating a real charge to refund, and
+  // an automated suite that can move money — in any mode — is not something
+  // worth having. The success path is covered by rpc_record_refund's own tests
+  // (the function calls that RPC to record its result) plus manual
+  // verification against Stripe Test mode.
+  async function callRefund(body, token) {
+    const res = await fetch(`${url}/functions/v1/refund-payment`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, apikey: anonKey },
+      body: JSON.stringify(body),
+    });
+    return { status: res.status, json: await res.json().catch(() => ({})) };
+  }
+
+  let adminToken;
+  before(async () => {
+    const { data } = await authed.auth.getSession();
+    adminToken = data.session.access_token;
+  });
+
+  test('rejects an unauthenticated caller', async () => {
+    const { status } = await callRefund({ booking_id: `${PREFIX}-0001` }, anonKey);
+    assert.equal(status, 401);
+  });
+
+  test('rejects a booking with no recorded payment', async () => {
+    const id = `${PREFIX}-0010`;
+    await seedPaidBooking(id, { paid: false });
+    const { status, json } = await callRefund({ booking_id: id }, adminToken);
+    assert.equal(status, 409, JSON.stringify(json));
+    assert.match(json.error, /no recorded payment/i);
+  });
+
+  test('refuses to auto-refund a bank transfer, directing the admin to the manual path', async () => {
+    const id = `${PREFIX}-0011`;
+    await seedPaidBooking(id, { method: 'bank_transfer' });
+    const { status, json } = await callRefund({ booking_id: id }, adminToken);
+    assert.equal(status, 409, JSON.stringify(json));
+    assert.match(json.error, /Only Stripe payments can be refunded automatically/i);
+  });
+
+  test('refuses a Stripe payment with no payment intent recorded', async () => {
+    const id = `${PREFIX}-0012`;
+    await seedPaidBooking(id, { method: 'stripe' }); // seeds no stripe_payment_intent_id
+    const { status, json } = await callRefund({ booking_id: id }, adminToken);
+    assert.equal(status, 409, JSON.stringify(json));
+    assert.match(json.error, /no Stripe payment intent/i);
+  });
+
+  test('refuses an already-refunded booking BEFORE calling Stripe', async () => {
+    const id = `${PREFIX}-0013`;
+    await seedPaidBooking(id, { method: 'stripe' });
+    await service.from('bookings').update({ stripe_payment_intent_id: 'pi_test_already' }).eq('id', id);
+    await service.from('payments').update({ refund_amount: 50, refunded_at: new Date().toISOString() }).eq('booking_id', id);
+
+    const { status, json } = await callRefund({ booking_id: id }, adminToken);
+    assert.equal(status, 409, JSON.stringify(json));
+    assert.match(json.error, /already been refunded/i);
+  });
+
+  test('rejects a refund larger than the booking cost before calling Stripe', async () => {
+    const id = `${PREFIX}-0014`;
+    await seedPaidBooking(id, { stallCost: 100, method: 'stripe' });
+    await service.from('bookings').update({ stripe_payment_intent_id: 'pi_test_toobig' }).eq('id', id);
+
+    const { status, json } = await callRefund({ booking_id: id, amount: 500 }, adminToken);
+    assert.equal(status, 400, JSON.stringify(json));
+    assert.match(json.error, /exceeds the booking cost/i);
+  });
+
+  test('returns 404 for a booking that does not exist', async () => {
+    const { status } = await callRefund({ booking_id: `${PREFIX}-9998` }, adminToken);
+    assert.equal(status, 404);
+  });
+});
+
+describe('webhook reconciliation path (rpc_record_refund as service_role)', () => {
+  test('a service_role caller may attribute the refund to Stripe, unlike an admin', async () => {
+    // This is the charge.refunded path: no auth.uid(), so p_refunded_by is
+    // honoured. The admin equivalent of this is asserted to be IGNORED above,
+    // which is the distinction that matters.
+    const id = `${PREFIX}-0020`;
+    await seedPaidBooking(id, { method: 'stripe' });
+
+    const { error } = await service.rpc('rpc_record_refund', {
+      p_booking_id: id,
+      p_refund_amount: 100,
+      p_refund_reference: 're_from_webhook',
+      p_notes: 'Recorded automatically from Stripe charge.refunded.',
+      p_refunded_by: 'Stripe (automatic)',
+    });
+    assert.equal(error, null, error?.message);
+
+    const { data } = await service.from('payments').select('refunded_by, refund_reference').eq('booking_id', id).single();
+    assert.equal(data.refunded_by, 'Stripe (automatic)');
+    assert.equal(data.refund_reference, 're_from_webhook');
+  });
+
+  test('a duplicate webhook delivery is rejected as already-refunded, which the webhook treats as success', async () => {
+    // The webhook special-cases this exact message rather than 500ing, so a
+    // Stripe retry (or the API-initiated refund's own webhook arriving after
+    // refund-payment already recorded it) doesn't loop forever.
+    const id = `${PREFIX}-0021`;
+    await seedPaidBooking(id, { method: 'stripe' });
+
+    const args = {
+      p_booking_id: id, p_refund_amount: 100, p_refund_reference: 're_dup',
+      p_notes: null, p_refunded_by: 'Stripe (automatic)',
+    };
+    const { error: firstErr } = await service.rpc('rpc_record_refund', args);
+    assert.equal(firstErr, null, firstErr?.message);
+
+    const { error: secondErr } = await service.rpc('rpc_record_refund', args);
+    assert.ok(secondErr, 'the second delivery must be rejected');
+    assert.match(secondErr.message, /already been refunded/i,
+      'the webhook matches on this exact wording to distinguish a benign duplicate from a real failure');
+  });
+});
+
 describe('the payments_refund_requires_payment constraint', () => {
   test('the database itself rejects a refund on an unpaid row, not just the RPC', async () => {
     // Guards the case the RPC does not cover: a direct write by

@@ -517,6 +517,49 @@ export async function recordRefund(payload) {
 }
 
 /**
+ * Issues a REAL Stripe refund via the refund-payment Edge Function, which
+ * records it on success. Unlike recordRefund() above, this moves money.
+ *
+ * Only valid for payment_method === 'stripe' — a bank transfer has no API to
+ * call, so those use recordRefund() after the admin moves the money manually.
+ * @param {{booking_id: string, amount?: number, notes?: string}} payload
+ */
+export async function refundStripePayment(payload) {
+    validateBookingId(payload.booking_id);
+    const sb = getSupabaseClient();
+
+    const { data, error } = await sb.functions.invoke('refund-payment', {
+        body: {
+            booking_id: payload.booking_id,
+            amount: payload.amount ?? null,
+            notes: payload.notes || null
+        }
+    });
+
+    // A non-2xx surfaces as a FunctionsHttpError whose .message is the generic
+    // "non-2xx status code" — the actual reason ("already refunded", "not a
+    // Stripe payment") is in the body, and for a money operation the admin
+    // needs the real one. Same treatment as retryQueuedEmail().
+    if (error) {
+        let message = error.message;
+        try {
+            const body = await error.context?.json();
+            if (body?.error) message = body.error;
+        } catch { /* keep the generic message if the body isn't readable */ }
+        throw new Error(message);
+    }
+    if (data && data.error) throw new Error(data.error);
+
+    await auditLog('refund_issued_stripe', payload.booking_id, {
+        refund_amount: data?.refund_amount,
+        refund_id: data?.refund_id,
+        mode: data?.mode
+    });
+
+    return data;
+}
+
+/**
  * Fetches location data including bookings, locations, and global occupancy.
  * @param {string} currentInstance 
  */

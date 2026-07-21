@@ -209,6 +209,69 @@ Deno.serve(async (req) => {
           }
         }
       }
+    } else if (event.type === 'charge.refunded') {
+      // Reconciliation, not initiation: this fires for refunds issued in the
+      // Stripe dashboard AND for ones the refund-payment function issued via
+      // the API. Handling it is what closes the "admin refunds in Stripe, the
+      // app never finds out" hole — the exact failure mode a record-only
+      // refund flow is vulnerable to.
+      const charge = event.data.object
+      const paymentIntentId: string | null = typeof charge.payment_intent === 'string'
+        ? charge.payment_intent
+        : (charge.payment_intent?.id || null)
+
+      if (!paymentIntentId) {
+        console.warn(`charge.refunded (event ${event.id}) has no payment_intent — cannot map it to a booking, acknowledging without action.`)
+      } else {
+        // The booking is found by the payment intent recorded when the
+        // payment succeeded, which is the only durable link between a Stripe
+        // charge and a booking here (charge metadata isn't guaranteed to
+        // carry booking_id, since the refund may be created in the dashboard
+        // rather than by our own API call).
+        const { data: booking, error: lookupErr } = await supabaseAdmin
+          .from('bookings')
+          .select('id')
+          .eq('stripe_payment_intent_id', paymentIntentId)
+          .maybeSingle()
+
+        if (lookupErr) throw new Error('Failed to look up booking by payment intent: ' + lookupErr.message)
+
+        if (!booking) {
+          console.warn(`charge.refunded (event ${event.id}) for payment_intent ${paymentIntentId} matched no booking — acknowledging without action.`)
+        } else {
+          // Stripe reports amounts in the smallest currency unit (pence);
+          // stall_cost and refund_amount are in pounds.
+          const refundedAmount = (charge.amount_refunded ?? 0) / 100
+          const refundId: string = charge.refunds?.data?.[0]?.id || charge.id
+
+          const { error: refundErr } = await supabaseAdmin.rpc('rpc_record_refund', {
+            p_booking_id: booking.id,
+            p_refund_amount: refundedAmount,
+            p_refund_reference: refundId,
+            p_notes: `Recorded automatically from Stripe ${event.type} (event ${event.id}).`,
+            // No auth.uid() on a service_role call, so the RPC honours this
+            // attribution — mirrors the 'Stripe (automatic)' convention the
+            // payments.editor column already uses for automated payments.
+            p_refunded_by: 'Stripe (automatic)'
+          })
+
+          if (refundErr) {
+            // Already-refunded is the EXPECTED path when refund-payment
+            // initiated this refund itself: that function records the refund
+            // synchronously, then Stripe delivers this webhook moments later
+            // for the same refund. Treating that as an error would make every
+            // API-initiated refund log a spurious failure and return 500,
+            // which would make Stripe retry it indefinitely.
+            if (/already been refunded/i.test(refundErr.message)) {
+              console.log(`charge.refunded (event ${event.id}): booking ${booking.id} already has this refund recorded — nothing to do.`)
+            } else {
+              throw new Error('rpc_record_refund failed: ' + refundErr.message)
+            }
+          } else {
+            console.log(`Recorded refund of ${refundedAmount} for booking ${booking.id} from Stripe event ${event.id}.`)
+          }
+        }
+      }
     } else if (event.type === 'checkout.session.expired' || event.type === 'payment_intent.payment_failed') {
       // No DB writes needed — the booking is already correctly sitting at
       // 'Payment Requested' (see the migration's comments on why there's no
