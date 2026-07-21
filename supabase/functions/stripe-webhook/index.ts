@@ -1,7 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import Stripe from 'https://esm.sh/stripe@17.5.0?target=deno'
 import { sendViaZoho } from '../_shared/zoho.ts'
-import { getStripeWebhookSecret, loadStripeSettings } from '../_shared/stripe.ts'
+import { getStripeClient, getStripeWebhookSecret, loadStripeSettings, type StripeMode } from '../_shared/stripe.ts'
 import { escapeHtml } from '../_shared/format.ts'
 
 /**
@@ -144,10 +144,16 @@ Deno.serve(async (req) => {
   // supports registering the same URL separately under each dashboard,
   // each producing its own signing secret) — try both configured secrets.
   let event: any = null
+  // Which mode's secret actually verified the signature. That identifies the
+  // Stripe account this event came from, so any follow-up API call made while
+  // handling it (see charge.refunded below) uses the matching key — querying
+  // live Stripe about a test-mode object, or vice versa, just 404s.
+  let verifiedMode: StripeMode = 'test'
   for (const mode of ['test', 'live'] as const) {
     try {
       const secret = getStripeWebhookSecret(mode, stripeSettings)
       event = await stripeForVerification.webhooks.constructEventAsync(rawBody, signature, secret, undefined, cryptoProvider)
+      verifiedMode = mode
       break
     } catch (_e) {
       // Wrong secret for this event, or that mode's secret isn't
@@ -242,7 +248,33 @@ Deno.serve(async (req) => {
           // Stripe reports amounts in the smallest currency unit (pence);
           // stall_cost and refund_amount are in pounds.
           const refundedAmount = (charge.amount_refunded ?? 0) / 100
-          const refundId: string = charge.refunds?.data?.[0]?.id || charge.id
+
+          // Getting the actual refund id (re_...) takes an API call, because
+          // the event does not carry one. `charge.refunds` is ABSENT from the
+          // charge.refunded payload on current API versions (verified live on
+          // 2026-07-21 against 2026-06-24.dahlia: no `refunds`, no
+          // `latest_refund`), so the previous `charge.refunds?.data?.[0]?.id
+          // || charge.id` was not a defensive fallback — the `|| charge.id`
+          // branch was the ONLY one that ever ran, and every dashboard refund
+          // recorded a CHARGE id in a column documented to hold a refund id.
+          //
+          // The embedded list is still checked first so that an API version
+          // which does include it costs no extra round trip. charge.id remains
+          // the last resort: recording a refund against a slightly weaker
+          // reference is far better than failing the webhook and leaving the
+          // refund unrecorded entirely, which is the hole this handler exists
+          // to close.
+          let refundId: string = charge.refunds?.data?.[0]?.id || ''
+          if (!refundId) {
+            try {
+              const stripeApi = getStripeClient(verifiedMode, stripeSettings)
+              const refunds = await stripeApi.refunds.list({ charge: charge.id, limit: 1 })
+              refundId = refunds.data?.[0]?.id || ''
+            } catch (e: any) {
+              console.warn(`charge.refunded (event ${event.id}): could not look up the refund id for charge ${charge.id}, falling back to the charge id:`, e?.message)
+            }
+          }
+          if (!refundId) refundId = charge.id
 
           const { error: refundErr } = await supabaseAdmin.rpc('rpc_record_refund', {
             p_booking_id: booking.id,
