@@ -9,11 +9,20 @@
 > verification first, and the short list that needs an explicit instruction every
 > time. Default to acting.
 > Last updated: 2026-07-21.
-> Current release: **v7.10.0** (tagged 2026-07-21; **new feature — database
-> changes and two Edge Function deploys, applied to production**: refunds, plus
-> a follow-up flag for bookings cancelled after payment — see
+> Current release: **v7.10.1** (tagged 2026-07-21; frontend + CI only — rebuilt
+> the committed `css/output.css`, without which v7.10.0's refund button rendered
+> **invisible** in production, plus a new `css-build-check` CI job so that class
+> of bug can't recur. Read the Gotchas entry on
+> `css/output.css` being a committed build artefact before adding any Tailwind
+> class the project hasn't used before. Also added the
+> [Stripe go-live checklist](#-going-live-with-real-stripe-payments--checklist-not-yet-done)
+> — **production currently takes no real card payments**, which is deliberate
+> but was not written down anywhere until now.)
+> v7.10.0 was the refunds feature (**database changes and two Edge Function
+> deploys, applied to production**), plus a follow-up flag for bookings
+> cancelled after payment — see
 > [Next Steps](#8-next-steps) item 64, and note the one manual Stripe Dashboard
-> step it needs before dashboard-issued refunds auto-reconcile).
+> step it needs before dashboard-issued refunds auto-reconcile.
 > v7.9.0 scoped anon's `schedules` access to Scheduled/Paid performers
 > — see [Next Steps](#8-next-steps) item 63, which closes the last of item 58's
 > three deferred findings, and the new Gotchas entry on why a

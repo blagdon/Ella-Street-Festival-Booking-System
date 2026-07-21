@@ -4,3 +4,10 @@
 # falsely diff its LF database dump against a CRLF snapshot file.
 *.sh text eol=lf
 rls_grants_snapshot.txt text eol=lf
+# css/output.css for the same class of reason: it is a committed build
+# artefact, and CI's css-build-check rebuilds it and diffs against the
+# committed copy. Tailwind always writes LF, so a CRLF checkout makes a
+# local rebuild-and-diff report all ~2950 lines as changed when nothing
+# about the content differs at all. CI (Linux, no autocrlf) was never
+# affected - this is purely so the same check behaves sanely on Windows.
+css/output.css text eol=lf

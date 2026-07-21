@@ -2,6 +2,20 @@
 
 All notable changes to this project are documented in this file.
 
+## [v7.10.1] - 2026-07-21
+
+### Fixed
+
+- **The refund button added in v7.10.0 was invisible in production.** It was present, clickable and correctly wired, but rendered as white text on a transparent background — the amber colours it used had never been used anywhere else in the project, and `css/output.css` is a *committed build artefact* (there is no build step at deploy time; the file is served as-is). Tailwind only compiles classes it finds when scanning the source, so without a rebuild the markup referenced CSS rules that did not exist. Rebuilding is purely additive; it also restored `disabled:cursor-not-allowed`, which had been missing since the Email Queue Retry button in v7.1.0 and gone unnoticed.
+
+### CI
+
+- **New `css-build-check` job** rebuilds Tailwind and fails if the committed `css/output.css` is stale. `git status` cannot catch this class of bug, because the stale file *is* committed and the working tree is therefore clean — and the failure is silent at runtime, since a class with no rule renders as nothing at all rather than erroring. Verified to fail on a genuinely stale file and pass on a fresh one.
+
+### Documentation
+
+- **Added a Stripe go-live checklist**, recording that production currently takes **no real card payments** (`stripe_test_mode` is `'true'` and the live credentials are unset — a coherent state, not a broken one, but not previously written down). Covers the three steps needed to go live and why their order matters: flipping the toggle before setting the live key makes payment collection throw by design. Also notes the Live-mode webhook endpoint must enable the same events as the Test-mode one, `charge.refunded` included, or dashboard-issued refunds silently stop reconciling.
+
 ## [v7.10.0] - 2026-07-21
 
 **New feature — database changes and two Edge Function deploys, already applied to production.**
