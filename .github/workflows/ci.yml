@@ -38,6 +38,45 @@ jobs:
       - name: Sibling-call and innerHTML-escaping guards
         run: bash .githooks/pre-commit
 
+  # css/output.css is a BUILD ARTEFACT that is committed to the repo (there is
+  # no build step at deploy time - Vercel serves the committed file directly).
+  # Tailwind only emits classes it finds by scanning the source, so introducing
+  # a class the project has never used before and forgetting `npm run build:css`
+  # ships markup referencing CSS that does not exist.
+  #
+  # That failure is SILENT and can be invisible rather than merely unstyled:
+  # on 2026-07-21 a new `bg-amber-600 text-white` button rendered as white text
+  # on a transparent background - the refund button was there, clickable, and
+  # completely unreadable. The same rebuild also revealed
+  # `disabled:cursor-not-allowed` had been missing since v7.1.0's Retry button,
+  # unnoticed for days.
+  #
+  # Rebuilding and diffing is the only reliable check: `git status` alone won't
+  # catch it, because the stale file is committed and therefore clean.
+  css-build-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - run: npm install
+      - name: Rebuild Tailwind and fail if the committed CSS is stale
+        run: |
+          cp css/output.css /tmp/output.css.committed
+          npm run build:css
+          if ! diff -q /tmp/output.css.committed css/output.css > /dev/null; then
+            echo "::error::css/output.css is stale - run 'npm run build:css' and commit the result."
+            echo ""
+            echo "Classes used in the source but missing from the committed CSS render as"
+            echo "nothing at all, which for a coloured button means invisible, not unstyled."
+            echo ""
+            echo "Diff (committed -> freshly built):"
+            diff /tmp/output.css.committed css/output.css || true
+            exit 1
+          fi
+          echo "OK: css/output.css matches a fresh build."
+
   # Read-only schema dump against the LIVE project, diffed against the
   # checked-in rls_grants_snapshot.txt. Never writes anything - same
   # operation done manually via `supabase db dump` throughout this repo's
