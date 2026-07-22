@@ -711,7 +711,7 @@ export async function updateBookingDetails(payload) {
     const { error } = await sb.from(TBL_BOOKINGS).update({
         business_name: validateString(payload.business, MAX_FIELD_LENGTHS.business),
         owner_name: validateString(payload.owner, MAX_FIELD_LENGTHS.owner),
-        email: validateEmail(payload.email),
+        email: payload.email ? validateEmail(payload.email) : null,
         phone: validateString(payload.phone, MAX_FIELD_LENGTHS.phone),
         category: validateString(payload.category, MAX_FIELD_LENGTHS.category),
         description: validateString(payload.description, MAX_FIELD_LENGTHS.description),
