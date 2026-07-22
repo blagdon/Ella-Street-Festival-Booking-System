@@ -281,6 +281,25 @@ function populateBasicFields(item) {
     setTxt('d-email', item.email);
     setTxt('d-phone', item.phone || "Not provided");
     setTxt('d-address', item.house || item.address || "N/A");
+
+    const websiteEl = document.getElementById('d-website');
+    if (websiteEl) {
+        const website = (item.website || '').trim();
+        if (!website) {
+            websiteEl.innerText = 'Not provided';
+        } else {
+            // Same fallback shape as the document-link rendering below:
+            // sanitizeUrl() only returns a value for http(s)/mailto - anything
+            // else (bare text, a stray "javascript:" attempt) still shows the
+            // trader's input, just as plain escaped text rather than a clickable
+            // href, since the raw value must never be trusted as one.
+            const safeUrl = sanitizeUrl(website);
+            websiteEl.innerHTML = safeUrl
+                ? `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-800 hover:underline">${escapeHtml(website)}</a>`
+                : escapeHtml(website);
+        }
+    }
+
     setTxt('d-category', item.category);
     setTxt('d-stalltype', item.stall_type);
 
