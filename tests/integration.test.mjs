@@ -465,3 +465,32 @@ describe('queue-bulk-email', () => {
     assert.notEqual(rows[0].status, 'Pending', 'expected the drain loop to have picked it up (not still Pending)');
   });
 });
+
+describe('bookings.check_email_format', () => {
+  // Regression coverage for the bug where updateBookingDetails() sent
+  // validateEmail('') (empty string) instead of null for a blank email.
+  // Postgres CHECK constraints pass on NULL but evaluate the regex against
+  // '', so the same update that insertMiscBooking() already handles
+  // correctly (email: null) failed here until js/api.js was fixed to mirror
+  // that null fallback.
+  test('accepts null but rejects an empty string on update', async () => {
+    const bookingId = 'ESF26-TESTNULLEMAIL-0001';
+    createdBookingIds.push(bookingId);
+
+    await service.from('bookings').insert({
+      id: bookingId,
+      status: 'Confirmed',
+      business_name: 'Null Email Test',
+      owner_name: 'Test',
+      email: null,
+      instance_prefix: 'ESF26-MISC-',
+      stall_type: 'Misc',
+    });
+
+    const { error: nullErr } = await service.from('bookings').update({ email: null, business_name: 'Null Email Test Updated' }).eq('id', bookingId);
+    assert.equal(nullErr, null, `updating with email: null should succeed: ${nullErr?.message}`);
+
+    const { error: emptyErr } = await service.from('bookings').update({ email: '' }).eq('id', bookingId);
+    assert.ok(emptyErr, 'expected check_email_format to reject an empty string email');
+  });
+});
