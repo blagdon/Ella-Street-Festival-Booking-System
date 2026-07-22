@@ -164,7 +164,16 @@ export function initMap() {
             maxZoom: 19
         }).addTo(map);
 
-        markersLayer = L.layerGroup().addTo(map);
+        // MarkerClusterGroup is a drop-in for L.layerGroup here - same
+        // addLayer/clearLayers API applyFilter() already uses - so nothing
+        // else needed to change. Only matters once real bookings are
+        // confirmed and located in numbers; a real street festival's
+        // pitches packed along one road is exactly the density this is
+        // for. disableClusteringAtZoom matches the zoom level search and
+        // "Locate Me" already jump to, so a visitor who has zoomed in that
+        // far always sees individual, distinctly clickable pins, never a
+        // cluster bubble hiding the one they searched for.
+        markersLayer = L.markerClusterGroup({ disableClusteringAtZoom: 18 }).addTo(map);
         userLayer = L.layerGroup().addTo(map);
 
         map.getPane('markerPane').style.zIndex = 600;
@@ -210,6 +219,15 @@ function showPreviewBanner(instanceLabel) {
     document.body.appendChild(el);
 }
 
+// Shown when the fetch genuinely returns nothing to plot at all - not the
+// same as a filter/search narrowing a populated map down to zero, which
+// applyFilter()'s own toast already covers. A silent blank map here is
+// indistinguishable from the page being broken, particularly for an early
+// site launch before any stall has been confirmed and located yet.
+function showEmptyState() {
+    document.getElementById('empty-state')?.classList.remove('hidden');
+}
+
 async function loadMapData() {
     try {
         const previewInstance = getPreviewInstance();
@@ -218,7 +236,10 @@ async function loadMapData() {
 
         const mapItems = await fetchMapData(currentInstance);
 
-        if (!mapItems || mapItems.length === 0) return;
+        if (!mapItems || mapItems.length === 0) {
+            showEmptyState();
+            return;
+        }
 
         allEnrichedBookings = [];
         mapItems.forEach(item => {
@@ -236,7 +257,10 @@ async function loadMapData() {
             }
         });
 
-        if (allEnrichedBookings.length === 0) return;
+        if (allEnrichedBookings.length === 0) {
+            showEmptyState();
+            return;
+        }
         applyFilter('all');
 
     } catch (err) {
@@ -282,12 +306,21 @@ export function applyFilter(filterType) {
         searchMatchCount++;
 
         const style = FestivalIcons.getStyle(type);
+        // alt gives the marker a real accessible name - without it, a screen
+        // reader focusing the marker (Leaflet already makes it a focusable,
+        // keyboard-operable role="button") announces only "button", with
+        // nothing distinguishing one pin from another.
+        const markerAlt = `${item.business_name || 'Stall'}${item.category ? `, ${item.category}` : ''}`;
         const icon = L.divIcon({
             className: 'custom-pin',
             html: `<div class="pin-outer" style="box-shadow: 0 0 8px ${style.color}50, 0 2px 5px rgba(0,0,0,0.15); border: 1.5px solid ${style.color}bb; transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);" onmouseover="this.style.boxShadow='0 0 16px ${style.color}, 0 2px 8px rgba(0,0,0,0.2)'; this.style.transform='scale(1.2)'; this.style.zIndex='1000';" onmouseout="this.style.boxShadow='0 0 8px ${style.color}50, 0 2px 5px rgba(0,0,0,0.15)'; this.style.transform='scale(1)'; this.style.zIndex='';">${style.svg}</div>`,
             iconSize: [32, 32],
             iconAnchor: [16, 16],
             popupAnchor: [0, -16]
+            // No `alt` here - L.DivIcon.createIcon() never reads it (only the
+            // plain L.Icon does, onto a rendered <img>). Confirmed by reading
+            // the loaded Leaflet source directly rather than assuming; the
+            // accessible name is set explicitly below instead.
         });
 
         const marker = L.marker([item.lat, item.lng], { icon: icon })
@@ -304,6 +337,15 @@ export function applyFilter(filterType) {
             });
 
         marker.addTo(markersLayer);
+        // Leaflet already makes the marker keyboard-focusable and gives it
+        // role="button" (confirmed live: tabindex="0", and Enter/Space do
+        // open the popup) - but with no name attached, a screen reader
+        // announces every single one of these as just "button". getElement()
+        // returns the actual rendered node once added, which setAttribute
+        // can safely take arbitrary text into (unlike innerHTML, an
+        // attribute value is never parsed as markup, so this needs no
+        // escapeHtml call).
+        marker.getElement()?.setAttribute('aria-label', markerAlt);
         searchMarkers.push({ marker, item });
     });
 
