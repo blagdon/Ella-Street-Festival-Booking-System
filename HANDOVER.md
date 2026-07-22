@@ -3106,17 +3106,13 @@ now without asking.
     booking in this shared project) and a genuine Stripe test-mode charge
     created via the API (`pm_card_visa`, Stripe's static no-card-entry test
     payment method — confirms immediately, no hosted-Checkout browser
-    automation needed). `E2EREFUND-A` was deliberately left as-is (still
-    `PAID`, unrefunded) rather than forced through some other path — it's now
-    the demonstration case for this exact finding, matching the precedent
-    of `E2EREFUND-B`/`C` being left `REFUNDED` as evidence for item 69.
-    `ESF26-DEV-0001` was left `REFUNDED` for the same reason, now showing the
-    admin-button path specifically. Both are inert: an id-format mismatch on
-    hand-crafted test data cannot recur on a real booking, and leaving them
-    costs nothing (no cleanup job scans for them, and no other suite's prefix
-    collides with `ESF26-DEV-`, confirmed against `tests/integration.test.mjs`'s
-    own DEV-prefix concurrency test, which asserts only uniqueness, never a
-    specific id).
+    automation needed). Both `E2EREFUND-A` and `ESF26-DEV-0001` were
+    **subsequently cleaned up** (2026-07-22, `payments` then `bookings`,
+    matching the delete order every suite in `tests/` uses) — an initial plan
+    to leave them as evidence, mirroring `E2EREFUND-B`/`C` from item 69, turned
+    out to be based on an incomplete check; see the new Gotchas entry on why a
+    `ESF26-DEV-`-prefixed fixture can never actually be left in this project.
+    `E2EREFUND-B`/`C` remain, confirmed untouched by this cleanup.
 
 **Open gap, not yet requested by the owner:** no admin UI in this repo for the
 `performers`/`schedules` feature. If a future task asks to "add performer management"
@@ -3165,6 +3161,34 @@ stay in the separate `ellafestperformersadmin.vercel.app` codebase.
   bug from the same root as a signal to sweep exhaustively rather than fix and move on.
   Note grepping alone was not sufficient here: the export's broken filter (item 67) was
   found only by reading the whole function, and had nothing to do with refunds.
+
+- **A fixture placed under the literal `ESF26-DEV-` prefix cannot be left in the
+  test project as evidence — the next `integration-tests` run deletes it, silently
+  and by design.** `tests/integration.test.mjs`'s before/after hook runs
+  `.or('id.like.ESF26-TESTCONFLICT-%,id.like.ESF26-TESTDATASET-%,id.like.ESF26-DEV-%')`
+  — that third clause is a **full wildcard on the entire DEV prefix**, not scoped to
+  that suite's own fixtures the way every other suite's cleanup is (own custom
+  prefix, e.g. `ESF26-TESTSTRIPE-`). Any booking anywhere in the shared project with
+  a plain `ESF26-DEV-…` id is fair game for it, regardless of which file created it
+  or why.
+  Found 2026-07-22 (item 71's refund verification): a fresh fixture
+  (`ESF26-DEV-0001`) was deliberately created with a properly-allocated id — logged
+  as "left in place as evidence" — and was already gone by the time a follow-up
+  cleanup script ran, because PR #77's own `integration-tests` CI run had executed
+  that hook in between and swept it up as an unrelated side effect. The **check
+  done at the time** ("does the concurrency test hardcode this id?") verified the
+  wrong thing — that test's *assertions* don't reference specific ids, but a
+  completely different line in the same file's *setup/teardown* wildcards the
+  whole prefix. A hard-coded id string in a `.like()` cleanup filter is easy to
+  miss because it never appears near the assertions you'd naturally go looking at.
+  **The lesson:** before assuming a manually-created row will persist in this
+  shared project, grep every `.like(` / `.or(` cleanup clause across `tests/`, not
+  just the test whose *behaviour* you're worried about colliding with — cleanup
+  hooks are a second, easy-to-miss source of collision that has nothing to do with
+  what the test itself checks. If you need a DEV-prefix fixture to actually survive,
+  it can't be a bare `ESF26-DEV-…` id; give it a distinguishing suffix pattern this
+  wildcard doesn't match, the way every other suite already does for exactly this
+  reason.
 
 - **Verifying that a UI control *exists* is not verifying that a human can see it.**
   v7.10.0's refund button was checked with `offsetParent !== null` and `textContent` —
