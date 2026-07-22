@@ -3,6 +3,7 @@ import { getBucketName } from '../_shared/bucket.ts'
 import { sendViaZoho } from '../_shared/zoho.ts'
 import { ALLOWED_ORIGIN } from '../_shared/cors.ts'
 import { escapeHtml } from '../_shared/format.ts'
+import { PublicError, publicErrorResponse } from '../_shared/errors.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
@@ -67,12 +68,12 @@ function sanitizeBookingInput(raw: Record<string, any>, bookingPrefix: string): 
   const instancePrefix = String(raw.instance_prefix || '')
   const validPrefixes = [`${bookingPrefix}-FOOD-`, `${bookingPrefix}-NONFOOD-`, `${bookingPrefix}-DEV-`]
   if (!validPrefixes.includes(instancePrefix)) {
-    throw new Error('Invalid instance_prefix.')
+    throw new PublicError('Invalid instance_prefix.')
   }
 
   const stallType = String(raw.stall_type || '')
   if (!VALID_STALL_TYPES.includes(stallType)) {
-    throw new Error('Invalid stall_type.')
+    throw new PublicError('Invalid stall_type.')
   }
 
   return {
@@ -274,11 +275,11 @@ Deno.serve(async (req) => {
     // settled until the insert above actually succeeds.
     if (tempUuid && fileNames && Array.isArray(fileNames) && fileNames.length > 0) {
       if (!SAFE_TEMP_UUID_PATTERN.test(tempUuid)) {
-        throw new Error('Invalid upload session identifier.')
+        throw new PublicError('Invalid upload session identifier.')
       }
       for (const fileName of fileNames) {
         if (typeof fileName !== 'string' || !SAFE_FILENAME_PATTERN.test(fileName)) {
-          throw new Error('Invalid file name in upload list.')
+          throw new PublicError('Invalid file name in upload list.')
         }
       }
 
@@ -330,9 +331,9 @@ Deno.serve(async (req) => {
     })
 
   } catch (error: any) {
-    return new Response(JSON.stringify({ error: error.message }), { 
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    })
+    // Only PublicError messages reach the caller; everything else (Postgres
+    // errors, RPC failures, missing server config) is logged in full and
+    // replaced with a generic message. See _shared/errors.ts.
+    return publicErrorResponse(error, 'submit-booking', corsHeaders)
   }
 })
