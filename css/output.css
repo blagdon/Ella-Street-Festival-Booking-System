@@ -602,6 +602,9 @@
   .h-screen {
     height: 100vh;
   }
+  .max-h-\[60vh\] {
+    max-height: 60vh;
+  }
   .max-h-\[90vh\] {
     max-height: 90vh;
   }

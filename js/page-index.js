@@ -78,7 +78,22 @@ function initIndex() {
         const navCard = e.target.closest('[data-action="navigate"]');
         if (navCard) {
             const page = navCard.dataset.page;
-            if (page) window.location.href = page + '.html';
+            if (!page) return;
+            // visitor_map.html is also reachable directly by a real member of
+            // the public with no session at all, so it must default to the
+            // real LIVE data - it must NOT read the admin's ESF_INSTANCE
+            // localStorage the way every other admin page does, since a
+            // genuine visitor never has that key set but an admin previewing
+            // from this card, on this same browser, always does. Passing the
+            // instance as an explicit one-time query param means this card's
+            // "preview what I'm currently working on" intent is honoured for
+            // exactly this navigation, without the map silently inheriting
+            // unrelated leftover browser state on every future visit.
+            if (page === 'visitor_map') {
+                window.location.href = `${page}.html?preview=${encodeURIComponent(getCurrentInstance())}`;
+            } else {
+                window.location.href = page + '.html';
+            }
         }
     });
 }
