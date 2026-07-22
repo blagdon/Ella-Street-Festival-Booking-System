@@ -38,10 +38,10 @@ describe('buildStripeCredentialUpdates', () => {
       'no row may carry an empty value - that is the wipe this guards against');
   });
 
-  test('every field blank writes nothing at all (the failed-load state)', () => {
-    // What the inputs look like when the initial credentials load failed. The
-    // caller refuses to save in that case anyway, but this is the backstop:
-    // even if it gets here, there is nothing to overwrite anything with.
+  test('every field blank writes nothing at all (the default state of the form)', () => {
+    // Since the fields are write-only they are never populated from storage,
+    // so this is what the form looks like on EVERY page load - an admin who
+    // opens settings.html and hits Save without typing must write nothing.
     const updates = buildStripeCredentialUpdates({
       stripe_secret_key_test: '',
       stripe_secret_key_live: '',
