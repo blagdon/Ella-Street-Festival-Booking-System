@@ -50,7 +50,7 @@ export function sanitizeUrl(url) {
 export const MAX_FIELD_LENGTHS = {
     business: 128, owner: 64, email: 254, phone: 30, category: 64,
     description: 500, house: 256, other: 500, note: 2000, bank_ref: 64,
-    editor: 32, subject: 200, body: 10000
+    editor: 32, subject: 200, body: 10000, website: 256
 };
 
 export function validateString(val, maxLen) {

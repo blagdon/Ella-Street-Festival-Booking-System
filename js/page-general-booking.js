@@ -196,6 +196,7 @@ initPublicPage(async function () {
                     email: formData.get('email'),
                     phone: formData.get('phone'),
                     address: formData.get('address'),
+                    website: formData.get('website'),
 
                     // Details
                     description: formData.get('description'),
@@ -249,7 +250,9 @@ initPublicPage(async function () {
               <div class="sm:col-span-1"></div>
 
               <div class="sm:col-span-2"><dt class="text-sm font-medium text-gray-500">Description</dt><dd class="mt-1 text-sm text-gray-900">${escapeHtml(sbData.description)}</dd></div>
-              
+
+              ${sbData.website ? `<div class="sm:col-span-2"><dt class="text-sm font-medium text-gray-500">Website / Social Media</dt><dd class="mt-1 text-sm text-gray-900 break-words">${escapeHtml(sbData.website)}</dd></div>` : ''}
+
               ${sbData.other_requirements ? `<div class="sm:col-span-2"><dt class="text-sm font-medium text-gray-500">Other Notes</dt><dd class="mt-1 text-sm text-gray-900">${escapeHtml(sbData.other_requirements)}</dd></div>` : ''}
           `;
 

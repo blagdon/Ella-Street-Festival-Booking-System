@@ -39,6 +39,7 @@ async function submitMiscEntry() {
         email: document.getElementById('entryEmail').value.trim(),
         phone: document.getElementById('entryPhone').value.trim(),
         house: document.getElementById('entryAddress').value.trim(),
+        website: document.getElementById('entryWebsite').value.trim(),
         description: document.getElementById('entryDescription').value.trim()
     };
 
