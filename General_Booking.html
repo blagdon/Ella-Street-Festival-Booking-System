@@ -12,14 +12,25 @@
   <script type="module" src="supabase-public.js"></script>
 
   <style>
-    /* Visual feedback for valid/invalid fields */
-    input:invalid:not(:placeholder-shown),
-    select:invalid:not(:placeholder-shown) {
+    /* Visual feedback for valid/invalid fields, gated on actual user
+       interaction (:user-invalid/:user-valid) rather than approximated via
+       :not(:placeholder-shown) - that proxy only ever worked for text inputs
+       that have a placeholder attribute. <select>, <input type="file"> and
+       checkboxes have no placeholder concept at all, so :placeholder-shown
+       never matches them and :not(:placeholder-shown) was permanently true -
+       every required select, the file upload, and all three declaration
+       checkboxes rendered red from first paint, before the applicant had
+       touched anything. :user-invalid only matches after the browser
+       considers the field genuinely interacted with (blurred, or a submit
+       was attempted), which is what "you got this wrong" is supposed to mean. */
+    input:user-invalid,
+    select:user-invalid {
       border-color: #dc2626;
       background-color: #fef2f2;
     }
 
-    input:valid:not(:placeholder-shown) {
+    input:user-valid,
+    select:user-valid {
       border-color: #16a34a;
     }
 
