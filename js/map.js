@@ -89,6 +89,54 @@ const FestivalIcons = (function () {
 })();
 
 // ===================================================================
+// === LEGEND ===
+// ===================================================================
+// Deliberately at the same granularity FestivalIcons.getStyle() actually
+// renders at, not the filter dropdown's coarser grouping - the filter's
+// single "Safety" option covers three visually distinct pins (police/fire/
+// first aid), and a legend that collapsed those back into one row would
+// just reintroduce the "label doesn't match what's really on the map"
+// problem this exists to fix. Each `type` here is fed straight into
+// getStyle() so the legend can never drift from the real pins - if the
+// icon or colour for a type changes, the legend picks it up automatically.
+const LEGEND_ITEMS = [
+    { type: 'food', label: 'Food & Drink' },
+    { type: 'stall', label: 'General Stalls' },
+    { type: 'music', label: 'Music' },
+    { type: 'spokenword', label: 'Spoken Word' },
+    { type: 'attraction', label: 'Attractions' },
+    { type: 'green', label: 'Green Space' },
+    { type: 'beach', label: 'Beach Access' },
+    { type: 'toilet', label: 'Toilets' },
+    { type: 'police', label: 'Police' },
+    { type: 'fire', label: 'Fire Safety' },
+    { type: 'aid', label: 'First Aid' },
+];
+
+function renderLegend() {
+    const panel = document.getElementById('legend-panel');
+    if (!panel) return;
+    panel.innerHTML = LEGEND_ITEMS.map(({ type, label }) => {
+        const style = FestivalIcons.getStyle(type);
+        return `
+            <div class="flex items-center gap-2 py-1">
+                <div style="width:22px;height:22px;flex-shrink:0;border-radius:50%;background:#fff;border:1px solid ${style.color}bb;box-shadow:0 1px 3px rgba(0,0,0,0.15);padding:3px;">${style.svg}</div>
+                <span class="text-xs text-gray-700">${escapeHtml(label)}</span>
+            </div>`;
+    }).join('');
+}
+
+export function toggleLegend() {
+    const panel = document.getElementById('legend-panel');
+    const btn = document.getElementById('btn-legend-toggle');
+    if (!panel || !btn) return;
+    // classList.toggle() returns whether the class is present AFTER the
+    // toggle - true means "hidden" is now on the element, i.e. now closed.
+    const nowHidden = panel.classList.toggle('hidden');
+    btn.setAttribute('aria-expanded', String(!nowHidden));
+}
+
+// ===================================================================
 // === MAP LOGIC ===
 // ===================================================================
 
@@ -100,6 +148,7 @@ let currentSearchTerm = '';
 let searchMarkers = [];
 let searchDebounceTimer = null;
 let lastSearchNoResultsTerm = null;
+let lastFilterNoResultsType = null;
 
 export function initMap() {
     try {
@@ -121,6 +170,8 @@ export function initMap() {
         map.getPane('markerPane').style.zIndex = 600;
         map.getPane('popupPane').style.zIndex = 700;
 
+        renderLegend();
+
         const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
         setTimeout(function () {
             map.invalidateSize();
@@ -132,9 +183,39 @@ export function initMap() {
     }
 }
 
+// This page is reached two ways: a real, unauthenticated visitor hitting
+// the bare URL (must always see the real LIVE data), and an admin clicking
+// the Hub's "Visitor Map" preview card, which appends ?preview=<instance>
+// for exactly that one navigation (see js/page-index.js). Deliberately NOT
+// reading the ESF_INSTANCE localStorage key every other admin page uses -
+// a genuine visitor never has it set, but an admin who previewed DEV data
+// earlier always would, with nothing distinguishing "this is a preview"
+// from "this is broken" for whoever hits the bare URL next on that browser.
+function getPreviewInstance() {
+    if (typeof window === 'undefined') return null;
+    return new URLSearchParams(window.location.search).get('preview');
+}
+
+function showPreviewBanner(instanceLabel) {
+    if (document.getElementById('esf-map-preview-banner')) return;
+    const el = document.createElement('div');
+    el.id = 'esf-map-preview-banner';
+    el.textContent = `PREVIEWING: ${instanceLabel} — real visitors see LIVE data, not this`;
+    el.style.cssText = [
+        'position:fixed', 'top:0', 'left:0', 'right:0', 'z-index:2147483647',
+        'background:#3b82f6', 'color:#fff', 'font:bold 12px system-ui,sans-serif',
+        'text-align:center', 'padding:4px 8px', 'letter-spacing:.02em',
+        'pointer-events:none'
+    ].join(';');
+    document.body.appendChild(el);
+}
+
 async function loadMapData() {
     try {
-        const currentInstance = (typeof localStorage !== 'undefined' && localStorage.getItem('ESF_INSTANCE')) || 'LIVE';
+        const previewInstance = getPreviewInstance();
+        const currentInstance = previewInstance || 'LIVE';
+        if (previewInstance) showPreviewBanner(previewInstance);
+
         const mapItems = await fetchMapData(currentInstance);
 
         if (!mapItems || mapItems.length === 0) return;
@@ -226,14 +307,41 @@ export function applyFilter(filterType) {
         searchMarkers.push({ marker, item });
     });
 
-    if (currentSearchTerm && matchCount === 0 && lastSearchNoResultsTerm !== currentSearchTerm) {
-        lastSearchNoResultsTerm = currentSearchTerm;
-        showToast(`No results found for "${currentSearchTerm}"`, 'info');
-    } else if (currentSearchTerm && searchMatchCount === 1) {
-        const result = searchMarkers[0];
-        map.setView([result.item.lat, result.item.lng], 19);
-        result.marker.openPopup();
+    // Search already told the visitor when their search matched nothing;
+    // selecting a category filter with nothing in it went completely silent
+    // instead - indistinguishable from the map being broken. Search message
+    // wins when both are active, since it's the more specific of the two.
+    if (matchCount === 0) {
+        if (currentSearchTerm) {
+            if (lastSearchNoResultsTerm !== currentSearchTerm) {
+                lastSearchNoResultsTerm = currentSearchTerm;
+                showToast(`No results found for "${currentSearchTerm}"`, 'info');
+            }
+        } else if (filterType !== 'all' && lastFilterNoResultsType !== filterType) {
+            lastFilterNoResultsType = filterType;
+            showToast(`No ${getFilterLabel(filterType)} locations found`, 'info');
+        }
+    } else {
+        // Results exist for this filter now - if it's picked again later
+        // with genuinely nothing confirmed, that's a new empty state and
+        // should say so again, not stay silenced by an earlier miss.
+        lastFilterNoResultsType = null;
+        if (currentSearchTerm && searchMatchCount === 1) {
+            const result = searchMarkers[0];
+            map.setView([result.item.lat, result.item.lng], 19);
+            result.marker.openPopup();
+        }
     }
+}
+
+// Reuses the filter <select>'s own option text (emoji included) rather than
+// maintaining a second label list that could drift from the dropdown's
+// actual wording.
+function getFilterLabel(filterType) {
+    const select = document.getElementById('filter-select');
+    if (!select) return filterType;
+    const opt = [...select.options].find(o => o.value === filterType);
+    return opt ? opt.textContent.trim() : filterType;
 }
 
 export function handleSearch(searchTerm) {

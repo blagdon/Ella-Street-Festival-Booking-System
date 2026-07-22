@@ -263,6 +263,24 @@
     </svg>
   </button>
 
+  <!-- Legend - collapsed by default so it never blocks the map on first
+       paint, especially on mobile. Rows are generated in map.js from the
+       same icon set the real pins use, so it can't silently drift out of
+       sync with what's actually plotted. -->
+  <div class="absolute bottom-8 left-4" style="z-index: 10000;">
+    <button id="btn-legend-toggle"
+      class="bg-white px-4 py-3 rounded-lg shadow-lg text-sm font-semibold text-gray-800 hover:bg-gray-50 flex items-center gap-2"
+      aria-expanded="false" aria-controls="legend-panel">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+          d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+      </svg>
+      Key
+    </button>
+    <div id="legend-panel" class="hidden mt-2 bg-white rounded-lg shadow-lg p-3 max-h-[60vh] overflow-y-auto"
+      style="min-width: 200px;"></div>
+  </div>
+
   <div id="map"></div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
