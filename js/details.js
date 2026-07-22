@@ -6,7 +6,7 @@ import { CONFIG } from './config.js';
 let allBookings = [];
 let currentId = null;
 let originalValues = {};
-const trackedFields = ['editBusiness', 'editOwner', 'editCategory', 'editType', 'editEmail', 'editPhone', 'editPower', 'editHouse', 'editDesc', 'editOther', 'editResident', 'editCharity'];
+const trackedFields = ['editBusiness', 'editOwner', 'editCategory', 'editType', 'editEmail', 'editPhone', 'editPower', 'editHouse', 'editWebsite', 'editDesc', 'editOther', 'editResident', 'editCharity'];
 
 export function initDetails() {
     renderInstanceBadge('instanceBadge');
@@ -171,6 +171,7 @@ export function selectBooking(id) {
     setVal('editPower', powerValue);
 
     setVal('editHouse', raw.address || raw.house || ""); // address is db field
+    setVal('editWebsite', raw.website || "");
     setVal('editResident', (item.is_resident === true || item.is_resident === 'true') ? 'true' : 'false');
 
     const charityValue = item.is_charity || 'Commercial';
@@ -210,6 +211,7 @@ export async function saveChanges() {
         phone: getVal('editPhone'),
         power: getVal('editPower'),
         house: getVal('editHouse'),
+        website: getVal('editWebsite'),
         description: getVal('editDesc'),
         other: getVal('editOther'),
         is_resident: getVal('editResident') === 'true',
@@ -252,6 +254,7 @@ export async function saveChanges() {
                 power_required: payload.power,
                 house: payload.house,
                 address: payload.house,
+                website: payload.website,
                 description: payload.description,
                 other: payload.other,
                 other_requirements: payload.other,
@@ -271,6 +274,7 @@ export async function saveChanges() {
                     phone: payload.phone,
                     power_required: payload.power,
                     address: payload.house,
+                    website: payload.website,
                     description: payload.description,
                     other_requirements: payload.other,
                     is_resident: payload.is_resident,

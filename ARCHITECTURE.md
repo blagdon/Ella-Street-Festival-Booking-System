@@ -334,7 +334,9 @@ All under `supabase/functions/`. Shared helpers live in `_shared/`.
 
 ### `bookings` — selected columns
 
-`id` · `instance_prefix` · `status` · `business_name` · `registered_business_name` · `owner_name` · `email` · `phone` · `address` · `category` · `stall_type` · `description` · `other_requirements` · `docs_checklist` · `power_required` · `is_resident` · `is_charity` · `documents` · `cancel_token` · `stall_cost` · `admin_notes` · `rejection_reason` · `created_at` · `date_confirmed` · `stripe_checkout_session_id` · `stripe_payment_intent_id` · `stripe_payment_requested_at`
+`id` · `instance_prefix` · `status` · `business_name` · `registered_business_name` · `owner_name` · `email` · `phone` · `address` · `website` · `category` · `stall_type` · `description` · `other_requirements` · `docs_checklist` · `power_required` · `is_resident` · `is_charity` · `documents` · `cancel_token` · `stall_cost` · `admin_notes` · `rejection_reason` · `created_at` · `date_confirmed` · `stripe_checkout_session_id` · `stripe_payment_intent_id` · `stripe_payment_requested_at`
+
+`website` is optional, free text (a URL or social-media handle), collected on the public Food/General forms and the admin "Add Misc" form. Rendered as a link only via `utils.js → sanitizeUrl()` — never trusted as a raw `href`, since it accepts arbitrary public input.
 
 > There is **no `bookings.location_id`** — it was dropped once a booking could hold multiple pitches. Locations are read/written through `booking_locations` and the `rpc_set_booking_locations` RPC, which also guards against two admins claiming the same pitch concurrently.
 

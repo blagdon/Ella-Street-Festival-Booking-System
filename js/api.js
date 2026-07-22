@@ -718,6 +718,7 @@ export async function updateBookingDetails(payload) {
         stall_type: payload.type,
         power_required: payload.power || 'No power',
         address: validateString(payload.house, MAX_FIELD_LENGTHS.house),
+        website: validateString(payload.website, MAX_FIELD_LENGTHS.website),
         other_requirements: validateString(payload.other, MAX_FIELD_LENGTHS.other),
         is_resident: payload.is_resident === true,
         is_charity: payload.is_charity || 'Commercial'
@@ -855,6 +856,7 @@ export async function insertMiscBooking(payload) {
         description: validateString(payload.description, MAX_FIELD_LENGTHS.description),
         stall_type: payload.type || null,
         address: validateString(payload.house, MAX_FIELD_LENGTHS.house),
+        website: validateString(payload.website, MAX_FIELD_LENGTHS.website),
         power_required: 'No power',
         is_resident: false,
         is_charity: 'Commercial'

@@ -1,0 +1,11 @@
+-- Adds an optional website/social-media link to bookings. Collected on the
+-- public Food/General application forms and the admin "Add Misc Entry" form,
+-- editable afterwards from Update Details.
+--
+-- Nullable, no length constraint at the DB layer (both the public
+-- submit-booking Edge Function and the admin write paths already cap it at
+-- 256 chars before it reaches here, matching the existing `address` limit).
+-- Rendered as a link only via js/utils.js's sanitizeUrl() (http/https/mailto
+-- prefix required, otherwise discarded) - never trusted as a raw href, since
+-- this column accepts arbitrary public input on the Food/General forms.
+ALTER TABLE "public"."bookings" ADD COLUMN "website" "text";

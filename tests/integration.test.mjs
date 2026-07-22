@@ -278,6 +278,25 @@ describe('submit-booking', () => {
     assert.equal(booking.admin_notes, null, 'admin_notes must not be settable via the public endpoint');
   });
 
+  test('website is optional, passed through, and truncated at the allow-list limit', async () => {
+    const { status, json } = await callFunction('submit-booking', submitBookingPayload('WEBSITE', {
+      instance_prefix: 'ESF26-DEV-',
+      website: 'https://example.test/' + 'x'.repeat(300),
+    }));
+    assert.equal(status, 200, JSON.stringify(json));
+    const booking = json.data[0];
+    createdBookingIds.push(booking.id);
+
+    assert.equal(booking.website.length, 256, 'website must be truncated to the allow-list limit (256), matching address');
+    assert.ok(booking.website.startsWith('https://example.test/'));
+
+    // A booking with no website at all must not error or leave a placeholder.
+    const { status: status2, json: json2 } = await callFunction('submit-booking', submitBookingPayload('NOWEBSITE'));
+    assert.equal(status2, 200, JSON.stringify(json2));
+    createdBookingIds.push(json2.data[0].id);
+    assert.equal(json2.data[0].website, '', 'a missing website must be an empty string, not null or undefined, matching every other optional text field');
+  });
+
   test('logs the "received" email as Error when Zoho is unconfigured (no real send)', async () => {
     const { status, json } = await callFunction('submit-booking', submitBookingPayload('EMAILERR', {
       instance_prefix: 'ESF26-DEV-',
