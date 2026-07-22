@@ -1,5 +1,5 @@
 import { fetchKanbanData, updateBookingDetails, LIST_CAP } from './api.js';
-import { showToast, renderInstanceBadge, notifyIfTruncated } from './ui.js';
+import { showToast, notifyIfTruncated } from './ui.js';
 import { escapeHtml, safeError } from './utils.js';
 import { CONFIG } from './config.js';
 
@@ -9,7 +9,6 @@ let originalValues = {};
 const trackedFields = ['editBusiness', 'editOwner', 'editCategory', 'editType', 'editEmail', 'editPhone', 'editPower', 'editHouse', 'editWebsite', 'editDesc', 'editOther', 'editResident', 'editCharity'];
 
 export function initDetails() {
-    renderInstanceBadge('instanceBadge');
     populateDropdowns();
     loadBookings();
 

@@ -71,30 +71,6 @@ export function showToast(message, type = 'success') {
     }, 3000);
 }
 
-/**
- * Renders the active instance badge styling and label.
- * @param {string} badgeId - The DOM element ID of the badge.
- */
-export function renderInstanceBadge(badgeId) {
-    const instance = localStorage.getItem('ESF_INSTANCE') || 'DEV';
-    const badge = document.getElementById(badgeId);
-    if (badge) {
-        if (instance === 'FOOD') {
-            badge.className = "bg-red-100 text-red-800 text-xs font-bold px-2 py-1 rounded uppercase tracking-wide";
-            badge.innerText = "Food Stalls";
-        } else if (instance === 'GENERAL') {
-            badge.className = "bg-blue-100 text-blue-800 text-xs font-bold px-2 py-1 rounded uppercase tracking-wide";
-            badge.innerText = "Non-Food";
-        } else if (instance === 'MISC') {
-            badge.className = "bg-purple-100 text-purple-800 text-xs font-bold px-2 py-1 rounded uppercase tracking-wide";
-            badge.innerText = "Misc / Facilities";
-        } else {
-            badge.className = "bg-green-100 text-green-800 text-xs font-bold px-2 py-1 rounded uppercase tracking-wide";
-            badge.innerText = "Dev Environment";
-        }
-    }
-}
-
 let activeConfirmCallback = null;
 
 /**

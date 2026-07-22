@@ -1,6 +1,6 @@
 import { fetchLocationData, updateLocation, LIST_CAP } from './api.js';
 import { queueLocationEmail } from './shared.js';
-import { showToast, showConfirm, renderInstanceBadge, notifyIfTruncated } from './ui.js';
+import { showToast, showConfirm, notifyIfTruncated } from './ui.js';
 import { escapeHtml, sortBookings } from './utils.js';
 
 let allBookings = [];
@@ -22,7 +22,6 @@ function matchesSearch(b, term) {
 }
 
 export async function initLocations() {
-    renderInstanceBadge('instanceBadge');
     await loadData();
 }
 

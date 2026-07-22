@@ -2,7 +2,7 @@ import { fetchKanbanData, updateBookingStatus, addNote, sendEmail, queueBulkEmai
 import { CONFIG, getStallCost } from './config.js';
 import { safeError, escapeHtml, sortBookings } from './utils.js';
 import { sharedUpdateStatus, populateDetailPane } from './shared.js';
-import { showToast, renderInstanceBadge, showConfirm, notifyIfTruncated } from './ui.js';
+import { showToast, showConfirm, notifyIfTruncated } from './ui.js';
 
 // Single source of truth for which columns exist, per instance — HCC Checks
 // is Food-instance-only; the new payment-flow statuses apply everywhere.
@@ -52,7 +52,6 @@ function initInstanceBadge() {
         if (hccButton) hccButton.style.display = 'block';
     }
 
-    renderInstanceBadge('pageInstanceBadge');
 }
 
 

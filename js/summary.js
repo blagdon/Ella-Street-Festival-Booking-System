@@ -1,6 +1,6 @@
 import { fetchKanbanData, updateBookingStatus, addNote, sendEmail, queueBulkEmail, requestPayment, resendPaymentRequest, LIST_CAP } from './api.js';
 import { sharedUpdateStatus, populateDetailPane } from './shared.js';
-import { showToast, renderInstanceBadge, showConfirm, notifyIfTruncated } from './ui.js';
+import { showToast, showConfirm, notifyIfTruncated } from './ui.js';
 import { escapeHtml, sortBookings } from './utils.js';
 import { CONFIG, getStallCost } from './config.js';
 
@@ -8,7 +8,6 @@ let allBookings = [];
 let currentId = null;
 
 export function initSummary() {
-    renderInstanceBadge('pageInstanceBadge');
     loadData();
 }
 
