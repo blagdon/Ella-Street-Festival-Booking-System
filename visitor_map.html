@@ -4,9 +4,24 @@
 <head>
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com https://challenges.cloudflare.com https://unpkg.com https://vercel.live; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com https://unpkg.com; connect-src 'self' https://rsnxhuhibglieofikkpo.supabase.co https://challenges.cloudflare.com https://vercel.live https://cdn.jsdelivr.net https://unpkg.com; frame-src https://challenges.cloudflare.com https://vercel.live; img-src 'self' data: https:; font-src 'self' https://fonts.gstatic.com;">
   <title>Festival Visitor Map</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <!-- user-scalable=no removed: it disabled pinch-zoom at the browser level
+       (WCAG 1.4.4/1.4.10) for no functional gain - Leaflet implements its
+       own touch-gesture zoom independently of the page viewport, so this
+       only ever blocked a visitor needing to zoom further than Leaflet's
+       own controls allow, never affected the map's own zoom behaviour. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
     integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+  <!-- Marker clustering: only matters once real bookings are confirmed and
+       located in numbers - a handful of test markers can't demonstrate the
+       problem this solves, but a real street festival's pitches packed
+       along one road absolutely will. SRI hashes computed directly from the
+       fetched 1.5.3 release files, matching this page's existing practice
+       for every other externally-loaded script/style. -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"
+    integrity="sha384-pmjIAcz2bAn0xukfxADbZIb3t8oRT9Sv0rvO+BR5Csr6Dhqq+nZs59P0pPKQJkEV" crossorigin="" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"
+    integrity="sha384-wgw+aLYNQ7dlhK47ZPK7FRACiq7ROZwgFNg0m04avm4CaXS+Z9Y7nMu8yNjBKYC+" crossorigin="" />
   <link href="./css/output.css" rel="stylesheet">
   <style>
     body {
@@ -281,10 +296,26 @@
       style="min-width: 200px;"></div>
   </div>
 
+  <!-- Empty state - shown only when the fetch genuinely returns nothing to
+       plot (no stalls confirmed-and-located yet), as distinct from a filter
+       or search narrowing an otherwise-populated map down to zero. Hidden
+       by default so it never flashes on a normal, populated load. -->
+  <div id="empty-state" class="hidden absolute inset-0 flex items-center justify-center pointer-events-none"
+    style="z-index: 5000;">
+    <div class="bg-white rounded-xl shadow-lg px-6 py-5 max-w-xs text-center pointer-events-auto">
+      <p class="text-2xl mb-2" aria-hidden="true">🗺️</p>
+      <p class="font-bold text-gray-800 mb-1">No stalls on the map yet</p>
+      <p class="text-sm text-gray-500">Traders appear here once they're confirmed and given a pitch. Check back
+        closer to the festival.</p>
+    </div>
+  </div>
+
   <div id="map"></div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
     integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"
+    integrity="sha384-eXVCORTRlv4FUUgS/xmOyr66XBVraen8ATNLMESp92FKXLAMiKkerixTiBvXriZr" crossorigin=""></script>
   <script src="js/vendor/supabase.js"></script>
   <script type="module" src="./js/page-visitor-map.js"></script>
 </body>
