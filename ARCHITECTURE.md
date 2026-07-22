@@ -1,8 +1,8 @@
 # Ella Street Festival — Booking System Architecture
 
 > **Audience:** Developers maintaining or extending this system.
-> **Reflects:** v7.10.5
-> **Last verified against the code:** 21 July 2026
+> **Reflects:** v7.11.0
+> **Last verified against the code:** 22 July 2026
 
 > **Where this sits among the docs**
 > - **`ARCHITECTURE.md`** (this file) — the shape of the system: what exists, how the pieces fit, where to look.
@@ -149,7 +149,7 @@ Fills in booking form            ──►  Booking appears on the Kanban board
 │
 ├── supabase/
 │   ├── functions/              ← Edge Functions (see §8)
-│   │   └── _shared/            ← zoho.ts, stripe.ts, cors.ts, bucket.ts, format.ts
+│   │   └── _shared/            ← zoho.ts, stripe.ts, cors.ts, bucket.ts, format.ts, errors.ts
 │   ├── migrations/             ← Ordered SQL migrations
 │   └── config.toml
 │

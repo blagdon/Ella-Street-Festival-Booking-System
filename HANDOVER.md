@@ -8,8 +8,24 @@
 > including applying additive migrations to production), which require specific
 > verification first, and the short list that needs an explicit instruction every
 > time. Default to acting.
-> Last updated: 2026-07-21.
-> Current release: **v7.10.5** (tagged 2026-07-21; **`stripe-webhook` redeployed
+> Last updated: 2026-07-22.
+> Current release: **v7.11.0** (prepared 2026-07-22, merged as PRs #72–#75;
+> **`submit-booking` + `cancel-booking` redeployed to BOTH projects**; package
+> bumped and CHANGELOG written, **not yet git-tagged** — see [Cutting a
+> release](#cutting-a-release) for the remaining tag step). A settings-security
+> pass plus a docs rewrite, from reviewing the `settings.html` Stripe card and
+> the two public Edge Functions. Four things, see item 70: the Stripe credential
+> fields are now **write-only** (they were reading the stored secret keys into
+> the DOM on every load — `type="password"` is not access control); a routine
+> **Save could silently wipe** those credentials when a field was blank (blank
+> now means "leave alone"); the two public Edge Functions **no longer leak
+> Postgres/RPC/server-config detail** in error responses to anonymous callers
+> (new `_shared/errors.ts`, allow-list not deny-list); and **`ARCHITECTURE.md`
+> was rewritten** to match the code after drifting to actively-misleading (it
+> named `js/config.js` as the config source of truth — it is
+> `supabase-public.js`). Read the CHANGELOG entry before touching the Stripe
+> settings save or the public functions' error handling.
+> v7.10.5 (tagged 2026-07-21; **`stripe-webhook` redeployed
 > to BOTH projects** — `charge.refunded` was writing the Stripe *charge* id into
 > `refund_reference`, which is documented as holding a *refund* id.
 > `charge.refunds` turns out to be absent from that event on current API
@@ -2999,6 +3015,55 @@ now without asking.
     works. Nothing errored, nothing looked wrong, and four releases of
     refund work passed over it. It took exercising the real path against a
     real provider payload to see it.
+
+70. **Settings-security pass + docs rewrite (2026-07-22, PRs #72–#75, prepared
+    as v7.11.0 — package/CHANGELOG done, tag still to cut).** A review of the
+    `settings.html` Stripe card and the two public Edge Functions turned up four
+    things, fixed as four separate PRs merged together:
+    - **Stripe credential fields made write-only (#73).** `settings.html` read
+      the stored secret keys into the DOM on every load; `type="password"` hid
+      them visually but they were readable from devtools, any XSS on the page,
+      and browser extensions. The page now learns only *whether* each key is set
+      (status query selects `key` alone, `.neq('value','')` server-side), never
+      the value. **This is defence-in-depth, not a boundary:** admins keep
+      `SELECT` on `settings` via RLS, so the values are still reachable through
+      the API — closing that properly means moving the secrets out of the
+      settings table, which forfeits the admin-editable rotation
+      `_shared/stripe.ts` documents as the reason they're there. Verified with a
+      canary against the test project: the query returns no `value` field.
+    - **Save-wipe bug fixed (#72).** The save wrote all four rows from the input
+      values unconditionally; a blank input (failed load, or the documented
+      "Test pair now, Live later" workflow) overwrote the stored credential with
+      `''`. Blank now means "leave alone"; the rule is the import-free
+      `js/stripe-credentials.js`, pinned by `tests/stripe-credentials-save.test.mjs`
+      (verified failing against the pre-fix behaviour before passing). Tradeoff:
+      a credential can no longer be *cleared* from the UI, only replaced — do
+      that in the `settings` table directly if ever needed.
+    - **Public Edge Function errors sanitised (#75).** `submit-booking` and
+      `cancel-booking` returned `error.message` verbatim with a 500 —
+      Postgres/RPC text and `TURNSTILE_SECRET_KEY is not configured` reachable
+      by any anonymous POST. New `_shared/errors.ts` / `PublicError`: only
+      opted-in messages echo, the rest become a generic message + reference id
+      logged server-side; validation failures now 400. **Allow-list, unlike
+      `utils.js`'s deny-list `safeError()`** — a new throw site is safe by
+      default. Admin-authed functions unchanged (tests assert their detail).
+      **Required a deploy CI won't do:** both functions redeployed to test then
+      production — same bundles, 8/8 new suite + 167/167 full run against test
+      first. Note the WAF gotcha recorded in the CHANGELOG: `../../etc/passwd`
+      as a test filename is 403'd at the edge before reaching the function.
+    - **`ARCHITECTURE.md` rewritten (#74).** Was "v3.0 / Feb 2026" against
+      v7.10.5 and misleading — named `js/config.js` the config source of truth
+      (it's `supabase-public.js`), documented a nonexistent `GAS/` folder, a
+      dropped `location_id` column, a removed status, the wrong prod URL, and a
+      `VALID_STATUSES` array that doesn't exist. Every claim re-verified against
+      source; Stripe/settings/Edge-Functions/CI/steward were missing entirely
+      and added. Header now defers to this file (HANDOVER) as the behavioural
+      authority.
+    **The lesson worth keeping:** a masked input (`type="password"`) is not
+    access control, and a save that writes every field unconditionally treats
+    "blank" and "cleared" as the same thing — both are one-keystroke or
+    one-network-blip away from silent data loss on a credential the app can't
+    show you afterwards.
 
 **Still not done, and deliberately not automatable — the last untested link:**
 `refund-payment` itself, the admin-initiated path. Its own header states the

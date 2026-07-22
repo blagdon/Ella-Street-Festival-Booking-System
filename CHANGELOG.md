@@ -2,6 +2,39 @@
 
 All notable changes to this project are documented in this file.
 
+## [v7.11.0] - 2026-07-22
+
+A batch of settings-security hardening plus a documentation rewrite, from a review of the `settings.html` Stripe card and the two public Edge Functions. Shipped as four separate PRs (#72–#75), grouped here because they landed together. Minor bump rather than patch: the Stripe settings UI now behaves visibly differently (stored credentials are never shown), and two new shared modules were added.
+
+### Security
+
+- **The Stripe credential fields on Settings are now write-only.** `settings.html` used to read the stored secret keys straight into the DOM on every load. `type="password"` masked them visually, but they were readable from devtools, from any XSS on that page, and by browser extensions — so one compromised admin session was a live-key exfiltration, not just an account takeover. The page now learns only *whether* each credential is set, never its value: the status query selects the `key` column alone and pushes the "is it set" test server-side as a `.neq('value', '')` filter, so the secret never crosses the wire. Verified against the test project with a canary — the query returns `[{"key":…}]` with no `value` field and no trace of the secret, where the old `select('key, value')` returned it in full. Typed values are also cleared from the inputs once saved. (PR #73)
+
+  **What this does and doesn't buy:** admins retain `SELECT` on the `settings` table via RLS, so a determined admin can still read the values through the API. This closes the *incidental* exposure (DOM, devtools, extensions, shoulder-surfing), not the deliberate one — which would mean moving the secrets out of the settings table entirely and giving up the admin-editable rotation that `_shared/stripe.ts` documents as the reason they live there. Today's risk was latent regardless: HANDOVER records `stripe_secret_key_live` as unset, so no live key was actually on screen — the point was to change the pattern before one ever lands there.
+
+- **The two public Edge Functions no longer leak internals in error messages.** `submit-booking` and `cancel-booking` both ended in `catch (error) { return { error: error.message } }` with a 500, which returned raw Postgres text (table, column, constraint names), RPC failures, and server-config state — `TURNSTILE_SECRET_KEY is not configured on the server.` was reachable by anyone who could POST — straight to an anonymous caller. A new `_shared/errors.ts` introduces `PublicError`: only messages explicitly marked as such are echoed; everything else is logged in full server-side and replaced with a generic message carrying a short reference id that appears in that log line, so failures stay supportable without detail in the response. Validation failures now also return **400** rather than the old blanket 500. (PR #75, requires the deploy noted below)
+
+  **Allow-list, not deny-list — deliberately unlike `js/utils.js`'s `safeError()`.** That one pattern-matches known-dangerous messages and passes anything else through, which is the right trade for admin-facing UI where the caller is trusted, but it fails *open*. At a public boundary a throw site added later must be safe by default, so here it stays generic unless someone opts it into `PublicError`. Scope is the two public functions only — the admin-authenticated ones keep their detailed errors, which are what make a failure diagnosable and which four suites in `tests/` assert on. The Cloudflare CAPTCHA rejection path also keeps returning Cloudflare's own error codes on purpose, since `page-food-booking.js` surfaces them and Turnstile is fiddly enough to configure that losing them would cost more than the mild disclosure.
+
+### Fixed
+
+- **Saving the Stripe settings could silently wipe the stored credentials.** The save handler wrote all four rows unconditionally from the input values, and an empty input is indistinguishable from "no value configured" — so any save performed while a field was blank overwrote whatever was stored with an empty string. Two ways it fired: (1) the initial credentials load failed (transient network, expired session), the `catch` showed a toast and carried on with the inputs empty, and the next save wiped all four rows; (2) the *documented, intended* workflow — "save the Test pair now, add Live later" — wiped the Live keys every time, because they were blank. The code contradicted its own comment. A blank field now means "leave this row alone" (the rule lives in the new import-free `js/stripe-credentials.js`, pinned by `tests/stripe-credentials-save.test.mjs`), and a failed load disables the save button outright. (PR #72)
+
+  **Tradeoff:** a credential can no longer be *cleared* from this UI, only replaced — clearing one is a rare deliberate act with a direct route (edit the `settings` row), whereas wiping one by accident was a single click away. The write-only change above later made "blank on load" the *normal* state, which is what makes this rule load-bearing for more than the original bug.
+
+### Documentation
+
+- **`ARCHITECTURE.md` rewritten to match the code.** It was stamped "v3.0 / February 2026" against a v7.10.5 codebase and had drifted far enough to actively mislead — the risk being a new contributor trusting it and editing the wrong file (it named `js/config.js` the source of truth for Supabase credentials; it is `supabase-public.js`, and repointing it has caused a real outage). Every claim was verified against source. Corrected, among others: a documented `GAS/` folder that doesn't exist (replaced by `api/ping.js`), a dropped `bookings.location_id` column (now the `booking_locations` join table), a removed `On Hold` status, the wrong production URL, and a `VALID_STATUSES` array in `utils.js` that doesn't exist (`validateStatus()` reads `CONFIG.UI.STATUS_LIST`). Added, having been absent entirely: Stripe payments and refunds, the settings table, all ten Edge Functions with their real auth model, testing/CI, the offline steward app, and an explicit note that `performers`/`schedules` belong to a separate external app this repo only RLS-scopes. Reframed the header to give the docs a clear division of labour — this file for the shape of the system, HANDOVER.md as the authority for behavioural detail. (PR #74)
+
+### Deployment
+
+- **`submit-booking` and `cancel-booking` redeployed to BOTH projects.** The error-sanitisation change (PR #75) is Edge Function code, which CI does not deploy. Both functions were deployed to the test project (`qeplpcnrkgpaawfyliap`) to run the suite, then to production (`rsnxhuhibglieofikkpo`) — same bundles, verified 8/8 on the new suite and 167/167 on the full integration run against test before the production deploy. The three settings/docs PRs (#72–#74) are static assets served by Vercel and needed no manual deploy.
+
+### Note
+
+- **The invalid-filename test can't use `../../etc/passwd`.** Writing `tests/public-error-sanitisation.test.mjs`, the obvious bad-filename fixture returned a **403 with a non-JSON body** — Supabase's edge WAF blocks that path-traversal string in the request body *before* it reaches the function, so it never exercises our own validation. The fixture is `bad name;rm.pdf` instead (fails `SAFE_FILENAME_PATTERN`, not attack-shaped), documented in the test so nobody restores the traversal string and gets a mystery 403.
+- **Pre-existing, not changed here:** `submit-booking` validates uploaded filenames at step 5, *after* the booking row is inserted at step 4 — so a bad filename returns an error with the booking already committed. It's why the new suite has a cleanup step.
+
 ## [v7.10.5] - 2026-07-21
 
 ### Fixed
