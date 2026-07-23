@@ -96,7 +96,9 @@ export const ESF_PUBLIC_CONFIG = {
     TURNSTILE_SITE_KEY: "0x4AAAAAACZTfDIHzMhGqnER",
     BASE_URL: "https://app.ellastreet.co.uk",
     CANCEL_URL: "https://app.ellastreet.co.uk/cancel_booking.html",
-    PORTAL_URL: "https://www.ellastreet.co.uk/fest26/portal",
+    // /fest26/portal 404s - verified https://www.ellastreet.co.uk/fest26
+    // is the real page (the site has no separate "/portal" path).
+    PORTAL_URL: "https://www.ellastreet.co.uk/fest26",
     BOOKING_PREFIX: "ESF26",
     MAP_CENTER_LAT: 53.760672928799394,
     MAP_CENTER_LNG: -0.362403011338408,
