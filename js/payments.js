@@ -190,7 +190,7 @@ function renderTable() {
                     <div class="text-sm text-gray-500">${escapeHtml(r.owner || r.owner_name)}</div>
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-mono">
-                    ${r.stall_cost}
+                    ${r.stall_cost != null ? `£${Number(r.stall_cost).toFixed(2)}` : '—'}
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap text-center">
                     <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${paidClass}">
@@ -266,7 +266,7 @@ function renderTable() {
                 <div class="grid grid-cols-2 gap-3 mb-3">
                     <div>
                         <span class="text-xs uppercase text-gray-400 font-bold block mb-1">Amount</span>
-                        <p class="text-lg font-bold text-gray-900">${r.stall_cost}</p>
+                        <p class="text-lg font-bold text-gray-900">${r.stall_cost != null ? `£${Number(r.stall_cost).toFixed(2)}` : '—'}</p>
                     </div>
                     <div>
                         <span class="text-xs uppercase text-gray-400 font-bold block mb-1">Status</span>

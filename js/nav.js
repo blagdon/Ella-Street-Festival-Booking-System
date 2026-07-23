@@ -73,7 +73,7 @@ export function initNavigation() {
             </div>
             
             <!-- Mobile Menu Button -->
-            <button id="mobileMenuBtn" class="md:hidden p-2 text-gray-600 hover:text-gray-900">
+            <button id="mobileMenuBtn" class="md:hidden p-2 text-gray-600 hover:text-gray-900" aria-label="Toggle menu" aria-expanded="false" aria-controls="mobileMenu">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
                 </svg>
@@ -131,12 +131,9 @@ export function initNavigation() {
     document.getElementById('btnSignOutMobile')?.addEventListener('click', signOut);
 
     // Mobile Menu Toggle
-    document.getElementById('mobileMenuBtn')?.addEventListener('click', () => {
+    document.getElementById('mobileMenuBtn')?.addEventListener('click', (e) => {
         const menu = document.getElementById('mobileMenu');
-        if (menu.classList.contains('hidden')) {
-            menu.classList.remove('hidden');
-        } else {
-            menu.classList.add('hidden');
-        }
+        const isHidden = menu.classList.toggle('hidden');
+        e.currentTarget.setAttribute('aria-expanded', String(!isHidden));
     });
 }
