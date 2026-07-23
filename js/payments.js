@@ -212,7 +212,7 @@ function renderTable() {
                     ${escapeHtml(r.bank_ref || '-')}
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    ${escapeHtml(r.editor || '-')}
+                    ${escapeHtml((r.refunded ? r.refunded_by : r.editor) || '-')}
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                     ${r.awaitingPayment
