@@ -163,6 +163,15 @@ export async function sharedUpdateStatus(id, status, allBookings, options = {}) 
         await updateBookingStatus(id, status, reason);
 
         // 2. Handle Confirmation specific logic
+        //
+        // The email send is a side effect of a status change that has
+        // *already* been committed above - it must never be allowed to
+        // throw into the outer catch, which would show "Failed to update"
+        // (a lie, the status write already succeeded), skip onSuccess (so
+        // the card never moves / UI stays out of sync with the real DB
+        // row), and leave the trader silently un-notified with no signal
+        // to the admin that anything needs retrying. A missing/misconfigured
+        // email template must degrade to a warning, not a rollback illusion.
         if (status === 'Confirmed') {
             // Only reachable for a free confirmation — a chargeable confirm
             // never lands on 'Confirmed' directly, it always goes through
@@ -173,18 +182,28 @@ export async function sharedUpdateStatus(id, status, allBookings, options = {}) 
             await finalizeConfirmation(id);
 
             if (booking) {
-                const { subject, body } = await getEmailFromTemplate('confirmed_free', booking, id);
-                await sendEmail(id, subject, body);
-                showToast('Booking confirmed and email queued');
+                try {
+                    const { subject, body } = await getEmailFromTemplate('confirmed_free', booking, id);
+                    await sendEmail(id, subject, body);
+                    showToast('Booking confirmed and email queued');
+                } catch (emailErr) {
+                    console.error(`Confirmation email failed for ${id}:`, emailErr);
+                    showToast(`Booking confirmed, but the email failed to send: ${emailErr.message}`, 'error');
+                }
             } else {
                 showToast('Booking confirmed');
             }
         } else if (status === 'Rejected') {
             const booking = allBookings.find(b => b.id === id);
             if (booking) {
-                const { subject, body } = await getEmailFromTemplate('rejected', booking, id, { reason: reason });
-                await sendEmail(id, subject, body);
-                showToast('Booking rejected and email queued', 'info');
+                try {
+                    const { subject, body } = await getEmailFromTemplate('rejected', booking, id, { reason: reason });
+                    await sendEmail(id, subject, body);
+                    showToast('Booking rejected and email queued', 'info');
+                } catch (emailErr) {
+                    console.error(`Rejection email failed for ${id}:`, emailErr);
+                    showToast(`Booking rejected, but the email failed to send: ${emailErr.message}`, 'error');
+                }
             } else {
                 showToast('Booking rejected', 'info');
             }
