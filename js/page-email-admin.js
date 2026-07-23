@@ -51,7 +51,16 @@ function renderSidebar() {
     allTemplates.forEach(t => {
         const div = document.createElement('div');
         div.className = `p-4 border-b border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors template-item ${currentTemplateId === t.id ? 'active-template' : ''}`;
+        div.setAttribute('role', 'button');
+        div.setAttribute('tabindex', '0');
+        div.setAttribute('aria-label', `${formatName(t.id)} email template`);
         div.onclick = () => selectTemplate(t.id);
+        div.onkeydown = (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                selectTemplate(t.id);
+            }
+        };
 
         div.innerHTML = `
                 <div class="font-bold text-gray-800 text-sm truncate">${formatName(t.id)}</div>

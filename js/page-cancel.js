@@ -1,8 +1,15 @@
-import { getPublicSupabaseClient, initPublicPage } from '../supabase-public.js';
+import { getPublicSupabaseClient, initPublicPage, ESF_PUBLIC_CONFIG } from '../supabase-public.js';
 import { safeError } from './utils.js';
 
 initPublicPage(async () => {
     const sb = getPublicSupabaseClient(); // From supabase-public.js
+
+    const contactLink = document.getElementById('contact-link');
+    if (contactLink && ESF_PUBLIC_CONFIG.PORTAL_URL) {
+        contactLink.href = ESF_PUBLIC_CONFIG.PORTAL_URL;
+        contactLink.target = '_blank';
+        contactLink.rel = 'noopener noreferrer';
+    }
 
     // Bind Turnstile Key from database dynamically
     const siteKey = window.ESF_PUBLIC_CONFIG?.TURNSTILE_SITE_KEY;

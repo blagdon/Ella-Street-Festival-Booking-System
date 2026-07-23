@@ -95,7 +95,7 @@ function renderList(data) {
         div.innerHTML = `
             <div class="flex justify-between items-start mb-0.5">
                 <span class="font-bold text-sm text-gray-800 group-hover:text-blue-700 truncate">${escapeHtml(item.business_name || item.business || 'Unknown Business')}</span>
-                <span class="text-xs bg-gray-100 text-gray-500 px-1.5 rounded">${item.status.substring(0, 3)}</span>
+                <span class="text-xs bg-gray-100 text-gray-500 px-1.5 rounded shrink-0 whitespace-nowrap">${escapeHtml(item.status)}</span>
             </div>
             <div class="text-xs text-gray-500">${escapeHtml(item.owner_name || item.owner || 'Unknown Owner')}</div>
             <div class="font-mono text-xs text-gray-400 mt-0.5">${item.id}</div>
