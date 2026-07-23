@@ -6,13 +6,6 @@ import { escapeHtml } from './utils.js';
 initPublicPage(async function () {
     const sb = getPublicSupabaseClient();
 
-    const privacyLink = document.getElementById('privacy-policy-link');
-    if (privacyLink && ESF_PUBLIC_CONFIG.PORTAL_URL) {
-        privacyLink.href = ESF_PUBLIC_CONFIG.PORTAL_URL;
-        privacyLink.target = '_blank';
-        privacyLink.rel = 'noopener noreferrer';
-    }
-
     // Bind Turnstile Key from database dynamically
     const siteKey = window.ESF_PUBLIC_CONFIG?.TURNSTILE_SITE_KEY;
     if (siteKey) {
