@@ -85,7 +85,7 @@ export function showConfirm(title, message, onConfirm) {
     if (!modal) {
         modal = document.createElement('div');
         modal.id = 'confirmModal';
-        modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 opacity-0 pointer-events-none transition-opacity duration-200';
+        modal.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-50 opacity-0 pointer-events-none transition-opacity duration-200';
         modal.innerHTML = `
             <div class="bg-white rounded-lg shadow-2xl max-w-md w-full mx-4 transform transition-all">
                 <div class="p-6">

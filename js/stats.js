@@ -327,7 +327,7 @@ function renderPanel(containerId, data, title, headerClass, borderClass) {
         <div class="bg-white rounded-xl shadow-sm border ${borderClass} overflow-hidden mb-8">
             <div class="px-6 py-4 ${headerClass} flex justify-between items-center">
                 <h2 class="text-lg font-bold tracking-wide">${title}</h2>
-                <span class="bg-white bg-opacity-20 px-3 py-1 rounded text-xs font-mono font-medium text-white opacity-90">${data.length} Records</span>
+                <span class="bg-white/20 px-3 py-1 rounded text-xs font-mono font-medium text-white opacity-90">${data.length} Records</span>
             </div>
             <div class="p-6 space-y-8">
                 <div>
