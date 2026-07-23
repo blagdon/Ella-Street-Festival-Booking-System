@@ -1,12 +1,18 @@
-import { getPublicSupabaseClient, initPublicPage, ESF_PUBLIC_CONFIG } from '../supabase-public.js';
+import { getPublicSupabaseClient, initPublicPage } from '../supabase-public.js';
 import { safeError } from './utils.js';
+
+// Hardcoded rather than ESF_PUBLIC_CONFIG.PORTAL_URL - that value is
+// currently a dead link (ellastreet.co.uk/fest26/portal 404s), and this is
+// a fixed page on the festival's own site, not something that changes per
+// environment.
+const CONTACT_URL = 'https://www.ellastreet.co.uk/contact';
 
 initPublicPage(async () => {
     const sb = getPublicSupabaseClient(); // From supabase-public.js
 
     const contactLink = document.getElementById('contact-link');
-    if (contactLink && ESF_PUBLIC_CONFIG.PORTAL_URL) {
-        contactLink.href = ESF_PUBLIC_CONFIG.PORTAL_URL;
+    if (contactLink) {
+        contactLink.href = CONTACT_URL;
         contactLink.target = '_blank';
         contactLink.rel = 'noopener noreferrer';
     }
