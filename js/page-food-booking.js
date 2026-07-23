@@ -1,5 +1,5 @@
 import { getPublicSupabaseClient, initPublicPage, ESF_PUBLIC_CONFIG } from '../supabase-public.js';
-import { escapeHtml } from './utils.js';
+import { escapeHtml, parseEdgeFunctionError } from './utils.js';
 
 // initPublicPage has already awaited loadPublicSettings() (cache-first,
 // DB on cold cache) before this callback runs.
@@ -233,7 +233,7 @@ initPublicPage(async function () {
                 });
 
                 if (error) {
-                    throw new Error("Server error: " + error.message);
+                    throw new Error(await parseEdgeFunctionError(error, "Server error"));
                 }
                 if (data && data.error) {
                     throw new Error(data.error); // Catch Cloudflare rejection messages

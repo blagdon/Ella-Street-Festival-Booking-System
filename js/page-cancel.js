@@ -1,5 +1,5 @@
 import { getPublicSupabaseClient, initPublicPage } from '../supabase-public.js';
-import { safeError } from './utils.js';
+import { parseEdgeFunctionError } from './utils.js';
 
 // Hardcoded rather than ESF_PUBLIC_CONFIG.PORTAL_URL - that value is
 // currently a dead link (ellastreet.co.uk/fest26/portal 404s), and this is
@@ -75,7 +75,7 @@ initPublicPage(async () => {
                 });
 
                 if (error) {
-                    throw new Error("Server error: " + error.message);
+                    throw new Error(await parseEdgeFunctionError(error, "Server error"));
                 }
                 if (data && data.error) {
                     throw new Error(data.error);
@@ -99,20 +99,17 @@ initPublicPage(async () => {
                 msg.classList.remove('hidden');
 
             } catch (err) {
+                // err.message here is always either a message the server deliberately
+                // crafted for the end user (via parseEdgeFunctionError or data.error
+                // above) or a generic browser/network error - this flow never makes a
+                // raw Postgres/Supabase call directly, so there's no risk of leaking
+                // internal error detail the way safeError() guards against elsewhere.
+                // safeError() was previously double-processing the server's own safe
+                // message here, and its "token" substring match was misfiring on the
+                // legitimate phrase "Invalid or expired cancel token." - showing a
+                // confusing "Authentication error" instead of the real reason.
                 msg.className = "mt-6 p-4 rounded-lg bg-yellow-50 border border-yellow-200 text-center text-sm font-bold text-yellow-800";
-                // Fix #3: Use safeError or fallback to prevent leaking info
-                msg.innerText = (err && err.message) ? "Cancellation failed: " + err.message : "Something went wrong. Please try again or contact us.";
-
-                // Actually, if safeError is available globally (e.g. from a shared script), use it.
-                // But for public pages, we should be very careful.
-                if (typeof safeError === 'function') {
-                    msg.innerText = safeError(err);
-                } else if (err.message && err.message.includes("not found")) {
-                    msg.innerText = "Booking not found or already cancelled.";
-                } else {
-                    msg.innerText = "Something went wrong. Please try again or contact us.";
-                }
-
+                msg.innerText = (err && err.message) ? err.message : "Something went wrong. Please try again or contact us.";
                 msg.classList.remove('hidden');
                 btn.disabled = false;
                 btn.innerText = "Confirm Cancellation";
