@@ -84,10 +84,15 @@ function renderCharts(allRows, combinedData, foodData, nonFoodData) {
     const chartsSection = document.getElementById('charts-section');
     if (chartsSection) chartsSection.classList.remove('hidden');
 
-    // Calculate stats
+    // Calculate stats. All six statuses the bookings_status_check constraint
+    // allows get their own bucket — 'Payment Requested' used to fall through
+    // a catch-all into Pending, which hid mid-checkout bookings inside the
+    // Pending slice and made the doughnut disagree with the revenue card's
+    // pending count.
     const statusCounts = {
         Confirmed: 0,
         Pending: 0,
+        'Payment Requested': 0,
         'HCC Checks': 0,
         Rejected: 0,
         Cancelled: 0
@@ -101,11 +106,17 @@ function renderCharts(allRows, combinedData, foodData, nonFoodData) {
         const s = r.status || 'Pending';
         if (statusCounts.hasOwnProperty(s)) {
             statusCounts[s]++;
-        } else if (s === 'HCC Checks') {
-            statusCounts['HCC Checks']++;
         } else {
             statusCounts.Pending++;
         }
+
+        // Power/resident cards and the category tallies are operational
+        // "what does the festival need to plan for" numbers, so a stall
+        // that cancelled or was rejected shouldn't keep contributing to
+        // them forever. The status doughnut above deliberately still
+        // counts every row — dead bookings are exactly what it exists
+        // to show.
+        if (!isActiveBooking(r)) return;
 
         if (checkBool(r.power_required)) powerCount++;
         if (checkBool(r.is_resident)) residentCount++;
@@ -136,6 +147,7 @@ function renderCharts(allRows, combinedData, foodData, nonFoodData) {
                     backgroundColor: [
                         '#10b981', // Confirmed - green
                         '#f59e0b', // Pending - yellow
+                        '#3b82f6', // Payment Requested - blue (matches the Awaiting Payment bar)
                         '#f97316', // HCC Checks - orange
                         '#ef4444', // Rejected - red
                         '#6b7280'  // Cancelled - gray
@@ -177,7 +189,9 @@ function renderCharts(allRows, combinedData, foodData, nonFoodData) {
         });
     }
 
-    // 2. Food vs General Chart (Pie)
+    // 2. Food vs General Chart (Pie) — active bookings only. Raw row counts
+    // meant a stall that cancelled in March still boosted its instance's
+    // slice forever, which isn't what "Food vs General" is read as.
     const instanceCtx = document.getElementById('instanceChart');
     if (instanceCtx) {
         if (instanceChartInstance) instanceChartInstance.destroy();
@@ -186,7 +200,10 @@ function renderCharts(allRows, combinedData, foodData, nonFoodData) {
             data: {
                 labels: ['Food & Drink', 'General/Non-Food'],
                 datasets: [{
-                    data: [foodData.length, nonFoodData.length],
+                    data: [
+                        foodData.filter(isActiveBooking).length,
+                        nonFoodData.filter(isActiveBooking).length
+                    ],
                     backgroundColor: ['#ef4444', '#3b82f6'],
                     borderWidth: 2,
                     borderColor: '#fff'
@@ -254,16 +271,31 @@ function renderCharts(allRows, combinedData, foodData, nonFoodData) {
         });
     }
 
-    // 4. Revenue Progress Bars
-    const confirmedRevenue = calculateRevenue(combinedData.filter(r => r.status === 'Confirmed'));
-    const pendingRevenue = calculateRevenue(combinedData.filter(r => r.status === 'Pending'));
-    const totalCapacity = confirmedRevenue + pendingRevenue;
+    // 4. Revenue Progress Bars. 'Payment Requested' gets its own figure:
+    // it used to be counted in NEITHER the confirmed nor the pending bar,
+    // so a booking mid-Stripe-checkout — the money most likely to arrive —
+    // silently vanished from the forecast and from Total Capacity.
+    const confirmedRows = combinedData.filter(r => r.status === 'Confirmed');
+    const pendingRows = combinedData.filter(r => r.status === 'Pending');
+    const awaitingRows = combinedData.filter(r => r.status === 'Payment Requested');
+    const confirmedRevenue = calculateRevenue(confirmedRows);
+    const pendingRevenue = calculateRevenue(pendingRows);
+    const awaitingRevenue = calculateRevenue(awaitingRows);
+    const totalCapacity = confirmedRevenue + pendingRevenue + awaitingRevenue;
 
     setText('revenue-total', `£${confirmedRevenue.toLocaleString()}`);
     setText('revenue-potential', `£${pendingRevenue.toLocaleString()}`);
     setText('revenue-max', `£${totalCapacity.toLocaleString()}`);
-    setText('revenue-confirmed', combinedData.filter(r => r.status === 'Confirmed').length);
-    setText('revenue-pending', combinedData.filter(r => r.status === 'Pending').length);
+    setText('revenue-confirmed', confirmedRows.length);
+    setText('revenue-pending', pendingRows.length);
+
+    // Hidden when nothing is mid-checkout, same convention as Refunded:
+    // Payment Requested is a transient state and an always-there £0 row
+    // would just be noise.
+    setText('revenue-awaiting', `£${awaitingRevenue.toLocaleString()}`);
+    setText('revenue-awaiting-count', awaitingRows.length);
+    const awaitingWrap = document.getElementById('revenue-awaiting-wrap');
+    if (awaitingWrap) awaitingWrap.classList.toggle('hidden', awaitingRows.length === 0);
 
     // Refunds are real money that went back out, not forecast — so unlike the
     // confirmed/pending bars above (FOOD+NONFOOD only), this counts every live
@@ -281,7 +313,8 @@ function renderCharts(allRows, combinedData, foodData, nonFoodData) {
 
     const confirmedPercent = totalCapacity > 0 ? (confirmedRevenue / totalCapacity * 100) : 0;
     const pendingPercent = totalCapacity > 0 ? (pendingRevenue / totalCapacity * 100) : 0;
-    // Same scale as the other two bars so lengths compare honestly. Capped:
+    const awaitingPercent = totalCapacity > 0 ? (awaitingRevenue / totalCapacity * 100) : 0;
+    // Same scale as the other bars so lengths compare honestly. Capped:
     // refunds span all live instances while capacity is FOOD+NONFOOD only,
     // so exceeding 100% is possible in theory, if never in practice.
     const refundedPercent = totalCapacity > 0 ? Math.min(100, refundedTotal / totalCapacity * 100) : 0;
@@ -289,9 +322,11 @@ function renderCharts(allRows, combinedData, foodData, nonFoodData) {
     setTimeout(() => {
         const revBar = document.getElementById('revenue-bar');
         const potBar = document.getElementById('potential-bar');
+        const awaitBar = document.getElementById('awaiting-bar');
         const refBar = document.getElementById('refunded-bar');
         if (revBar) revBar.style.width = `${confirmedPercent}%`;
         if (potBar) potBar.style.width = `${pendingPercent}%`;
+        if (awaitBar) awaitBar.style.width = `${awaitingPercent}%`;
         if (refBar) refBar.style.width = `${refundedPercent}%`;
     }, 100);
 }
@@ -340,13 +375,14 @@ function renderPanel(containerId, data, title, headerClass, borderClass) {
     container.innerHTML = '';
 
     // CALCULATE METRICS
-    const statusCounts = { Pending: 0, Confirmed: 0, Rejected: 0, Cancelled: 0, HCCChecks: 0 };
+    const statusCounts = { Pending: 0, PaymentRequested: 0, Confirmed: 0, Rejected: 0, Cancelled: 0, HCCChecks: 0 };
     const conf = { rows: [], power: 0, charity: 0, resident: 0, cats: {} };
     const pend = { rows: [], power: 0, charity: 0, resident: 0, cats: {} };
 
     data.forEach(r => {
         const s = r.status || 'Pending';
         if (s === 'HCC Checks') statusCounts.HCCChecks++;
+        else if (s === 'Payment Requested') statusCounts.PaymentRequested++;
         else if (statusCounts.hasOwnProperty(s)) statusCounts[s]++;
         else statusCounts.Pending++;
 
@@ -382,9 +418,10 @@ function renderPanel(containerId, data, title, headerClass, borderClass) {
             <div class="p-6 space-y-8" id="${containerId}-body">
                 <div>
                     <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Booking Status Breakdown</h3>
-                    <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+                    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
                         ${statBox('Confirmed', statusCounts.Confirmed, 'text-green-800 bg-green-50 border-green-100')}
                         ${statBox('Pending', statusCounts.Pending, 'text-yellow-800 bg-yellow-50 border-yellow-100')}
+                        ${statBox('Awaiting Payment', statusCounts.PaymentRequested, 'text-blue-800 bg-blue-50 border-blue-100')}
                         ${statBox('HCC Checks', statusCounts.HCCChecks, 'text-orange-800 bg-orange-50 border-orange-100')}
                         ${statBox('Rejected', statusCounts.Rejected, 'text-red-800 bg-red-50 border-red-100')}
                         ${statBox('Cancelled', statusCounts.Cancelled, 'text-gray-600 bg-gray-100 border-gray-200')}
@@ -447,6 +484,16 @@ function renderPanel(containerId, data, title, headerClass, borderClass) {
 // Helpers
 
 /**
+ * A booking that still exists as far as festival planning is concerned.
+ * Cancelled/Rejected rows are kept in the status breakdowns (that's what
+ * those exist to show) but excluded from operational tallies — power,
+ * residents, categories, the Food-vs-General split.
+ */
+function isActiveBooking(r) {
+    return r.status !== 'Cancelled' && r.status !== 'Rejected';
+}
+
+/**
  * Reads the embedded payments refund off a stats row. The one-to-one embed
  * normally arrives as an object (payments' PK is booking_id), but PostgREST
  * returns an array if it ever fails to detect the o2o relationship, so both
@@ -462,8 +509,13 @@ function checkBool(val) {
     if (val === true || val === 'true' || val === 'Yes' || val === 'yes') return true;
     if (typeof val === 'string') {
         const lower = val.toLowerCase();
-        // Strict match for power requirement as requested
-        if (val === "Electricity supplied by fest organisors") return true;
+        // Strict match for power requirement as requested: only festival-
+        // supplied electricity counts (generator/gas self-supply doesn't).
+        // Both spellings are load-bearing - PR #89 (v7.12.0) fixed the
+        // form's "organisors" typo, but bookings stored before that fix
+        // keep the old spelling and were never migrated.
+        if (val === "Electricity supplied by fest organisors" ||
+            val === "Electricity supplied by fest organisers") return true;
         // Keep lax match for legacy/charity fields
         if (lower.includes('charity') || lower.includes('not for profit')) return true;
     }
