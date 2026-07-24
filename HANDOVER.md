@@ -8,23 +8,36 @@
 > including applying additive migrations to production), which require specific
 > verification first, and the short list that needs an explicit instruction every
 > time. Default to acting.
-> Last updated: 2026-07-22.
-> Current release: **v7.11.0** (prepared 2026-07-22, merged as PRs #72–#75;
-> **`submit-booking` + `cancel-booking` redeployed to BOTH projects**; package
-> bumped and CHANGELOG written, **not yet git-tagged** — see [Cutting a
-> release](#cutting-a-release) for the remaining tag step). A settings-security
-> pass plus a docs rewrite, from reviewing the `settings.html` Stripe card and
-> the two public Edge Functions. Four things, see item 70: the Stripe credential
-> fields are now **write-only** (they were reading the stored secret keys into
-> the DOM on every load — `type="password"` is not access control); a routine
-> **Save could silently wipe** those credentials when a field was blank (blank
-> now means "leave alone"); the two public Edge Functions **no longer leak
+> Last updated: 2026-07-23.
+> Current release: **v7.12.0** ("UI Improvements 1"; prepared 2026-07-23, merged
+> as PRs #87–#95; package bumped and CHANGELOG written, tag cut as part of this
+> same release — see [Cutting a release](#cutting-a-release)). A UI/UX review
+> pass across the whole app plus a functional QA pass exercising real flows
+> end-to-end, see item 72. Highlights: visitor map marker clustering; a
+> real bug where a failed confirmation/rejection email could mask a
+> successful Kanban status change, leaving the UI out of sync with the DB
+> (`js/shared.js`); Tailwind v4's `bg-opacity-*` silently no-ops, which had
+> made six confirmation-modal backdrops render fully opaque instead of a
+> translucent dim; public forms (`submit-booking`, `cancel-booking`) now
+> surface the server's actual error message instead of a generic wrapper; and
+> a Cloudflare test Turnstile key is now configured on the test project,
+> unlocking real end-to-end browser testing of the public booking/cancel
+> forms for the first time. Read the CHANGELOG entry before touching
+> `js/shared.js`'s status-update flow or any `bg-{color} bg-opacity-*` class.
+> v7.11.0 (tagged 2026-07-22, merged as PRs #72–#75;
+> `submit-booking` + `cancel-booking` redeployed to BOTH projects). A
+> settings-security pass plus a docs rewrite, from reviewing the
+> `settings.html` Stripe card and the two public Edge Functions. Four things,
+> see item 70: the Stripe credential fields are now **write-only** (they were
+> reading the stored secret keys into the DOM on every load —
+> `type="password"` is not access control); a routine **Save could silently
+> wipe** those credentials when a field was blank (blank now means "leave
+> alone"); the two public Edge Functions **no longer leak
 > Postgres/RPC/server-config detail** in error responses to anonymous callers
 > (new `_shared/errors.ts`, allow-list not deny-list); and **`ARCHITECTURE.md`
 > was rewritten** to match the code after drifting to actively-misleading (it
 > named `js/config.js` as the config source of truth — it is
-> `supabase-public.js`). Read the CHANGELOG entry before touching the Stripe
-> settings save or the public functions' error handling.
+> `supabase-public.js`).
 > v7.10.5 (tagged 2026-07-21; **`stripe-webhook` redeployed
 > to BOTH projects** — `charge.refunded` was writing the Stripe *charge* id into
 > `refund_reference`, which is documented as holding a *refund* id.
@@ -3119,6 +3132,33 @@ now without asking.
 or similar, that's this — check with the owner whether it should live in this repo
 (new pages, following the exact same `page-*.js` + `requireAuth('admin')` pattern) or
 stay in the separate `ellafestperformersadmin.vercel.app` codebase.
+
+72. **"UI Improvements 1" (2026-07-23, PRs #87–#95, released as v7.12.0).** A
+    UI/UX review pass across the whole app, followed by a functional QA pass
+    exercising real flows end-to-end. Full detail in CHANGELOG.md; the two
+    things worth knowing here:
+    - **The most significant bug**: `sharedUpdateStatus()` (`js/shared.js`)
+      wrote a booking's new Kanban status to the DB *before* sending the
+      confirmation/rejection email, but treated an email failure as a full
+      failure — showing "Failed to update" over a write that had already
+      succeeded, leaving the card in the wrong column, and the trader silently
+      un-notified. Found by accident: the test project is missing five
+      `email_templates` rows the code expects (`confirmed_free`, `rejected`,
+      `payment_reminder`, `location_update`, `hcc_batch_check` — production
+      has all five, confirmed with the owner). Worth a second check if this
+      class of bug ever resurfaces elsewhere: search for other spots where a
+      DB write is followed by an unguarded side effect inside the same
+      try/catch.
+    - **Cloudflare's test Turnstile site key is now set on the test project's
+      `settings.turnstile_site_key`** (server-side secret was already
+      configured, for the pre-existing integration tests' dummy-token calls).
+      This unlocks real, full browser-driven testing of the public booking
+      and cancel forms — previously the one flow in this app no agent session
+      could exercise end-to-end. Don't touch this for local dev only; it's a
+      DB row on the shared test project, so it also affects anyone else
+      testing against it, though a real (non-test) site key blocking headless
+      submission was always the safer default outside an active testing
+      session.
 
 ---
 
