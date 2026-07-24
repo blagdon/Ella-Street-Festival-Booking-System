@@ -138,6 +138,23 @@
                             </p>
                         </div>
 
+                        <!-- Hidden while nothing is mid-checkout: Payment Requested is
+                             a transient state, and a permanent £0 row would be noise.
+                             Shown, these bookings used to be in NEITHER bar above. -->
+                        <div id="revenue-awaiting-wrap" class="hidden">
+                            <div class="flex justify-between text-xs md:text-sm mb-2">
+                                <span class="text-gray-600">Awaiting Payment</span>
+                                <span class="font-bold text-blue-700" id="revenue-awaiting">£0</span>
+                            </div>
+                            <div class="w-full bg-gray-200 rounded-full h-3 md:h-4">
+                                <div id="awaiting-bar"
+                                    class="bg-blue-500 h-3 md:h-4 rounded-full transition-all duration-500"
+                                    style="width: 0%"></div>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1"><span id="revenue-awaiting-count">0</span> bookings
+                                awaiting payment</p>
+                        </div>
+
                         <!-- Hidden until a refund actually exists (the normal case is
                              none), mirroring the Payments header's Refunded figure.
                              Covers all live instances, not just the two bars above -
@@ -208,11 +225,6 @@
 
     <script src="js/vendor/supabase.js"></script>
     <script type="module" src="./js/page-stats.js"></script>
-</body>
-
-</html>
-
-</script>
 </body>
 
 </html>
