@@ -271,21 +271,28 @@ function renderCharts(allRows, combinedData, foodData, nonFoodData) {
     // with. Deliberately NOT netted out of the confirmed bar: a refunded
     // cancellation has status Cancelled and is already outside that forecast,
     // so netting would double-count the deduction.
-    const refundedTotal = allRows
-        .filter(r => r.instance_prefix !== PREFIX_DEV)
-        .reduce((sum, r) => sum + getRefundAmount(r), 0);
+    const refundedRows = allRows.filter(r =>
+        r.instance_prefix !== PREFIX_DEV && getRefundAmount(r) > 0);
+    const refundedTotal = refundedRows.reduce((sum, r) => sum + getRefundAmount(r), 0);
     setText('revenue-refunded', `£${refundedTotal.toLocaleString('en-GB', { minimumFractionDigits: 2 })}`);
+    setText('revenue-refunded-count', refundedRows.length);
     const refundedWrap = document.getElementById('revenue-refunded-wrap');
     if (refundedWrap) refundedWrap.classList.toggle('hidden', refundedTotal === 0);
 
     const confirmedPercent = totalCapacity > 0 ? (confirmedRevenue / totalCapacity * 100) : 0;
     const pendingPercent = totalCapacity > 0 ? (pendingRevenue / totalCapacity * 100) : 0;
+    // Same scale as the other two bars so lengths compare honestly. Capped:
+    // refunds span all live instances while capacity is FOOD+NONFOOD only,
+    // so exceeding 100% is possible in theory, if never in practice.
+    const refundedPercent = totalCapacity > 0 ? Math.min(100, refundedTotal / totalCapacity * 100) : 0;
 
     setTimeout(() => {
         const revBar = document.getElementById('revenue-bar');
         const potBar = document.getElementById('potential-bar');
+        const refBar = document.getElementById('refunded-bar');
         if (revBar) revBar.style.width = `${confirmedPercent}%`;
         if (potBar) potBar.style.width = `${pendingPercent}%`;
+        if (refBar) refBar.style.width = `${refundedPercent}%`;
     }, 100);
 }
 

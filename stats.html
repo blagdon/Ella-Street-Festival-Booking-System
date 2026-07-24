@@ -142,9 +142,18 @@
                              none), mirroring the Payments header's Refunded figure.
                              Covers all live instances, not just the two bars above -
                              see the comment in js/stats.js. -->
-                        <div id="revenue-refunded-wrap" class="hidden flex justify-between items-center text-xs md:text-sm">
-                            <span class="text-gray-600">Refunded</span>
-                            <span class="font-bold text-amber-600" id="revenue-refunded">£0</span>
+                        <div id="revenue-refunded-wrap" class="hidden">
+                            <div class="flex justify-between text-xs md:text-sm mb-2">
+                                <span class="text-gray-600">Refunded</span>
+                                <span class="font-bold text-amber-600" id="revenue-refunded">£0</span>
+                            </div>
+                            <div class="w-full bg-gray-200 rounded-full h-3 md:h-4">
+                                <div id="refunded-bar"
+                                    class="bg-amber-500 h-3 md:h-4 rounded-full transition-all duration-500"
+                                    style="width: 0%"></div>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1"><span id="revenue-refunded-count">0</span> refunded
+                                bookings</p>
                         </div>
 
                         <div class="pt-3 border-t border-gray-200">
