@@ -226,6 +226,19 @@ function showPreviewBanner(instanceLabel) {
 // site launch before any stall has been confirmed and located yet.
 function showEmptyState() {
     document.getElementById('empty-state')?.classList.remove('hidden');
+
+    // Nothing plotted means there's nothing for the legend to explain -
+    // hiding it also sidesteps a real overlap bug: the legend panel is
+    // anchored bottom-left and can grow tall (max-h-60vh), the empty-state
+    // card is centered: on a narrow/short mobile viewport the two can
+    // overlap and interleave into unreadable text if the legend happens to
+    // be open when this fires.
+    document.getElementById('legend-panel')?.classList.add('hidden');
+    const legendBtn = document.getElementById('btn-legend-toggle');
+    if (legendBtn) {
+        legendBtn.setAttribute('aria-expanded', 'false');
+        legendBtn.parentElement.classList.add('hidden');
+    }
 }
 
 async function loadMapData() {
