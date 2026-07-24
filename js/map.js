@@ -251,7 +251,11 @@ async function loadMapData() {
     try {
         const previewInstance = getPreviewInstance();
         const currentInstance = previewInstance || 'LIVE';
-        if (previewInstance) showPreviewBanner(previewInstance);
+        // fetchMapData() below only treats 'DEV' as its own dataset - FOOD/
+        // GENERAL/MISC previews all resolve to the same 'LIVE' query a real
+        // visitor runs, so warning about a difference for those would be
+        // false: only a DEV preview is ever actually showing different data.
+        if (previewInstance === 'DEV') showPreviewBanner(previewInstance);
 
         const mapItems = await fetchMapData(currentInstance);
 
