@@ -9,7 +9,12 @@
        own touch-gesture zoom independently of the page viewport, so this
        only ever blocked a visitor needing to zoom further than Leaflet's
        own controls allow, never affected the map's own zoom behaviour. -->
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- viewport-fit=cover + the env(safe-area-inset-*) rules below keep the
+       corner controls clear of the notch and home indicator on iPhones -
+       this is the page visitors actually hold in their hand at the festival,
+       often in landscape. env() is 0 everywhere else, so nothing changes on
+       devices without safe areas. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
     integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
   <!-- Marker clustering: only matters once real bookings are confirmed and
@@ -179,7 +184,11 @@
       padding-left: 36px;
       border-radius: 8px;
       border: 1px solid #e5e7eb;
-      font-size: 0.875rem;
+      /* 16px minimum, not 0.875rem: iOS Safari auto-zooms the whole page on
+         focusing any input under 16px, and on this full-screen overflow-hidden
+         map the zoom sticks after the keyboard closes, stranding the controls
+         off-screen. */
+      font-size: 1rem;
       outline: none;
       transition: all 0.2s;
     }
@@ -223,6 +232,27 @@
       .search-input {
         width: 100%;
       }
+    }
+
+    /* Safe-area offsets for the three corner overlays (see the viewport
+       meta above). Id selectors deliberately outrank the Tailwind
+       top-4/bottom-8/left-4/right-4 utility classes on the same elements;
+       env() resolves to 0 on devices without safe areas, matching the
+       utility values exactly. */
+    #map-top-bar {
+      top: calc(1rem + env(safe-area-inset-top));
+      left: calc(1rem + env(safe-area-inset-left));
+      right: calc(1rem + env(safe-area-inset-right));
+    }
+
+    #legend-wrapper {
+      bottom: calc(2rem + env(safe-area-inset-bottom));
+      left: calc(1rem + env(safe-area-inset-left));
+    }
+
+    #btn-locate-user {
+      bottom: calc(2rem + env(safe-area-inset-bottom));
+      right: calc(1rem + env(safe-area-inset-right));
     }
   </style>
 
@@ -282,7 +312,7 @@
        paint, especially on mobile. Rows are generated in map.js from the
        same icon set the real pins use, so it can't silently drift out of
        sync with what's actually plotted. -->
-  <div class="absolute bottom-8 left-4" style="z-index: 10000;">
+  <div id="legend-wrapper" class="absolute bottom-8 left-4" style="z-index: 10000;">
     <button id="btn-legend-toggle"
       class="bg-white px-4 py-3 rounded-lg shadow-lg text-sm font-semibold text-gray-800 hover:bg-gray-50 flex items-center gap-2"
       aria-expanded="false" aria-controls="legend-panel">

@@ -143,8 +143,11 @@
               <input type="checkbox" name="category_check" value="Other" id="catOtherCheck"
                 class="mr-3 text-red-600 rounded">
               <span class="mr-2">Other:</span>
+              <!-- text-base (16px) not text-sm: iOS Safari auto-zooms the whole
+                   page when focusing any input under 16px, and this is the one
+                   free-typing field in the category grid. -->
               <input type="text" id="catOtherInput" maxlength="64" disabled
-                class="flex-1 p-2 text-sm border border-gray-300 rounded bg-white" placeholder="Specify...">
+                class="flex-1 p-2 text-base border border-gray-300 rounded bg-white" placeholder="Specify...">
             </div>
           </div>
           <div id="categoryError" class="text-xs text-red-600 mt-2 hidden">Please select at least one category.</div>

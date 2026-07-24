@@ -222,7 +222,9 @@ function showPreviewBanner(instanceLabel) {
     // the search bar down by its actual rendered height, the two overlap on
     // narrow phones where the instance label wraps the banner onto 2 lines.
     const topBar = document.getElementById('map-top-bar');
-    if (topBar) topBar.style.top = `calc(1rem + ${el.offsetHeight}px)`;
+    // Keep the safe-area-inset-top offset the page stylesheet gives
+    // #map-top-bar - this inline style would otherwise override it away.
+    if (topBar) topBar.style.top = `calc(1rem + ${el.offsetHeight}px + env(safe-area-inset-top))`;
 }
 
 // Shown when the fetch genuinely returns nothing to plot at all - not the

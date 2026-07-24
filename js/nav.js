@@ -11,7 +11,6 @@ export function initNavigation() {
     if (!container) return;
 
     const current = getCurrentInstance();
-    const isMobile = window.innerWidth < 768;
 
     // Helper to get badge style
     const getBadgeStyle = (val) => {
