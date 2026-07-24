@@ -397,16 +397,16 @@ function renderPanel(containerId, data, title, headerClass, borderClass) {
     container.classList.remove('hidden');
     container.innerHTML = '';
 
-    // CALCULATE METRICS
-    const statusCounts = { Pending: 0, PaymentRequested: 0, Confirmed: 0, Rejected: 0, Cancelled: 0, HCCChecks: 0 };
+    // CALCULATE METRICS. Keys are the literal status strings from the
+    // bookings_status_check constraint, same as renderCharts — no more
+    // respelled variants ('HCCChecks') needing their own match branches.
+    const statusCounts = { Pending: 0, 'Payment Requested': 0, Confirmed: 0, Rejected: 0, Cancelled: 0, 'HCC Checks': 0 };
     const conf = { rows: [], power: 0, charity: 0, resident: 0, cats: {} };
     const pend = { rows: [], power: 0, charity: 0, resident: 0, cats: {} };
 
     data.forEach(r => {
         const s = r.status || 'Pending';
-        if (s === 'HCC Checks') statusCounts.HCCChecks++;
-        else if (s === 'Payment Requested') statusCounts.PaymentRequested++;
-        else if (statusCounts.hasOwnProperty(s)) statusCounts[s]++;
+        if (statusCounts.hasOwnProperty(s)) statusCounts[s]++;
         else statusCounts.Pending++;
 
         if (s === 'Confirmed') {
@@ -444,8 +444,8 @@ function renderPanel(containerId, data, title, headerClass, borderClass) {
                     <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
                         ${statBox('Confirmed', statusCounts.Confirmed, 'text-green-800 bg-green-50 border-green-100')}
                         ${statBox('Pending', statusCounts.Pending, 'text-yellow-800 bg-yellow-50 border-yellow-100')}
-                        ${statBox('Awaiting Payment', statusCounts.PaymentRequested, 'text-blue-800 bg-blue-50 border-blue-100')}
-                        ${statBox('HCC Checks', statusCounts.HCCChecks, 'text-orange-800 bg-orange-50 border-orange-100')}
+                        ${statBox('Awaiting Payment', statusCounts['Payment Requested'], 'text-blue-800 bg-blue-50 border-blue-100')}
+                        ${statBox('HCC Checks', statusCounts['HCC Checks'], 'text-orange-800 bg-orange-50 border-orange-100')}
                         ${statBox('Rejected', statusCounts.Rejected, 'text-red-800 bg-red-50 border-red-100')}
                         ${statBox('Cancelled', statusCounts.Cancelled, 'text-gray-600 bg-gray-100 border-gray-200')}
                     </div>
