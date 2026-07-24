@@ -638,13 +638,20 @@ export async function updateLocation(id, locationIds) {
 
 
 /**
- * Fetches all bookings for statistics.
+ * Fetches all bookings for statistics, with each booking's refund amount
+ * (if any) embedded from its payments row.
+ *
+ * The embed rides on payments_booking_id_fkey; payments is keyed
+ * one-row-per-booking (booking_id is its PK), so PostgREST treats this as
+ * one-to-one and `payments` comes back as an object or null, not an array.
+ * Refunds live only on the payments table, so without this join the stats
+ * page has no way to show money that went back out.
  * @returns {Promise<Array>}
  */
 export async function fetchStatsData() {
     const sb = getSupabaseClient();
     return await fetchCapped(
-        sb.from(TBL_BOOKINGS).select('*').order('created_at', { ascending: false }),
+        sb.from(TBL_BOOKINGS).select('*, payments(refund_amount)').order('created_at', { ascending: false }),
         STATS_CAP
     );
 }

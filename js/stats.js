@@ -265,6 +265,19 @@ function renderCharts(allRows, combinedData, foodData, nonFoodData) {
     setText('revenue-confirmed', combinedData.filter(r => r.status === 'Confirmed').length);
     setText('revenue-pending', combinedData.filter(r => r.status === 'Pending').length);
 
+    // Refunds are real money that went back out, not forecast — so unlike the
+    // confirmed/pending bars above (FOOD+NONFOOD only), this counts every live
+    // instance, matching the scope of the Payments page totals it must agree
+    // with. Deliberately NOT netted out of the confirmed bar: a refunded
+    // cancellation has status Cancelled and is already outside that forecast,
+    // so netting would double-count the deduction.
+    const refundedTotal = allRows
+        .filter(r => r.instance_prefix !== PREFIX_DEV)
+        .reduce((sum, r) => sum + getRefundAmount(r), 0);
+    setText('revenue-refunded', `£${refundedTotal.toLocaleString('en-GB', { minimumFractionDigits: 2 })}`);
+    const refundedWrap = document.getElementById('revenue-refunded-wrap');
+    if (refundedWrap) refundedWrap.classList.toggle('hidden', refundedTotal === 0);
+
     const confirmedPercent = totalCapacity > 0 ? (confirmedRevenue / totalCapacity * 100) : 0;
     const pendingPercent = totalCapacity > 0 ? (pendingRevenue / totalCapacity * 100) : 0;
 
@@ -425,6 +438,19 @@ function renderPanel(containerId, data, title, headerClass, borderClass) {
 }
 
 // Helpers
+
+/**
+ * Reads the embedded payments refund off a stats row. The one-to-one embed
+ * normally arrives as an object (payments' PK is booking_id), but PostgREST
+ * returns an array if it ever fails to detect the o2o relationship, so both
+ * shapes are tolerated rather than trusting the server version.
+ */
+function getRefundAmount(r) {
+    const p = Array.isArray(r.payments) ? r.payments[0] : r.payments;
+    const amt = parseFloat(p?.refund_amount);
+    return Number.isFinite(amt) ? amt : 0;
+}
+
 function checkBool(val) {
     if (val === true || val === 'true' || val === 'Yes' || val === 'yes') return true;
     if (typeof val === 'string') {
