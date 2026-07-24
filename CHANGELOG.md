@@ -2,6 +2,44 @@
 
 All notable changes to this project are documented in this file.
 
+## [v7.12.0] - 2026-07-23
+
+"UI Improvements 1" — a UI/UX review pass across the whole app (visitor map, every admin page, both public booking forms), followed by a functional QA pass exercising real flows end-to-end (Kanban, Location Manager, Payments/Refunds, HCC Checks, Steward App, Settings, User Management, and — once a Cloudflare test Turnstile key was configured on the test project — the previously-untestable public booking and cancellation forms themselves). Shipped as nine PRs (#87–#95), grouped here because they landed together in one continuous session. Minor bump: one real feature (marker clustering) plus several fixes that change visible behaviour, not just internal cleanup.
+
+### Added
+
+- **Visitor map marker clustering, empty state, and accessibility fixes (#87).** Dense pitch layouts now collapse into count-bubble clusters below zoom 18 (via `leaflet.markercluster`) and expand to individual pins at/above it — matching the zoom level search and "Locate Me" already jump to. Verified live: 4 tightly-packed fixtures cluster to a single "4" bubble at zoom 16, split into 4 pins at zoom 18. Also added: an empty-state message for when nothing is confirmed-and-located yet (distinct from a filter/search narrowing a populated map to zero, which already had its own toast); removal of `user-scalable=no` from the viewport meta tag, which blocked pinch-zoom for no functional gain; and `aria-label` on markers, since Leaflet's `DivIcon` (unlike plain `Icon`) never reads the `alt` option — confirmed by reading the loaded library source rather than assuming.
+
+### Fixed
+
+- **A failed confirmation/rejection email could mask a successful Kanban status change (#92).** `sharedUpdateStatus()` wrote the new booking status to the DB *first*, then sent a confirmation/rejection email as a side effect. If that email step failed (e.g. a missing `email_templates` row), the failure propagated into the outer error handler, which showed "Failed to update" even though the status write had already succeeded, skipped the success callback so the Kanban card never moved (or snapped back to its source column), and left the trader silently un-notified with no signal to the admin that anything needed retrying. Verified live by reproducing exactly this on the test project (which was missing the `confirmed_free`/`rejected` template rows): before the fix, both the Confirm-Free and Reject paths showed a misleading error with the UI out of sync with the DB; after, the card moves correctly and the toast accurately reports the partial failure ("Booking confirmed, but the email failed to send: …").
+
+- **Confirmation modal backdrops rendered fully opaque instead of a translucent dim (#93).** `bg-{color} bg-opacity-{n}` is dead syntax under Tailwind v4 (this project's version) — the opacity half silently no-ops. Affected the shared `showConfirm()` helper used app-wide for confirmations, plus dedicated modals on Email Templates, Payments (×3), and the Steward app. Switched all six spots to the v4 slash syntax (`bg-black/50`, etc.); verified live on two of them.
+
+- **Payments Dashboard "Updated By" showed the original payer, not who processed the refund (#93).** The column always read the payment row's `editor` field, never `refunded_by`, so after a real admin recorded a refund the UI kept crediting whoever entered the original payment. Verified via direct DB query that `refunded_by` was recorded correctly while the UI showed the stale value; now prefers `refunded_by` once a refund exists.
+
+- **Public forms showed a generic, useless error on server rejection instead of the real reason (#95).** Food Stall submission, General Booking submission, and Cancel Booking all threw `"Server error: " + error.message`, but `supabase-js`'s `functions.invoke()` wrapper always sets that to the generic "Edge Function returned a non-2xx status code" — never the actual reason from the response body. Now uses the existing `parseEdgeFunctionError` helper to read it. Also fixed Cancel Booking's error handler double-processing that now-real message through `safeError()`, whose `"token"` substring match was misfiring on the legitimate phrase "cancel token" and replacing a correct, specific message with a confusing "Authentication error. Please refresh the page." Verified live end-to-end (see Testing, below): an invalid cancel token now correctly shows "Invalid or expired cancel token."
+
+- **Dead links across five public/admin pages.** `PORTAL_URL` (`ellastreet.co.uk/fest26/portal`) 404s — the site has no `/portal` path; corrected to the real page (`/fest26`) in both the code default and the stale value already saved in production's settings table (#90, #91). "Contact us" on the two payment-result pages and Cancel Booking's invalid-link state pointed at that same dead URL — repointed to the site's real `/contact` page (#90). "Privacy Policy" on both booking forms was linked to a page that doesn't exist anywhere on the real site — reverted to plain text rather than a mislabelled link (#90).
+
+- **Payments Dashboard COST column showed raw numbers, not currency (#88).** `80`/`60` instead of `£80.00`/`£60.00`, inconsistent with every other money value on the same page.
+
+- **Booking Editor sidebar truncated every status to 3 characters (#88).** `item.status.substring(0, 3)` rendered "Confirmed" as "Con". Shows the full status now, with the business name truncating instead.
+
+- **Typos on the Food Stall form and its admin-side counterpart (#89).** "Deserts" → "Desserts", "organisors" → "organisers", "suppied" → "supplied" (×2), "Hygene" → "Hygiene". The power-requirement option values had to be fixed in both the public form and the Booking Editor together, since a booking's stored value has to match one of the editor's `<option>` values to show as selected.
+
+### Accessibility
+
+- Email Template Manager's template list items were plain clickable `<div>`s — unreachable by keyboard, invisible to screen readers as interactive. Added `role="button"`, `tabindex="0"`, and Enter/Space activation; verified live that Enter on a focused item opens its editor (#88).
+- The nav's mobile hamburger button had no accessible name; added `aria-label`, `aria-expanded`, `aria-controls`, kept in sync on toggle (#88).
+- The nav's DEV/FOOD/GENERAL/MISC instance-selector dropdowns used `focus:outline-none` with no replacement focus style, so tabbing to them showed no visible indicator at all — not a Tailwind v4 regression, just a pre-existing gap noticed while auditing `outline-none` for other v4 migration casualties. Added the same `focus:ring-2` pattern used everywhere else in the app (#94).
+- Food Stall and General Booking forms: the Category, Resident?, and Declarations checkbox/radio groups now use `<fieldset>`/`<legend>` instead of a plain label followed by inputs, so a screen reader announces the group a checkbox belongs to (#89).
+
+### Testing
+
+- Configured Cloudflare's official always-passes test Turnstile site key on the test project (server-side secret was already set, for the existing integration tests' dummy-token flow) — unlocking real, full end-to-end browser testing of both public booking forms and the cancel-booking flow for the first time. Verified live: a complete Food Stall submission with file upload, a General Booking submission, a real cancellation, and the invalid-token error path all worked correctly through the actual UI, no code changes required for any of them.
+- A full functional pass followed: Kanban drag-and-drop (including the confirm/reject bug above), Location Manager pitch assignment, the Stripe test-mode chargeable-confirmation flow (real `cs_test_…` checkout session created), Resend Payment Link, Record Bank Transfer, HCC Checks (including its bulk-email path, which was already structured safely — template fetch happens before any write, so a missing-template failure there never corrupts state the way the Kanban bug did), the Steward app's location assign/unassign, Booking Editor saves, Settings page saves, Add Misc Entry, and Email Queue retry — all verified against real writes to the test project's database, all working correctly with no further bugs found.
+
 ## [v7.11.0] - 2026-07-22
 
 A batch of settings-security hardening plus a documentation rewrite, from a review of the `settings.html` Stripe card and the two public Edge Functions. Shipped as four separate PRs (#72–#75), grouped here because they landed together. Minor bump rather than patch: the Stripe settings UI now behaves visibly differently (stored credentials are never shown), and two new shared modules were added.
