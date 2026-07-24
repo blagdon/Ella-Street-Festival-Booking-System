@@ -285,12 +285,24 @@ export function filterCards() {
     updateCounts();
 };
 
+// Shaped to match createCard()'s real layout (id line, business name,
+// category) rather than a generic spinner, so the board's geometry doesn't
+// jump once real cards replace these.
+function skeletonCardHTML() {
+    return `
+    <div class="card bg-white p-3 rounded-lg shadow-sm mb-3 border-l-4 border-gray-200 animate-pulse">
+        <div class="h-2.5 bg-gray-200 rounded w-1/3 mb-2"></div>
+        <div class="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
+        <div class="h-3 bg-gray-200 rounded w-1/2"></div>
+    </div>`;
+}
+
 export async function loadBoard() {
     const searchInput = document.getElementById('searchInput');
     if (searchInput) searchInput.value = '';
 
     const containers = document.querySelectorAll('.column-scroll-area');
-    containers.forEach(c => c.innerHTML = '<div class="text-center p-4 text-gray-400 text-sm animate-pulse">Loading...</div>');
+    containers.forEach(c => c.innerHTML = skeletonCardHTML().repeat(3));
 
     try {
         const currentInstance = localStorage.getItem('ESF_INSTANCE') || 'DEV';

@@ -11,9 +11,49 @@ export function initSummary() {
     loadData();
 }
 
+// Shaped to match renderTable()'s real desktop row (id, status badge,
+// business, owner/email, category, power, location) and mobile card, so
+// the layout doesn't jump once real rows replace these.
+function skeletonRowHTML() {
+    return `
+    <tr class="border-b border-gray-100 last:border-0">
+        <td class="px-6 py-4"><div class="h-3 bg-gray-200 rounded w-16 animate-pulse"></div></td>
+        <td class="px-6 py-4"><div class="h-5 bg-gray-200 rounded-full w-20 animate-pulse"></div></td>
+        <td class="px-6 py-4"><div class="h-4 bg-gray-200 rounded w-32 animate-pulse"></div></td>
+        <td class="px-6 py-4">
+            <div class="h-3.5 bg-gray-200 rounded w-24 mb-1.5 animate-pulse"></div>
+            <div class="h-3 bg-gray-200 rounded w-28 animate-pulse"></div>
+        </td>
+        <td class="px-6 py-4"><div class="h-3 bg-gray-200 rounded w-20 animate-pulse"></div></td>
+        <td class="px-6 py-4"><div class="h-3 bg-gray-200 rounded w-8 animate-pulse"></div></td>
+        <td class="px-6 py-4"><div class="h-3 bg-gray-200 rounded w-14 animate-pulse"></div></td>
+    </tr>`;
+}
+
+function skeletonCardHTML() {
+    return `
+    <div class="bg-white p-4 rounded-lg border border-gray-200 shadow-sm animate-pulse">
+        <div class="flex justify-between items-start mb-3">
+            <div class="flex-1">
+                <div class="h-4 bg-gray-200 rounded w-2/3 mb-2"></div>
+                <div class="h-3 bg-gray-200 rounded w-1/3"></div>
+            </div>
+            <div class="h-5 bg-gray-200 rounded-full w-16 shrink-0 ml-2"></div>
+        </div>
+        <div class="space-y-2">
+            <div class="h-3 bg-gray-200 rounded w-1/2"></div>
+            <div class="h-3 bg-gray-200 rounded w-1/3"></div>
+        </div>
+    </div>`;
+}
+
 async function loadData() {
     const tbody = document.getElementById('tableBody');
-    tbody.innerHTML = '<tr><td colspan="7" class="px-6 py-10 text-center text-gray-500 animate-pulse">Loading bookings...</td></tr>';
+    const cardContainer = document.getElementById('cardContainer');
+    tbody.innerHTML = skeletonRowHTML().repeat(5);
+    // The mobile card view was previously left blank during loading -
+    // renderTable() is the only thing that ever touched cardContainer.
+    if (cardContainer) cardContainer.innerHTML = skeletonCardHTML().repeat(4);
 
     try {
         const currentInstance = localStorage.getItem('ESF_INSTANCE') || 'DEV';
@@ -23,6 +63,7 @@ async function loadData() {
         renderTable(data);
     } catch (err) {
         tbody.innerHTML = `<tr><td colspan="7" class="px-6 py-4 text-center text-red-500 font-bold">Error: ${escapeHtml(err.message)}</td></tr>`;
+        if (cardContainer) cardContainer.innerHTML = `<div class="text-center py-10 text-red-500 font-bold">Error: ${escapeHtml(err.message)}</div>`;
     }
 }
 
