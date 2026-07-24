@@ -217,6 +217,12 @@ function showPreviewBanner(instanceLabel) {
         'pointer-events:none'
     ].join(';');
     document.body.appendChild(el);
+
+    // This banner has no reserved layout space of its own - without pushing
+    // the search bar down by its actual rendered height, the two overlap on
+    // narrow phones where the instance label wraps the banner onto 2 lines.
+    const topBar = document.getElementById('map-top-bar');
+    if (topBar) topBar.style.top = `calc(1rem + ${el.offsetHeight}px)`;
 }
 
 // Shown when the fetch genuinely returns nothing to plot at all - not the

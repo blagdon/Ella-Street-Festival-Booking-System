@@ -235,7 +235,7 @@
   <div id="toast-container" class="toast-container"></div>
 
   <!-- Search & Filter - Mobile Responsive -->
-  <div class="absolute top-4 left-4 right-4" style="z-index: 10000;">
+  <div id="map-top-bar" class="absolute top-4 left-4 right-4" style="z-index: 10000;">
     <div class="search-container">
       <!-- Search Input -->
       <div style="position: relative; flex: 1;">
@@ -292,8 +292,15 @@
       </svg>
       Key
     </button>
-    <div id="legend-panel" class="hidden mt-2 bg-white rounded-lg shadow-lg p-3 max-h-[60vh] overflow-y-auto"
-      style="min-width: 200px;"></div>
+    <!-- Absolutely positioned (not stacked in normal flow below the button)
+         and anchored to open UPWARD from the button's top edge, so the
+         button itself never moves as the panel grows - on a short landscape
+         mobile viewport, a flow-stacked panel could push the toggle button
+         itself off-screen or under the search bar above, making it
+         impossible to tap the button again to collapse the key. -->
+    <div id="legend-panel"
+      class="hidden absolute bottom-full left-0 mb-2 bg-white rounded-lg shadow-lg p-3 overflow-y-auto"
+      style="min-width: 200px; max-height: min(60vh, calc(100vh - 6rem));"></div>
   </div>
 
   <!-- Empty state - shown only when the fetch genuinely returns nothing to
