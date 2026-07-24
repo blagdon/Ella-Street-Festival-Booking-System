@@ -35,6 +35,21 @@ function togglePanel(btn) {
     btn.querySelector('svg')?.classList.toggle('rotate-180', !collapsed);
 }
 
+// Refresh without a full page reload; loadGlobalStats() already destroys and
+// rebuilds the charts, so re-running it is safe. Disabled while in flight so
+// a double-click can't race two loads.
+document.getElementById('btn-refresh')?.addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    btn.querySelector('svg')?.classList.add('animate-spin');
+    try {
+        await loadGlobalStats();
+    } finally {
+        btn.disabled = false;
+        btn.querySelector('svg')?.classList.remove('animate-spin');
+    }
+});
+
 // Ensure Chart.js is available or wait for it? 
 // It is loaded via CDN in stats.html. We assume it's global 'Chart'.
 
@@ -192,6 +207,8 @@ function renderCharts(allRows, combinedData, foodData, nonFoodData) {
     // 2. Food vs General Chart (Pie) — active bookings only. Raw row counts
     // meant a stall that cancelled in March still boosted its instance's
     // slice forever, which isn't what "Food vs General" is read as.
+    const activeFood = foodData.filter(isActiveBooking).length;
+    const activeNonFood = nonFoodData.filter(isActiveBooking).length;
     const instanceCtx = document.getElementById('instanceChart');
     if (instanceCtx) {
         if (instanceChartInstance) instanceChartInstance.destroy();
@@ -200,10 +217,7 @@ function renderCharts(allRows, combinedData, foodData, nonFoodData) {
             data: {
                 labels: ['Food & Drink', 'General/Non-Food'],
                 datasets: [{
-                    data: [
-                        foodData.filter(isActiveBooking).length,
-                        nonFoodData.filter(isActiveBooking).length
-                    ],
+                    data: [activeFood, activeNonFood],
                     backgroundColor: ['#ef4444', '#3b82f6'],
                     borderWidth: 2,
                     borderColor: '#fff'
@@ -271,6 +285,15 @@ function renderCharts(allRows, combinedData, foodData, nonFoodData) {
         });
     }
 
+    // Replace the static "a chart exists" aria-labels with the actual data
+    // each render — a canvas is otherwise a black hole to a screen reader.
+    statusCtx?.setAttribute('aria-label', 'Bookings by status: ' +
+        Object.entries(statusCounts).map(([k, v]) => `${k} ${v}`).join(', '));
+    instanceCtx?.setAttribute('aria-label',
+        `Active bookings by instance: Food & Drink ${activeFood}, General/Non-Food ${activeNonFood}`);
+    categoryCtx?.setAttribute('aria-label', 'Top categories among active bookings: ' +
+        (topCategories.map(([name, count]) => `${name} ${count}`).join(', ') || 'none yet'));
+
     // 4. Revenue Progress Bars. 'Payment Requested' gets its own figure:
     // it used to be counted in NEITHER the confirmed nor the pending bar,
     // so a booking mid-Stripe-checkout — the money most likely to arrive —
@@ -283,16 +306,16 @@ function renderCharts(allRows, combinedData, foodData, nonFoodData) {
     const awaitingRevenue = calculateRevenue(awaitingRows);
     const totalCapacity = confirmedRevenue + pendingRevenue + awaitingRevenue;
 
-    setText('revenue-total', `£${confirmedRevenue.toLocaleString()}`);
-    setText('revenue-potential', `£${pendingRevenue.toLocaleString()}`);
-    setText('revenue-max', `£${totalCapacity.toLocaleString()}`);
+    setText('revenue-total', fmtGBP(confirmedRevenue));
+    setText('revenue-potential', fmtGBP(pendingRevenue));
+    setText('revenue-max', fmtGBP(totalCapacity));
     setText('revenue-confirmed', confirmedRows.length);
     setText('revenue-pending', pendingRows.length);
 
     // Hidden when nothing is mid-checkout, same convention as Refunded:
     // Payment Requested is a transient state and an always-there £0 row
     // would just be noise.
-    setText('revenue-awaiting', `£${awaitingRevenue.toLocaleString()}`);
+    setText('revenue-awaiting', fmtGBP(awaitingRevenue));
     setText('revenue-awaiting-count', awaitingRows.length);
     const awaitingWrap = document.getElementById('revenue-awaiting-wrap');
     if (awaitingWrap) awaitingWrap.classList.toggle('hidden', awaitingRows.length === 0);
@@ -306,7 +329,7 @@ function renderCharts(allRows, combinedData, foodData, nonFoodData) {
     const refundedRows = allRows.filter(r =>
         r.instance_prefix !== PREFIX_DEV && getRefundAmount(r) > 0);
     const refundedTotal = refundedRows.reduce((sum, r) => sum + getRefundAmount(r), 0);
-    setText('revenue-refunded', `£${refundedTotal.toLocaleString('en-GB', { minimumFractionDigits: 2 })}`);
+    setText('revenue-refunded', fmtGBP(refundedTotal));
     setText('revenue-refunded-count', refundedRows.length);
     const refundedWrap = document.getElementById('revenue-refunded-wrap');
     if (refundedWrap) refundedWrap.classList.toggle('hidden', refundedTotal === 0);
@@ -482,6 +505,13 @@ function renderPanel(containerId, data, title, headerClass, borderClass) {
 }
 
 // Helpers
+
+// One format for every money figure on the page. Always pence: partial
+// refunds make whole-pound rounding lossy, and mixing £425 with £275.00
+// in the same card looked accidental.
+function fmtGBP(n) {
+    return `£${n.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
 
 /**
  * A booking that still exists as far as festival planning is concerned.

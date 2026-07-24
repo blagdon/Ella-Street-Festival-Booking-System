@@ -1,11 +1,15 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 
 <head>
     <title>Festival Statistics - Master View</title>
     <meta charset="UTF-8">
+    <!-- Scoped to what this page actually loads: Chart.js + datalabels from
+         jsdelivr, Supabase, and the Vercel preview toolbar. Turnstile,
+         unpkg (Leaflet), cdnjs (Font Awesome) and Google Fonts entries were
+         copy-pasted from other pages and nothing here uses them. -->
     <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://challenges.cloudflare.com https://vercel.live; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; connect-src 'self' https://rsnxhuhibglieofikkpo.supabase.co https://challenges.cloudflare.com https://vercel.live https://cdn.jsdelivr.net https://unpkg.com; frame-src https://challenges.cloudflare.com https://vercel.live; img-src 'self' data: https:; font-src 'self' https://fonts.gstatic.com;">
+        content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://vercel.live; style-src 'self' 'unsafe-inline'; connect-src 'self' https://rsnxhuhibglieofikkpo.supabase.co https://vercel.live; frame-src https://vercel.live; img-src 'self' data: https:; font-src 'self';">
     <meta name="viewport" content="width=device-width, initial-scale=1">
 
     <link href="./css/output.css" rel="stylesheet">
@@ -72,8 +76,20 @@
 
     <div class="flex-grow p-4 md:p-6 overflow-y-auto custom-scrollbar space-y-6 md:space-y-8">
 
-        <div id="loading" class="text-center py-12">
-            <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-gray-600"></div>
+        <div class="flex items-center justify-between">
+            <h1 class="text-lg md:text-xl font-bold text-gray-800">Festival Statistics</h1>
+            <button id="btn-refresh" aria-label="Refresh statistics"
+                class="text-gray-500 hover:text-blue-600 p-2 rounded-lg border border-gray-200 bg-white shadow-sm transition disabled:opacity-50">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15">
+                    </path>
+                </svg>
+            </button>
+        </div>
+
+        <div id="loading" class="text-center py-12" role="status" aria-live="polite">
+            <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-gray-600" aria-hidden="true"></div>
             <p class="mt-2 text-gray-500 font-medium">Fetching global data...</p>
         </div>
 
@@ -88,7 +104,11 @@
                     <h3 class="text-xs md:text-sm font-bold text-gray-700 uppercase tracking-wide mb-3 md:mb-4">Status
                         Overview</h3>
                     <div class="chart-container">
-                        <canvas id="statusChart" style="max-height: 280px;"></canvas>
+                        <!-- aria-labels on all three charts are replaced with a data
+                             summary each render - see renderCharts() - so screen
+                             readers get the numbers, not just "a chart exists". -->
+                        <canvas id="statusChart" style="max-height: 280px;" role="img"
+                            aria-label="Doughnut chart of bookings by status"></canvas>
                     </div>
                 </div>
 
@@ -97,7 +117,8 @@
                     <h3 class="text-xs md:text-sm font-bold text-gray-700 uppercase tracking-wide mb-3 md:mb-4">Food vs
                         General</h3>
                     <div class="chart-container">
-                        <canvas id="instanceChart" style="max-height: 280px;"></canvas>
+                        <canvas id="instanceChart" style="max-height: 280px;" role="img"
+                            aria-label="Pie chart of food versus general bookings"></canvas>
                     </div>
                 </div>
             </div>
@@ -187,7 +208,8 @@
                     <h3 class="text-xs md:text-sm font-bold text-gray-700 uppercase tracking-wide mb-3 md:mb-4">Top
                         Categories</h3>
                     <div class="chart-container">
-                        <canvas id="categoryChart" style="max-height: 280px;"></canvas>
+                        <canvas id="categoryChart" style="max-height: 280px;" role="img"
+                            aria-label="Bar chart of top booking categories"></canvas>
                     </div>
                 </div>
             </div>
