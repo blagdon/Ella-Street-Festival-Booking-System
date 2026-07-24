@@ -62,6 +62,15 @@
             transform: scale(0.95);
         }
 
+        /* Applied to whichever column is currently under the dragged card
+           (dragula's own over/out events, wired in js/kanban.js - dragula
+           has no built-in class for this the way it does for gu-transit). */
+        .gu-target {
+            outline: 2px dashed #3b82f6;
+            outline-offset: -2px;
+            background-color: rgba(239, 246, 255, 0.5);
+        }
+
         /* Tablet: tighter layout */
         @media (min-width: 768px) and (max-width: 1023px) {
             .kanban-column {

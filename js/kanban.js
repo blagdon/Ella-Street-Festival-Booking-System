@@ -149,6 +149,23 @@ function initDragula() {
             draggedItem = el;
             sourceStatus = source.dataset.status;
         })
+        // Dragula has no built-in "highlight the column under the cursor"
+        // behaviour (gu-transit only styles the card being dragged) - over/
+        // out are its own events for exactly this, fired as the pointer
+        // crosses into/out of each valid container. dragend is a safety net
+        // for the case a card is released somewhere that never fired its
+        // own 'out' (e.g. dropped outside every container), so a highlight
+        // can never be left stuck on if a drag ends any other way than a
+        // clean over one container -> out that container -> drop sequence.
+        .on('over', function (el, container) {
+            container.classList.add('gu-target');
+        })
+        .on('out', function (el, container) {
+            container.classList.remove('gu-target');
+        })
+        .on('dragend', function () {
+            validContainers.forEach(c => c.classList.remove('gu-target'));
+        })
         .on('drop', function (el, target, source, sibling) {
             if (!target || target === source) return;
 
