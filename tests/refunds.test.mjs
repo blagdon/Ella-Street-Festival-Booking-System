@@ -346,6 +346,49 @@ describe('webhook reconciliation path (rpc_record_refund as service_role)', () =
   });
 });
 
+describe('stats page refund visibility (bookings → payments embed)', () => {
+  test('an authenticated admin can read refund_amount through the exact query shape fetchStatsData uses', async () => {
+    // The stats page joins refunds via PostgREST's embedded select rather
+    // than a second query. This asserts the whole chain that join depends
+    // on — the payments_booking_id_fkey relationship being visible to
+    // PostgREST, and RLS letting an admin session read refund_amount
+    // through the embed — because if any link breaks, the stats page
+    // doesn't degrade to £0, it fails to load at all.
+    const id = `${PREFIX}-0030`;
+    await seedPaidBooking(id, { stallCost: 100 });
+
+    const { error: refundErr } = await authed.rpc('rpc_record_refund', {
+      p_booking_id: id, p_refund_amount: 60, p_refund_reference: 're_stats_embed', p_notes: null,
+    });
+    assert.equal(refundErr, null, refundErr?.message);
+
+    const { data, error } = await authed.from('bookings')
+      .select('*, payments(refund_amount)')
+      .eq('id', id)
+      .single();
+    assert.equal(error, null, error?.message);
+
+    // payments' PK is booking_id, so PostgREST should detect one-to-one and
+    // embed an object; the page tolerates the array shape too, so accept both.
+    const p = Array.isArray(data.payments) ? data.payments[0] : data.payments;
+    assert.equal(Number(p?.refund_amount), 60);
+  });
+
+  test('a booking with no payments row embeds a null, not an error', async () => {
+    const id = `${PREFIX}-0031`;
+    await seedPaidBooking(id);
+    await service.from('payments').delete().eq('booking_id', id);
+
+    const { data, error } = await authed.from('bookings')
+      .select('*, payments(refund_amount)')
+      .eq('id', id)
+      .single();
+    assert.equal(error, null, error?.message);
+    const p = Array.isArray(data.payments) ? data.payments[0] : data.payments;
+    assert.equal(p?.refund_amount ?? null, null);
+  });
+});
+
 describe('the payments_refund_requires_payment constraint', () => {
   test('the database itself rejects a refund on an unpaid row, not just the RPC', async () => {
     // Guards the case the RPC does not cover: a direct write by
