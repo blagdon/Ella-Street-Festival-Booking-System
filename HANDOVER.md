@@ -8,8 +8,24 @@
 > including applying additive migrations to production), which require specific
 > verification first, and the short list that needs an explicit instruction every
 > time. Default to acting.
-> Last updated: 2026-07-23.
-> Current release: **v7.12.0** ("UI Improvements 1"; prepared 2026-07-23, merged
+> Last updated: 2026-07-24.
+> Current release: **v7.13.0** (Statistics page pass; prepared 2026-07-24, merged
+> as PRs #103–#107, frontend-only — no migration or Edge Function deploy, so the
+> Vercel push of `main` was the whole deploy). Triggered by a report that the
+> Stats page didn't show the refunded amount, which expanded into a full review
+> of the page — see item 73. Highlights: the page now shows refund and
+> awaiting-payment figures at all (`fetchStatsData()` embeds
+> `payments(refund_amount)`; refunds live only on `payments`, so bookings-only
+> queries never had them); a real miscount where `Payment Requested` — a valid
+> `bookings_status_check` status — fell through a catch-all into `Pending` and so
+> was counted in **neither** revenue bar nor Total Capacity, hiding
+> mid-checkout money; and the "Need Power" count had silently frozen because it
+> strict-matched the pre-v7.12.0 `organisors` typo spelling that new bookings no
+> longer carry (see the new Gotchas entry on form-value spelling drift). Also:
+> Cancelled/Rejected bookings no longer inflate the operational charts/cards, a
+> refresh button, chart-canvas aria-labels rewritten with live data, one
+> `fmtGBP()` money format, and a CSP scoped to what the page actually loads.
+> v7.12.0 ("UI Improvements 1"; prepared 2026-07-23, merged
 > as PRs #87–#95; package bumped and CHANGELOG written, tag cut as part of this
 > same release — see [Cutting a release](#cutting-a-release)). A UI/UX review
 > pass across the whole app plus a functional QA pass exercising real flows
@@ -3160,6 +3176,38 @@ stay in the separate `ellafestperformersadmin.vercel.app` codebase.
       submission was always the safer default outside an active testing
       session.
 
+73. **Statistics page pass (2026-07-24, PRs #103–#107, released as v7.13.0).**
+    Frontend-only, no migration or deploy step beyond the Vercel push. Started
+    from "the statistics page does not show the refunded amount" and became a
+    full review of `stats.html` / `js/stats.js`. Full detail in CHANGELOG.md;
+    what's worth knowing here:
+    - **Refunds are only on `payments`, and the stats page fetched `bookings`
+      alone.** `fetchStatsData()` now does `.select('*, payments(refund_amount)')`
+      — a one-to-one embed (payments' PK is `booking_id`). If the stats page
+      ever fails to *load* (not just shows £0), suspect that embed: it depends
+      on `payments_booking_id_fkey` being visible to PostgREST and on RLS
+      letting an admin read `refund_amount` through the join. Both are pinned
+      by tests in `tests/refunds.test.mjs` ("stats page refund visibility").
+    - **The `Payment Requested` miscount is the instructive bug.** The page
+      hardcoded five statuses; the DB constraint allows six. The sixth fell
+      through a catch-all into Pending and was counted in neither revenue bar
+      nor Total Capacity. Same lesson as the `paid`/`refund_amount` gotcha
+      below: when a status/enum domain is defined in one place (here
+      `bookings_status_check`), every client-side reader that switches on it is
+      a place it can silently drift out of sync. The fix keys the status
+      buckets off the literal constraint strings in both `renderCharts` and
+      `renderPanel` so adding a status is a one-line change, not a hunt for
+      catch-alls.
+    - **Operational tallies (power, residents, categories, Food-vs-General)
+      now exclude Cancelled/Rejected via `isActiveBooking()`; the status
+      breakdowns still count every row.** If you add a new chart, decide which
+      of those two it is — "what must the festival plan for" (active only) or
+      "where did every application end up" (all rows).
+    - **`stats.html`'s CSP was tightened** to jsdelivr + Supabase + Vercel only.
+      If you add a page feature that loads from a new origin (a font, a CDN
+      library), you'll need to widen it again — the dev server auto-widens
+      `connect-src` for the test Supabase project but nothing else.
+
 ---
 
 ## 9. Gotchas
@@ -3201,6 +3249,21 @@ stay in the separate `ellafestperformersadmin.vercel.app` codebase.
   bug from the same root as a signal to sweep exhaustively rather than fix and move on.
   Note grepping alone was not sufficient here: the export's broken filter (item 67) was
   found only by reading the whole function, and had nothing to do with refunds.
+
+- **A stored booking keeps the exact string value the form used when it was submitted —
+  fixing a form's option value does NOT migrate the rows already saved with the old
+  one.** Booking fields like `power_required` store the literal `<option value>` text, and
+  code elsewhere matches against those strings. When PR #89 (v7.12.0) corrected the
+  "organis**o**rs" → "organis**e**rs" typo in the forms, every booking saved before that
+  kept the old spelling and every booking after used the new one — so the Stats page's
+  power count, which strict-matched only the old spelling, silently became a frozen
+  pre-fix undercount (item 73, fixed by matching both). **The trap**: the form change
+  looks self-contained and its own tests pass, but it forks the stored data into two
+  spellings that any exact-string reader must now handle. Before changing a form's
+  option value, grep for readers that compare against the old string (`power_required`,
+  `is_charity`, category names, status text) and either match both spellings or run a
+  one-off `UPDATE` to migrate the existing rows — production data was never migrated for
+  any of these, so both spellings are live.
 
 - **A fixture placed under the literal `ESF26-DEV-` prefix cannot be left in the
   test project as evidence — the next `integration-tests` run deletes it, silently
