@@ -16,6 +16,13 @@ function init() {
     const btnSaveTemplate = document.getElementById('btn-save-template');
     if (btnSaveTemplate) btnSaveTemplate.addEventListener('click', saveTemplate);
 
+    const btnBackToTemplates = document.getElementById('btn-back-to-templates');
+    if (btnBackToTemplates) {
+        btnBackToTemplates.addEventListener('click', () => {
+            document.getElementById('mobile-view-container')?.classList.remove('mobile-detail-active');
+        });
+    }
+
     // Delegation for Modal Close
     document.body.addEventListener('click', (e) => {
         const closePreviewBtn = e.target.closest('[data-action="close-preview"]');
@@ -86,6 +93,11 @@ function selectTemplate(id) {
     // Toggle Views
     document.getElementById('emptyState').style.display = 'none';
     document.getElementById('editorArea').style.display = 'flex';
+
+    // Mobile: switch to editor view (see the max-width:767px rules in
+    // email_admin.html - same list<->detail toggle pattern as
+    // update_details.html's Booking Editor)
+    document.getElementById('mobile-view-container')?.classList.add('mobile-detail-active');
 }
 
 async function saveTemplate() {

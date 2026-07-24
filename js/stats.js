@@ -12,6 +12,29 @@ let statusChartInstance = null;
 let instanceChartInstance = null;
 let categoryChartInstance = null;
 
+// Collapsible per-instance panels (mobile: keeps the page from being one long
+// scroll through four near-identical breakdowns). Delegated since renderPanel()
+// rebuilds these headers via innerHTML on every refresh.
+document.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-action="toggle-panel"]');
+    if (btn) togglePanel(btn);
+});
+document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const btn = e.target.closest('[data-action="toggle-panel"]');
+    if (!btn) return;
+    e.preventDefault();
+    togglePanel(btn);
+});
+
+function togglePanel(btn) {
+    const body = document.getElementById(btn.dataset.target);
+    if (!body) return;
+    const collapsed = body.classList.toggle('hidden');
+    btn.setAttribute('aria-expanded', String(!collapsed));
+    btn.querySelector('svg')?.classList.toggle('rotate-180', !collapsed);
+}
+
 // Ensure Chart.js is available or wait for it? 
 // It is loaded via CDN in stats.html. We assume it's global 'Chart'.
 
@@ -325,11 +348,18 @@ function renderPanel(containerId, data, title, headerClass, borderClass) {
 
     const html = `
         <div class="bg-white rounded-xl shadow-sm border ${borderClass} overflow-hidden mb-8">
-            <div class="px-6 py-4 ${headerClass} flex justify-between items-center">
+            <div class="px-6 py-4 ${headerClass} flex justify-between items-center cursor-pointer select-none"
+                data-action="toggle-panel" data-target="${containerId}-body" role="button" tabindex="0"
+                aria-expanded="true" aria-controls="${containerId}-body">
                 <h2 class="text-lg font-bold tracking-wide">${title}</h2>
-                <span class="bg-white/20 px-3 py-1 rounded text-xs font-mono font-medium text-white opacity-90">${data.length} Records</span>
+                <div class="flex items-center gap-3">
+                    <span class="bg-white/20 px-3 py-1 rounded text-xs font-mono font-medium text-white opacity-90">${data.length} Records</span>
+                    <svg class="w-5 h-5 transition-transform duration-200 rotate-180 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                    </svg>
+                </div>
             </div>
-            <div class="p-6 space-y-8">
+            <div class="p-6 space-y-8" id="${containerId}-body">
                 <div>
                     <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Booking Status Breakdown</h3>
                     <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
