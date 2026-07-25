@@ -1,10 +1,120 @@
 import { getSupabaseClient } from './supabase.js';
 import { updateBookingStatus, finalizeConfirmation, sendEmail, sendBookingSms, auditLog, getSignedBookingDocuments } from './api.js';
 import { showToast } from './ui.js';
-import { escapeHtml, sanitizeUrl } from './utils.js';
+import { escapeHtml, sanitizeUrl, countSmsSegments } from './utils.js';
 import { getStallCost, CONFIG } from './config.js';
 import { populateFsaSection } from './fsa-ratings.js';
 import { populateGoogleMapsReviews } from './google-reviews.js';
+
+// ---------------------------------------------------------------------------
+// Optional "also send a text" controls on the Compose Email and Bulk Email
+// modals. Both the Kanban and Summary pages carry identical copies of those
+// modals, so the wiring lives here rather than being duplicated in both page
+// modules (and then drifting).
+//
+// The two cases are deliberately NOT the same:
+//  - Compose: the email body is a plain <textarea>, so the SMS field is
+//    prefilled from it as a convenience, then edited down.
+//  - Bulk: the email body is Quill HTML. Reusing it would put literal markup
+//    on the handset, so the bulk SMS has its own field with no prefill, and
+//    shows a cost estimate because every part is billed per recipient.
+// ---------------------------------------------------------------------------
+const MAX_SMS_LEN = 1600; // matches send-sms / queue-bulk-sms's own cap
+
+function updateSmsCount(bodyEl, countEl) {
+    const { len, parts } = countSmsSegments(bodyEl.value);
+    countEl.textContent = `${len} character${len !== 1 ? 's' : ''} · ${parts} SMS part${parts !== 1 ? 's' : ''}`;
+    countEl.className = parts > 1 ? 'text-xs text-amber-600 font-medium' : 'text-xs text-gray-500';
+}
+
+/**
+ * Wires the Compose Email modal's "Also send as a text message" tickbox.
+ * Safe to call on a page without those elements (returns silently).
+ */
+export function initComposeSmsToggle() {
+    const cb = document.getElementById('emailAlsoSms');
+    const wrap = document.getElementById('emailSmsWrap');
+    const body = document.getElementById('emailSmsBody');
+    const count = document.getElementById('emailSmsCount');
+    if (!cb || !wrap || !body || !count) return;
+
+    cb.addEventListener('change', () => {
+        wrap.classList.toggle('hidden', !cb.checked);
+        if (cb.checked && !body.value.trim()) {
+            // Prefill from the email body, trimmed to the hard cap so the
+            // field never opens already over-length.
+            const emailBody = document.getElementById('emailBody');
+            body.value = (emailBody ? emailBody.value : '').slice(0, MAX_SMS_LEN);
+        }
+        updateSmsCount(body, count);
+    });
+    body.addEventListener('input', () => updateSmsCount(body, count));
+}
+
+/**
+ * Wires the Bulk Email modal's "Also send a text message" tickbox.
+ * @param {() => number} getRecipientCount how many bookings will be texted
+ */
+export function initBulkSmsToggle(getRecipientCount) {
+    const cb = document.getElementById('bulkAlsoSms');
+    const wrap = document.getElementById('bulkSmsWrap');
+    const body = document.getElementById('bulkSmsBody');
+    const cost = document.getElementById('bulkSmsCost');
+    if (!cb || !wrap || !body || !cost) return;
+
+    const render = () => {
+        const { len, parts } = countSmsSegments(body.value);
+        const recipients = getRecipientCount() || 0;
+        const total = recipients * parts;
+        cost.textContent =
+            `${len} character${len !== 1 ? 's' : ''} · ${parts} part${parts !== 1 ? 's' : ''} × ` +
+            `${recipients} recipient${recipients !== 1 ? 's' : ''} = about ${total} billed text${total !== 1 ? 's' : ''}`;
+        cost.className = parts > 1 ? 'text-xs text-amber-700 font-medium mt-1' : 'text-xs text-gray-600 mt-1';
+    };
+
+    cb.addEventListener('change', () => {
+        wrap.classList.toggle('hidden', !cb.checked);
+        render();
+    });
+    body.addEventListener('input', render);
+}
+
+/**
+ * Reads a modal's optional SMS body. Returns null when the tickbox is off
+ * (nothing to send), or throws with a user-facing message when it's on but
+ * the text is unusable — so callers can treat "ticked but empty" as the
+ * mistake it is rather than silently sending nothing.
+ * @param {'compose'|'bulk'} which
+ * @returns {string|null}
+ */
+export function readOptionalSmsBody(which) {
+    const ids = which === 'bulk'
+        ? { cb: 'bulkAlsoSms', body: 'bulkSmsBody' }
+        : { cb: 'emailAlsoSms', body: 'emailSmsBody' };
+
+    const cb = document.getElementById(ids.cb);
+    if (!cb || !cb.checked) return null;
+
+    const el = document.getElementById(ids.body);
+    const text = el ? el.value.trim() : '';
+    if (!text) throw new Error('Text message is ticked but empty — add the message or untick it.');
+    if (text.length > MAX_SMS_LEN) throw new Error(`Text message is too long (${text.length}/${MAX_SMS_LEN} characters).`);
+    return text;
+}
+
+/** Clears both SMS sub-forms so a ticked state never carries to the next open. */
+export function resetSmsToggle(which) {
+    const ids = which === 'bulk'
+        ? { cb: 'bulkAlsoSms', wrap: 'bulkSmsWrap', body: 'bulkSmsBody' }
+        : { cb: 'emailAlsoSms', wrap: 'emailSmsWrap', body: 'emailSmsBody' };
+
+    const cb = document.getElementById(ids.cb);
+    const wrap = document.getElementById(ids.wrap);
+    const body = document.getElementById(ids.body);
+    if (cb) cb.checked = false;
+    if (wrap) wrap.classList.add('hidden');
+    if (body) body.value = '';
+}
 
 /**
  * Manually sends a payment reminder.

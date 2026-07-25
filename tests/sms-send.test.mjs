@@ -124,6 +124,8 @@ describe('send-sms', () => {
     assert.equal(json.segments, 1);
     assert.match(json.provider_message_id || '', /^mock-/,
       'the mock adapter should return a mock- prefixed id, proving the dispatch reached an adapter');
+    assert.equal(json.recipient, SEND_TO_E164,
+      'the response must report the NORMALISED number actually sent to, which is what the client audits');
 
     // The audit row is written with the NORMALISED number, not what was passed in.
     const { data: rows } = await service
@@ -221,6 +223,92 @@ describe('retry-queued-sms', () => {
     assert.equal(winners.length, 1,
       `exactly one concurrent claim should match, got ${winners.length} — ` +
       `two winners would mean two callers could both send (and bill) the same text`);
+  });
+});
+
+// Bulk sends derive their recipients server-side from Confirmed bookings, so
+// these need real booking fixtures rather than just queue rows.
+const BULK_PREFIX = 'ESF26-SMSBULK-';
+
+async function insertBooking(id, overrides = {}) {
+  const { error } = await service.from('bookings').insert({
+    id,
+    status: 'Confirmed',
+    business_name: `Bulk SMS Test ${id}`,
+    owner_name: 'Test Owner',
+    email: 'bulk-sms-test@example.test',
+    instance_prefix: 'ESF26-DEV-',
+    stall_type: 'Food',
+    ...overrides,
+  });
+  if (error) throw new Error(`Fixture setup failed for ${id}: ${error.message}`);
+}
+
+async function callBulk(body, token = adminToken) {
+  const res = await fetch(`${url}/functions/v1/queue-bulk-sms`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, apikey: anonKey },
+    body: JSON.stringify(body),
+  });
+  const json = await res.json().catch(() => ({}));
+  return { status: res.status, json };
+}
+
+describe('queue-bulk-sms', () => {
+  const withPhone = `${BULK_PREFIX}A`;
+  const withPhone2 = `${BULK_PREFIX}B`;
+  const noPhone = `${BULK_PREFIX}NOPHONE`;
+  const notConfirmed = `${BULK_PREFIX}PENDING`;
+  const allIds = [withPhone, withPhone2, noPhone, notConfirmed];
+
+  before(async () => {
+    await service.from('sms_queue').delete().like('recipient', '+447700900%');
+    await service.from('bookings').delete().in('id', allIds);
+    await insertBooking(withPhone, { phone: '07700 900321' });
+    await insertBooking(withPhone2, { phone: '+447700900322' });
+    await insertBooking(noPhone, { phone: null });
+    await insertBooking(notConfirmed, { phone: '07700 900323', status: 'Pending' });
+  });
+
+  after(async () => {
+    await service.from('bookings').delete().in('id', allIds);
+    await service.from('sms_queue').delete().in('recipient', ['+447700900321', '+447700900322', '+447700900323']);
+  });
+
+  test('rejects an unauthenticated caller', async () => {
+    const { status } = await callBulk({ bookingIds: [withPhone], body: 'nope' }, anonKey);
+    assert.equal(status, 401);
+  });
+
+  test('rejects an empty or missing bookingIds array', async () => {
+    const { status } = await callBulk({ bookingIds: [], body: 'x' });
+    assert.equal(status, 400);
+  });
+
+  test('queues only Confirmed bookings that have a usable phone number', async () => {
+    const { status, json } = await callBulk({ bookingIds: allIds, body: 'Festival is on Saturday 10am.' });
+    assert.equal(status, 200, JSON.stringify(json));
+
+    // 2 queued (the two with phones), 1 skipped (Confirmed but no phone).
+    // The Pending booking is filtered out server-side before the phone check,
+    // so it is neither queued nor counted as skipped.
+    assert.equal(json.queued, 2, JSON.stringify(json));
+    assert.equal(json.skipped, 1, JSON.stringify(json));
+
+    const { data: rows } = await service
+      .from('sms_queue').select('recipient')
+      .in('recipient', ['+447700900321', '+447700900322', '+447700900323']);
+    const got = (rows || []).map((r) => r.recipient).sort();
+
+    // Both stored forms normalise to E.164, and the Pending booking's number
+    // must be absent — recipients are re-derived server-side, so passing its
+    // id cannot cause a send.
+    assert.deepEqual(got, ['+447700900321', '+447700900322']);
+  });
+
+  test('refuses a bulk send where no supplied booking is reachable', async () => {
+    const { status, json } = await callBulk({ bookingIds: [noPhone, notConfirmed], body: 'x' });
+    assert.equal(status, 400, JSON.stringify(json));
   });
 });
 

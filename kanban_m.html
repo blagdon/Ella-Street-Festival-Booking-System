@@ -504,6 +504,23 @@
                     class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
             </div>
 
+            <div class="mb-4 border-t border-gray-100 pt-3">
+                <label for="emailAlsoSms"
+                    class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer select-none">
+                    <input type="checkbox" id="emailAlsoSms"
+                        class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                    <span>Also send as a text message</span>
+                </label>
+                <div id="emailSmsWrap" class="hidden mt-2">
+                    <textarea id="emailSmsBody" rows="3"
+                        class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
+                    <div class="flex justify-between items-center mt-1 gap-2">
+                        <span id="emailSmsCount" class="text-xs text-gray-500">0 characters · 1 SMS part</span>
+                        <span class="text-xs text-gray-400">Plain text — no subject line</span>
+                    </div>
+                </div>
+            </div>
+
             <div class="flex justify-end gap-3">
                 <button data-action="close-modal" data-modal="emailComposeModal"
                     class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded transition">Cancel</button>
@@ -585,6 +602,23 @@
                             </span>
                         </div>
                         <div id="bulkEmailEditor" style="height: 300px;"></div>
+                    </div>
+                </div>
+
+                <div class="mt-5 border-t border-gray-200 pt-4">
+                    <label for="bulkAlsoSms"
+                        class="flex items-center gap-2 text-sm font-bold text-gray-700 cursor-pointer select-none">
+                        <input type="checkbox" id="bulkAlsoSms"
+                            class="h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-500">
+                        <span>Also send a text message</span>
+                    </label>
+                    <div id="bulkSmsWrap" class="hidden mt-2">
+                        <textarea id="bulkSmsBody" rows="3"
+                            placeholder="Plain text only — the formatted email above is not reused."
+                            class="w-full border border-gray-300 rounded p-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"></textarea>
+                        <p id="bulkSmsCost" class="text-xs text-gray-600 mt-1"></p>
+                        <p class="text-xs text-amber-700 mt-1">Every part is charged for every recipient. Service
+                            messages only — marketing texts need prior consent.</p>
                     </div>
                 </div>
             </div>
