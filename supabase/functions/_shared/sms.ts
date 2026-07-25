@@ -143,7 +143,11 @@ type SmsAdapter = (
  * and viewer all work with zero setup and zero cost.
  */
 const sendViaMock: SmsAdapter = async (to, body) => {
-  console.log(`[sms:mock] would send to ${to}: ${body.slice(0, 80)}${body.length > 80 ? '…' : ''}`)
+  // Log tag deliberately avoids the `[name:value]` shape — css/input.css's
+  // Tailwind `@source` scans the whole repo, and that syntax is read as an
+  // arbitrary CSS property, emitting a junk `.[sms\:mock] { sms: mock }` rule
+  // into the built stylesheet (caught by css-build-check on PR #109).
+  console.log(`[sms/mock] would send to ${to}: ${body.slice(0, 80)}${body.length > 80 ? '…' : ''}`)
   return { providerMessageId: `mock-${crypto.randomUUID()}` }
 }
 
