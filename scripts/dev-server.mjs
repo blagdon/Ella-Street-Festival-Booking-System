@@ -14,7 +14,7 @@
 //
 // Usage:  npm run dev
 // Then set the override in the browser console and reload:
-//   esfUseTestProject('https://<ref>.supabase.co', '<anon key>')
+//   esfUseTestProject('<anon key>')   // the TEST project's anon key, nothing else
 //   esfUseProduction()   // to go back
 //
 // Reads TEST_SUPABASE_URL from .env.test when present, so the allowed origin

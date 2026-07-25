@@ -34,8 +34,9 @@
 //     failure mode that actually costs hours.
 //
 // Usage from the browser console on a local page:
-//   esfUseTestProject('https://<ref>.supabase.co', '<anon key>')  // then reload
-//   esfUseProduction()                                            // then reload
+//   esfUseTestProject('<anon key>')   // TEST anon key only — the dev server
+//                                      // picks the project URL from .env.test; then reload
+//   esfUseProduction()                 // then reload
 // ---------------------------------------------------------------------------
 const ESF_LOCAL_HOSTS = ['localhost', '127.0.0.1', '::1', '[::1]'];
 const ESF_OVERRIDE_KEY = 'ESF_LOCAL_SUPABASE_OVERRIDE';

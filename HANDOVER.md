@@ -8,8 +8,26 @@
 > including applying additive migrations to production), which require specific
 > verification first, and the short list that needs an explicit instruction every
 > time. Default to acting.
-> Last updated: 2026-07-24.
-> Current release: **v7.13.0** (Statistics page pass; prepared 2026-07-24, merged
+> Last updated: 2026-07-25.
+> Current release: **v7.14.0** (SMS sending; prepared 2026-07-25). Adds a
+> text-message pipeline that deliberately mirrors the existing email queue
+> (`sms_queue`/`sms_templates`/`claim_pending_sms()` alongside their `email_*`
+> counterparts, `_shared/sms.ts` alongside `_shared/zoho.ts`) — see item 74.
+> **It ships inert**: the seeded `sms_provider` setting is `mock`, a no-op
+> adapter that logs instead of sending, so nothing is texted or billed until
+> someone deliberately configures a real provider from the Settings page. That
+> is also what makes the whole path testable for free. **This release needs a
+> migration and an Edge Function deploy** (`send-sms`, `queue-bulk-sms`,
+> `retry-queued-sms`) — unlike v7.13.0, a Vercel push of `main` is *not* the
+> whole deploy. Highlights: provider-agnostic dispatch chosen from a settings
+> row rather than code (swapping providers is config, not a redeploy); strict
+> E.164 normalisation, because `bookings.phone` has no format constraint; an
+> opt-in per-confirmation tickbox on the Kanban/Summary confirm modals, scoped
+> to the free path; and SMS Queue + SMS Template admin pages. Read the CHANGELOG
+> entry's "Notes on the feasibility study" before using this for anything other
+> than transactional messages — GOV.UK Notify is not available to a community
+> group, and marketing texts are a different legal test under PECR.
+> v7.13.0 (Statistics page pass; prepared 2026-07-24, merged
 > as PRs #103–#107, frontend-only — no migration or Edge Function deploy, so the
 > Vercel push of `main` was the whole deploy). Triggered by a report that the
 > Stats page didn't show the refunded amount, which expanded into a full review
@@ -3207,6 +3225,51 @@ stay in the separate `ellafestperformersadmin.vercel.app` codebase.
       If you add a page feature that loads from a new origin (a font, a CDN
       library), you'll need to widen it again — the dev server auto-widens
       `connect-src` for the test Supabase project but nothing else.
+
+74. **SMS sending (2026-07-25, released as v7.14.0).** Started as a feasibility
+    study into texting stallholders and became the feature. **Needs a migration
+    and an Edge Function deploy**, not just a Vercel push. Full detail in
+    CHANGELOG.md; what's worth knowing here:
+    - **It ships inert, and that is the point.** `sms_provider` seeds to
+      `mock`, an adapter that logs and reports success without contacting
+      anyone. The queue, drain, retry, both admin pages and the whole test
+      suite therefore work end-to-end with no account, no credentials and no
+      cost. Going live is: set `sms_provider` to `thesmsworks` (or `twilio`)
+      and fill its credential rows from the Settings page — **no redeploy**.
+      If texts mysteriously aren't arriving, check that setting *first*; a
+      `Sent` row with a `mock-` prefixed `provider_message_id` means the mock
+      adapter handled it and nothing was ever really sent.
+    - **Everything mirrors the email pipeline on purpose.** `sms_queue` ↔
+      `email_queue`, `sms_templates` ↔ `email_templates`, `claim_pending_sms()`
+      ↔ `claim_pending_emails()`, `_shared/sms.ts` ↔ `_shared/zoho.ts`,
+      `sms_queue.html`/`sms_admin.html` ↔ their `email_*` equivalents. If you
+      change one side's queue semantics, change the other or note why not.
+      Same in-process rule too: the functions call `sendViaSms()` directly,
+      never `functions.invoke()` at a sibling — the pre-commit hook enforces it.
+    - **`bookings.phone` has no format constraint** (only `performers.phone`
+      has `valid_phone`), so `normalizePhone()` is the only thing standing
+      between stored free-text and the provider. It throws rather than
+      silently dropping — a bad number should fail loudly at queue time. Bulk
+      sends skip unnormalisable numbers and report a `skipped` count, so a
+      queued total lower than the selection is expected, not a bug.
+    - **Every segment is billed, unlike email.** `sms_queue.segments` records
+      the count, the viewer badges it amber past one part, and the template
+      editor counts live using the *same* GSM-7/UCS-2 logic as `_shared/sms.ts`
+      — if you change one, change both or the estimate silently drifts from
+      the charge. Note a single `£` or curly quote forces UCS-2 and drops the
+      limit from 160 to 70.
+    - **The retry guarantee is about money, not just duplicates.** Only
+      `Error` rows are claimable; an already-`Sent` row 409s. That is what
+      stops a double-click paying twice for the same text.
+    - **Legal scope is narrower than the code implies.** Transactional/service
+      messages only. GOV.UK Notify is unavailable to a non-registered
+      community association; the alphanumeric sender ID is **one-way**, so
+      every template must carry a contact route in the body; and marketing
+      texts need prior consent under PECR. See the CHANGELOG's "Notes on the
+      feasibility study".
+    - **Not yet wired**: `queue-bulk-sms` has no UI trigger, and the chargeable
+      confirm path sends no SMS (it completes server-side in `stripe-webhook` /
+      `saveBankTransferPayment`, so adding it there is a server-side change).
 
 ---
 
