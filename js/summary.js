@@ -443,6 +443,9 @@ function showConfirmModalLocal(id) {
     if (costInput) {
         costInput.value = cost.toFixed(2);
     }
+    // Reset the opt-in SMS tickbox so a ticked state never carries over.
+    const smsCb = document.getElementById('confirmSendSms');
+    if (smsCb) smsCb.checked = false;
     document.getElementById('confirmTypeModal').classList.remove('opacity-0', 'pointer-events-none');
 }
 
@@ -461,9 +464,14 @@ window.finalizeConfirm = function (isChargeable) {
     // Stripe entirely and go straight to Confirmed, exactly as today.
     // Otherwise, a chargeable booking immediately gets a Stripe Checkout
     // Session and moves to Payment Requested — no separate step in between.
+    // Opt-in confirmation SMS — only meaningful on the free path (chargeable
+    // is confirmed later server-side). Tickbox labelled "free confirmations
+    // only"; ignored here for chargeable.
+    const sendSms = !!(document.getElementById('confirmSendSms') && document.getElementById('confirmSendSms').checked);
+
     const isFree = !isChargeable || overrideCost === 0;
     if (isFree) {
-        updateStatus(id, 'Confirmed');
+        updateStatus(id, 'Confirmed', null, sendSms);
     } else {
         confirmChargeableAndRequestPayment(id, overrideCost);
     }
@@ -526,9 +534,10 @@ window.confirmRejection = function () {
     updateStatus(id, 'Rejected', reason);
 }
 
-async function updateStatus(id, status, reason = null) {
+async function updateStatus(id, status, reason = null, sendSms = false) {
     await sharedUpdateStatus(id, status, allBookings, {
         reason: reason,
+        sendSms: sendSms,
         onSuccess: () => { window.filterTable(); },
         onError: () => { }
     });

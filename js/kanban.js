@@ -196,9 +196,10 @@ function initDragula() {
         });
 }
 
-function updateStatus(id, status, reason = null) {
+function updateStatus(id, status, reason = null, sendSms = false) {
     sharedUpdateStatus(id, status, allBookings, {
         reason: reason,
+        sendSms: sendSms,
         onSuccess: (newStatus) => {
             draggedItem = null;
             sourceStatus = null;
@@ -541,6 +542,10 @@ function showConfirmModalLocal(id) {
     if (costInput) {
         costInput.value = cost.toFixed(2);
     }
+    // Reset the opt-in SMS tickbox so a ticked state never carries over to the
+    // next booking confirmed in the same session.
+    const smsCb = document.getElementById('confirmSendSms');
+    if (smsCb) smsCb.checked = false;
     document.getElementById('confirmTypeModal').classList.remove('opacity-0', 'pointer-events-none');
 }
 
@@ -562,9 +567,15 @@ export function finalizeConfirm(isChargeable) {
     // a chargeable booking immediately gets a Stripe Checkout Session and
     // moves to Payment Requested — there's no separate deliberate step in
     // between anymore.
+    // Opt-in confirmation SMS — only meaningful on the free path, which
+    // confirms the booking here and now; the chargeable path lands on
+    // Payment Requested and is confirmed later server-side, so the tickbox
+    // is labelled "free confirmations only" and ignored here for chargeable.
+    const sendSms = !!(document.getElementById('confirmSendSms') && document.getElementById('confirmSendSms').checked);
+
     const isFree = !isChargeable || overrideCost === 0;
     if (isFree) {
-        updateStatus(id, 'Confirmed');
+        updateStatus(id, 'Confirmed', null, sendSms);
     } else {
         confirmChargeableAndRequestPayment(id, overrideCost);
     }
