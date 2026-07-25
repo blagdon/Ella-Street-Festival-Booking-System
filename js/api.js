@@ -268,6 +268,43 @@ export async function sendEmail(id, subject, body) {
 }
 
 /**
+ * Sends a plain-text SMS to a booking's phone number via the send-sms Edge
+ * Function, which normalises the number to E.164, sends via whichever provider
+ * is configured (mock by default), and logs the outcome to sms_queue itself —
+ * so unlike sendEmailDirect this doesn't write its own queue row. Throws with a
+ * useful message if the booking has no phone or the send fails.
+ * @param {string} id
+ * @param {string} body
+ */
+export async function sendBookingSms(id, body) {
+    validateBookingId(id);
+    const sb = getSupabaseClient();
+
+    const { data: row, error: fetchErr } = await sb
+        .from(TBL_BOOKINGS)
+        .select('phone')
+        .eq('id', id)
+        .single();
+
+    if (fetchErr || !row) throw new Error("Could not find booking data.");
+    if (!row.phone) throw new Error("This booking has no phone number.");
+
+    const { data, error } = await sb.functions.invoke('send-sms', {
+        body: { recipient: row.phone, body }
+    });
+
+    if (error) {
+        const errMsg = await parseEdgeFunctionError(error, "Failed to invoke send-sms function");
+        throw new Error(errMsg);
+    }
+    if (data && data.error) throw new Error(data.error);
+    if (data && data.success === false) throw new Error(data.error_message || 'SMS send failed.');
+
+    await auditLog('sms_sent', id, { recipient: row.phone });
+    return data;
+}
+
+/**
  * Finalizes a free confirmation. Only ever called for a free confirmation
  * (js/shared.js's sharedUpdateStatus) — a chargeable confirm never reaches
  * this function, it goes through Stripe (finalize_stripe_payment) or a
@@ -815,6 +852,42 @@ export async function retryQueuedEmail(id) {
     if (data && data.error) throw new Error(data.error);
 
     await auditLog('retry_queued_email', String(id), {
+        result: data?.status,
+        retry_count: data?.retry_count
+    });
+
+    return data;
+}
+
+/**
+ * Retries a single failed sms_queue send via the retry-queued-sms Edge
+ * Function. Mirrors retryQueuedEmail exactly: only 'Error' rows are retryable,
+ * the function claims the row server-side before sending (a double-click can't
+ * deliver — or bill — twice), and it runs server-side because `authenticated`
+ * has no UPDATE on sms_queue by design.
+ * @param {number} id sms_queue row id
+ * @returns {Promise<{success: boolean, status: string, error_message: string|null, retry_count: number}>}
+ */
+export async function retryQueuedSms(id) {
+    const sb = getSupabaseClient();
+    const { data, error } = await sb.functions.invoke('retry-queued-sms', {
+        body: { id }
+    });
+
+    // Same body-digging as retryQueuedEmail — the specific reason ("this entry
+    // is currently Sent", "not found") lives in the response body, not the
+    // generic non-2xx message.
+    if (error) {
+        let message = error.message;
+        try {
+            const body = await error.context?.json();
+            if (body?.error) message = body.error;
+        } catch { /* keep the generic message if the body isn't readable */ }
+        throw new Error(message);
+    }
+    if (data && data.error) throw new Error(data.error);
+
+    await auditLog('retry_queued_sms', String(id), {
         result: data?.status,
         retry_count: data?.retry_count
     });

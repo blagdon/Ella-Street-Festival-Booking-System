@@ -1,5 +1,5 @@
 import { getSupabaseClient } from './supabase.js';
-import { updateBookingStatus, finalizeConfirmation, sendEmail, auditLog, getSignedBookingDocuments } from './api.js';
+import { updateBookingStatus, finalizeConfirmation, sendEmail, sendBookingSms, auditLog, getSignedBookingDocuments } from './api.js';
 import { showToast } from './ui.js';
 import { escapeHtml, sanitizeUrl } from './utils.js';
 import { getStallCost, CONFIG } from './config.js';
@@ -117,6 +117,43 @@ export async function getEmailFromTemplate(templateId, booking, id, extraVars = 
 }
 
 /**
+ * Fetches a plain-text SMS template from sms_templates and substitutes the
+ * same placeholder set as getEmailFromTemplate. Deliberately does NOT
+ * escapeHtml() the values: an SMS is plain text, so escaping would render
+ * "&amp;" / "&#39;" literally on the handset. Returns the resolved body string.
+ */
+export async function getSmsFromTemplate(templateId, booking, id) {
+    const sb = getSupabaseClient();
+
+    const { data, error } = await sb.from('sms_templates')
+        .select('body')
+        .eq('id', templateId)
+        .single();
+
+    if (error || !data) {
+        console.error("SMS template error:", error);
+        throw new Error(`Could not find SMS template '${templateId}' in database.`);
+    }
+
+    const ownerName = booking.owner_name || booking.owner || 'Trader';
+    const bizName = booking.business_name || booking.business || 'your business';
+
+    let costStr = "the agreed fee";
+    if (booking.stall_cost !== undefined && booking.stall_cost !== null) {
+        costStr = `£${parseFloat(booking.stall_cost).toFixed(2)}`;
+    } else {
+        const prefix = booking.instance_prefix || CONFIG.INSTANCE_MAP['DEV'];
+        costStr = `£${getStallCost(prefix).toFixed(2)}`;
+    }
+
+    return data.body
+        .replace(/\{\{owner_name\}\}/g, ownerName)
+        .replace(/\{\{business_name\}\}/g, bizName)
+        .replace(/\{\{booking_id\}\}/g, id)
+        .replace(/\{\{cost\}\}/g, costStr);
+}
+
+/**
  * Queues a location allocation email using a database template.
  * @param {string} id 
  */
@@ -156,7 +193,7 @@ export async function queueLocationEmail(id) {
  * Shared logic to update a booking status.
  */
 export async function sharedUpdateStatus(id, status, allBookings, options = {}) {
-    const { reason = null, onSuccess, onError } = options;
+    const { reason = null, sendSms = false, onSuccess, onError } = options;
 
     try {
         // 1. Update DB Status
@@ -189,6 +226,22 @@ export async function sharedUpdateStatus(id, status, allBookings, options = {}) 
                 } catch (emailErr) {
                     console.error(`Confirmation email failed for ${id}:`, emailErr);
                     showToast(`Booking confirmed, but the email failed to send: ${emailErr.message}`, 'error');
+                }
+
+                // Optional confirmation SMS — opt-in per confirmation via the
+                // modal tickbox. Independent of the email above (its own
+                // try/catch) so a texting failure never masks a successful
+                // email, and vice versa. Same "already-committed side effect,
+                // degrade to a warning" rule as the email send.
+                if (sendSms) {
+                    try {
+                        const smsBody = await getSmsFromTemplate('booking_confirmed', booking, id);
+                        await sendBookingSms(id, smsBody);
+                        showToast('Confirmation SMS sent', 'info');
+                    } catch (smsErr) {
+                        console.error(`Confirmation SMS failed for ${id}:`, smsErr);
+                        showToast(`Booking confirmed, but the SMS failed to send: ${smsErr.message}`, 'error');
+                    }
                 }
             } else {
                 showToast('Booking confirmed');
