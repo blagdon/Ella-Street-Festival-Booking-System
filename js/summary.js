@@ -1,5 +1,5 @@
-import { fetchKanbanData, updateBookingStatus, addNote, sendEmail, queueBulkEmail, requestPayment, resendPaymentRequest, LIST_CAP } from './api.js';
-import { sharedUpdateStatus, populateDetailPane } from './shared.js';
+import { fetchKanbanData, updateBookingStatus, addNote, sendEmail, sendBookingSms, queueBulkEmail, queueBulkSms, requestPayment, resendPaymentRequest, LIST_CAP } from './api.js';
+import { sharedUpdateStatus, populateDetailPane, initComposeSmsToggle, initBulkSmsToggle, readOptionalSmsBody, resetSmsToggle } from './shared.js';
 import { showToast, showConfirm, notifyIfTruncated } from './ui.js';
 import { escapeHtml, sortBookings } from './utils.js';
 import { CONFIG, getStallCost } from './config.js';
@@ -543,16 +543,30 @@ async function updateStatus(id, status, reason = null, sendSms = false) {
     });
 }
 
+// Wires the optional "also send a text" controls on the Compose and Bulk
+// modals. Idempotent — these attach listeners, so calling it on every modal
+// open would stack duplicates.
+let smsControlsWired = false;
+function ensureSmsControls() {
+    if (smsControlsWired) return;
+    smsControlsWired = true;
+    initComposeSmsToggle();
+    initBulkSmsToggle(() => allBookings.filter(b => b.status === 'Confirmed').length);
+}
+
 // Emails
 window.openEmailModal = function (id) {
     const targetId = (typeof id === 'string') ? id : currentId;
     const item = allBookings.find(b => b.id === targetId);
     if (!item) return;
 
+    ensureSmsControls();
+
     const ownerName = item.owner_name || item.owner || '';
     document.getElementById('emailBookingId').value = targetId;
     document.getElementById('emailSubject').value = `Regarding your booking (${targetId})`;
     document.getElementById('emailBody').value = `Hi ${ownerName.split(' ')[0] || 'there'},\n\n`;
+    resetSmsToggle('compose');
 
     document.getElementById('emailComposeModal').classList.remove('opacity-0', 'pointer-events-none');
 }
@@ -568,6 +582,16 @@ window.sendSystemEmail = async function (btn) {
         return;
     }
 
+    // Validate the optional SMS before sending anything, so a ticked-but-empty
+    // box is caught up front rather than after the email has already gone.
+    let smsBody;
+    try {
+        smsBody = readOptionalSmsBody('compose');
+    } catch (e) {
+        showToast(e.message, 'error');
+        return;
+    }
+
     btn.innerText = "Sending...";
     btn.disabled = true;
 
@@ -577,10 +601,24 @@ window.sendSystemEmail = async function (btn) {
         showToast("Email queued.");
     } catch (e) {
         showToast("Error sending email: " + e.message, 'error');
-    } finally {
         btn.innerText = originalText;
         btn.disabled = false;
+        return;
     }
+
+    // Independent of the email above: the email has already been sent, so a
+    // texting failure must report itself rather than masking that success.
+    if (smsBody) {
+        try {
+            await sendBookingSms(id, smsBody);
+            showToast("Text message sent.", 'info');
+        } catch (e) {
+            showToast("Email sent, but the text failed: " + e.message, 'error');
+        }
+    }
+
+    btn.innerText = originalText;
+    btn.disabled = false;
 }
 
 // Quill Editor instance
@@ -609,6 +647,7 @@ window.emailAllConfirmed = function () {
     }
 
     initQuill();
+    ensureSmsControls();
 
     // Show count badge in modal
     const countEl = document.getElementById('bulkEmailCount');
@@ -618,6 +657,7 @@ window.emailAllConfirmed = function () {
     const subjectEl = document.getElementById('bulkEmailSubject');
     if (subjectEl) subjectEl.value = '';
     if (bulkEmailQuill) bulkEmailQuill.setContents([]);
+    resetSmsToggle('bulk');
 
     document.getElementById('bulkEmailModal').classList.remove('opacity-0', 'pointer-events-none');
 };
@@ -636,20 +676,54 @@ window.sendBulkEmail = async function (btn) {
         return;
     }
 
+    // Validated before anything is queued — a ticked-but-empty SMS box should
+    // not be discovered after the emails have already gone out.
+    let smsBody;
+    try {
+        smsBody = readOptionalSmsBody('bulk');
+    } catch (e) {
+        showToast(e.message, 'error');
+        return;
+    }
+
     const originalContent = btn.innerHTML;
     btn.innerHTML = `<svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white inline-block align-text-bottom" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Sending...`;
     btn.disabled = true;
 
+    const ids = confirmed.map(b => b.id);
+
     try {
-        const { queued } = await queueBulkEmail(confirmed.map(b => b.id), subject, body);
+        const { queued } = await queueBulkEmail(ids, subject, body);
         window.closeModal('bulkEmailModal');
         showToast(`${queued} email${queued !== 1 ? 's' : ''} queued and sending.`);
     } catch (e) {
         showToast('Failed to queue emails: ' + e.message, 'error');
-    } finally {
         btn.innerHTML = originalContent;
         btn.disabled = false;
+        return;
     }
+
+    // Separate from the email queue above, and reported separately: the
+    // emails are already away, so a texting failure must not read as though
+    // the whole bulk send failed.
+    if (smsBody) {
+        try {
+            const { queued, skipped } = await queueBulkSms(ids, smsBody);
+            // `skipped` is bookings with a missing/unusable phone number —
+            // expected, not an error, but the admin needs to know the text
+            // reached fewer people than the email did.
+            showToast(
+                `${queued} text${queued !== 1 ? 's' : ''} queued` +
+                (skipped ? ` — ${skipped} skipped (no usable phone number)` : ''),
+                skipped ? 'info' : 'success'
+            );
+        } catch (e) {
+            showToast('Emails queued, but the texts failed: ' + e.message, 'error');
+        }
+    }
+
+    btn.innerHTML = originalContent;
+    btn.disabled = false;
 };
 
 /**

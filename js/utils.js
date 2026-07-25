@@ -118,3 +118,31 @@ export async function parseEdgeFunctionError(error, defaultMsg = "Request failed
     }
     return errMsg;
 }
+
+// GSM-7 character set. Anything outside it forces the whole message to UCS-2,
+// which drops the per-part limit from 160 to 70 — a single £, curly quote or
+// emoji can therefore double the cost of a text.
+const GSM7_RE = /^[A-Za-z0-9 \r\n@£$¥èéùìòÇØøÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ!"#¤%&'()*+,\-./:;<=>?¡ÄÖÑÜ§¿äöñüà^{}\\\[~\]|€]*$/;
+
+/**
+ * Billed-SMS-segment estimate for a message body.
+ *
+ * MUST stay in step with countSegments() in
+ * supabase/functions/_shared/sms.ts, which is what actually gets recorded
+ * against the send — if the two drift, the figure shown to the admin before
+ * sending stops matching what they are charged for. Duplicated rather than
+ * imported because that file is Deno/TypeScript running server-side and this
+ * one is a browser ES module; there is no shared module boundary between them.
+ *
+ * @param {string} text
+ * @returns {{len: number, parts: number, encoding: string}}
+ */
+export function countSmsSegments(text) {
+    const body = text || '';
+    const unicode = !GSM7_RE.test(body);
+    const len = body.length;
+    let parts;
+    if (unicode) parts = len === 0 ? 1 : (len <= 70 ? 1 : Math.ceil(len / 67));
+    else parts = len <= 160 ? 1 : Math.ceil(len / 153);
+    return { len, parts, encoding: unicode ? 'Unicode (70/part)' : 'GSM-7 (160/part)' };
+}

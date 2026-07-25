@@ -300,7 +300,15 @@ export async function sendBookingSms(id, body) {
     if (data && data.error) throw new Error(data.error);
     if (data && data.success === false) throw new Error(data.error_message || 'SMS send failed.');
 
-    await auditLog('sms_sent', id, { recipient: row.phone });
+    // Audited with the NORMALISED recipient the function actually sent to (not
+    // the raw stored string), plus the billed part count — segments are what
+    // this costs, so an audit entry without them can't answer "why was the
+    // bill that size".
+    await auditLog('sms_sent', id, {
+        recipient: data?.recipient || row.phone,
+        segments: data?.segments ?? null,
+        provider_message_id: data?.provider_message_id ?? null
+    });
     return data;
 }
 
@@ -818,6 +826,43 @@ export async function queueBulkEmail(bookingIds, subject, body) {
     });
     if (error) throw new Error(error.message);
     if (data && data.error) throw new Error(data.error);
+    return data;
+}
+
+/**
+ * Queues a plain-text SMS to a set of confirmed bookings via the
+ * queue-bulk-sms Edge Function, which re-derives the recipients server-side
+ * from Confirmed bookings (never trusting the ids' phone numbers as supplied),
+ * normalises each to E.164, and drains sms_queue in the background.
+ *
+ * Returns `{queued, skipped}` — skipped counts bookings with a missing or
+ * unnormalisable phone number, which is expected rather than an error, so the
+ * caller should surface it: the queued total will be lower than the selection.
+ *
+ * Unlike bulk email this costs real money per recipient per segment, so it is
+ * audited with the counts rather than just the fact it happened.
+ * @param {string[]} bookingIds
+ * @param {string} body plain text — NOT html
+ * @returns {Promise<{queued: number, skipped: number}>}
+ */
+export async function queueBulkSms(bookingIds, body) {
+    const sb = getSupabaseClient();
+    const { data, error } = await sb.functions.invoke('queue-bulk-sms', {
+        body: { bookingIds, body }
+    });
+    if (error) {
+        const errMsg = await parseEdgeFunctionError(error, "Failed to invoke queue-bulk-sms function");
+        throw new Error(errMsg);
+    }
+    if (data && data.error) throw new Error(data.error);
+
+    await auditLog('sms_bulk_queued', null, {
+        queued: data?.queued ?? 0,
+        skipped: data?.skipped ?? 0,
+        requested: bookingIds.length,
+        body_length: body ? body.length : 0
+    });
+
     return data;
 }
 

@@ -1,6 +1,6 @@
 import { initAdminPage, getSupabaseClient } from './supabase.js';
 import { showToast } from './ui.js';
-import { escapeHtml } from './utils.js';
+import { escapeHtml, countSmsSegments } from './utils.js';
 
 // SMS twin of page-email-admin.js. Same sidebar/editor/mobile-toggle/preview
 // shape; the differences are all because SMS is plain text, not HTML:
@@ -163,25 +163,9 @@ function fillSampleData(text) {
     return out;
 }
 
-/**
- * Billed-segment count, mirroring countSegments() in
- * supabase/functions/_shared/sms.ts so the editor's estimate matches what the
- * sender records. GSM-7 fits 160 chars in one part (153 concatenated); any
- * char outside the GSM-7 set forces UCS-2 at 70/67.
- */
-const GSM7 = /^[A-Za-z0-9 \r\n@£$¥èéùìòÇØøÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ!"#¤%&'()*+,\-./:;<=>?¡ÄÖÑÜ§¿äöñüà^{}\\\[~\]|€]*$/;
-function segmentInfo(text) {
-    const unicode = !GSM7.test(text);
-    const len = text.length;
-    let parts;
-    if (unicode) parts = len === 0 ? 1 : (len <= 70 ? 1 : Math.ceil(len / 67));
-    else parts = len <= 160 ? 1 : Math.ceil(len / 153);
-    return { len, parts, encoding: unicode ? 'Unicode (70/part)' : 'GSM-7 (160/part)' };
-}
-
 function updateSegCounter() {
     const text = document.getElementById('inputBody').value;
-    const { len, parts, encoding } = segmentInfo(text);
+    const { len, parts, encoding } = countSmsSegments(text);
     const counterEl = document.getElementById('segCounter');
     counterEl.textContent = `${len} character${len !== 1 ? 's' : ''} · ${parts} SMS part${parts !== 1 ? 's' : ''}`;
     // Nudge the admin when a "confirmation" has spilled into multiple billed parts.
@@ -201,7 +185,7 @@ function previewSms() {
     // interpreted as markup (both correctness and XSS).
     document.getElementById('previewBody').textContent = rendered;
 
-    const { len, parts, encoding } = segmentInfo(rendered);
+    const { len, parts, encoding } = countSmsSegments(rendered);
     document.getElementById('previewMeta').textContent =
         `${len} character${len !== 1 ? 's' : ''} · ${parts} SMS part${parts !== 1 ? 's' : ''} · ${encoding}`;
 

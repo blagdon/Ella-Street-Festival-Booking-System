@@ -122,6 +122,9 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({
       success: status === 'Sent',
       status,
+      // The normalised E.164 number actually sent to, so the caller can audit
+      // what was really used rather than the raw stored string it passed in.
+      recipient: to,
       error_message: errorMessage,
       provider_message_id: providerMessageId,
       segments,
