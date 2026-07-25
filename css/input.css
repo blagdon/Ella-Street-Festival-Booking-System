@@ -1,2 +1,18 @@
 @import "tailwindcss";
-@source "../";
+
+/* Scoped to the actual templates rather than the whole repo (previously
+   `@source "../"`). A repo-wide scan also reads files that are not templates —
+   Deno Edge Functions, tests, scripts — where Tailwind's arbitrary-property
+   syntax `[name:value]` matches ordinary strings and emits junk rules into the
+   built stylesheet. A log tag `[sms:mock]` in
+   supabase/functions/_shared/sms.ts did exactly that, shipping a
+   `.[sms\:mock] { sms: mock }` rule (caught by css-build-check on PR #109).
+
+   Verified byte-identical to the repo-wide build at the time of this change.
+
+   NOTE: every page currently lives at the repo root. If HTML is ever added in
+   a subdirectory, add it here too or its classes will not be generated — and
+   a missing class renders as nothing at all, which for a coloured button
+   means invisible rather than merely unstyled. */
+@source "../*.html";
+@source "../js/**/*.js";
