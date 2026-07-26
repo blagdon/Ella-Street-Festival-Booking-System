@@ -313,12 +313,48 @@ describe('queue-bulk-sms', () => {
 });
 
 describe('sms_templates', () => {
-  test('the seeded booking_confirmed template exists and is substitutable', async () => {
-    const { data, error } = await service
-      .from('sms_templates').select('body').eq('id', 'booking_confirmed').single();
+  // Every template the status-change tickboxes reference. getSmsFromTemplate()
+  // throws on a missing row, so an absent template turns the Confirm/Reject/
+  // Cancel tickbox into a guaranteed error toast at the worst moment — after
+  // the status change has already committed.
+  const REQUIRED = ['booking_confirmed', 'booking_rejected', 'booking_cancelled'];
 
-    assert.equal(error, null, error?.message);
-    assert.match(data.body, /\{\{owner_name\}\}/,
-      'the confirmation template must carry the placeholder getSmsFromTemplate substitutes');
+  for (const id of REQUIRED) {
+    test(`the ${id} template exists and is substitutable`, async () => {
+      const { data, error } = await service
+        .from('sms_templates').select('body').eq('id', id).single();
+
+      assert.equal(error, null, error?.message);
+      assert.match(data.body, /\{\{owner_name\}\}/,
+        'the template must carry the placeholder getSmsFromTemplate substitutes');
+    });
+  }
+
+  test('every template fits a single billed part once placeholders are filled', () => {
+    // Not a hard requirement, but a 2-part "your booking is confirmed" doubles
+    // the cost of the most-sent message in the system, so it should be a
+    // deliberate choice rather than something that drifts in unnoticed.
+    // Mirrors countSegments() in _shared/sms.ts.
+    const GSM7 = /^[A-Za-z0-9 \r\n@£$¥èéùìòÇØøÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ!"#¤%&'()*+,\-./:;<=>?¡ÄÖÑÜ§¿äöñüà^{}\\\[~\]|€]*$/;
+    const parts = (t) => {
+      const u = !GSM7.test(t);
+      return u ? (t.length <= 70 ? 1 : Math.ceil(t.length / 67))
+               : (t.length <= 160 ? 1 : Math.ceil(t.length / 153));
+    };
+    // Longest realistic substitutions, so this is an upper bound.
+    const filled = (b) => b
+      .replace(/\{\{owner_name\}\}/g, 'Christopher Fotheringay')
+      .replace(/\{\{business_name\}\}/g, 'The Artisan Bakery Company')
+      .replace(/\{\{booking_id\}\}/g, 'ESF26-GENERAL-0042')
+      .replace(/\{\{cost\}\}/g, '£120.00');
+
+    return service.from('sms_templates').select('id, body').then(({ data, error }) => {
+      assert.equal(error, null, error?.message);
+      const oversized = (data || [])
+        .map((r) => ({ id: r.id, parts: parts(filled(r.body)), len: filled(r.body).length }))
+        .filter((r) => r.parts > 1);
+      assert.deepEqual(oversized, [],
+        `these templates bill as more than one part: ${JSON.stringify(oversized)}`);
+    });
   });
 });

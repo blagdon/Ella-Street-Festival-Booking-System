@@ -424,11 +424,46 @@
             <textarea id="rejectReason" rows="3" placeholder="Reason for rejection..."
                 class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 mb-4 focus:ring-2 focus:ring-red-500"></textarea>
 
+            <label for="rejectSendSms"
+                class="flex items-center gap-2 text-sm text-gray-700 mb-4 cursor-pointer select-none">
+                <input type="checkbox" id="rejectSendSms"
+                    class="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500">
+                <span>Also text the stallholder</span>
+            </label>
+
             <div class="flex justify-end gap-3">
                 <button data-action="close-modal" data-modal="rejectReasonModal"
                     class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded">Cancel</button>
                 <button id="btn-confirm-rejection"
                     class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded shadow-md">Reject
+                    Booking</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Cancel Booking Modal. Cancelling sends no email (it never has), so the
+         optional text here may be the stallholder's only notification. -->
+    <div id="cancelBookingModal"
+        class="modal opacity-0 pointer-events-none fixed inset-0 z-50 flex items-center justify-center">
+        <div class="absolute inset-0 bg-gray-900 opacity-50"></div>
+        <div class="bg-white w-full max-w-md rounded-lg shadow-2xl z-50 p-6">
+            <h2 class="text-xl font-bold mb-4 text-gray-800">Cancel Booking</h2>
+            <p id="cancelBusinessName" class="text-sm font-bold text-gray-800 mb-1">Business Name</p>
+            <p class="text-sm text-gray-600 mb-4">This marks the booking as Cancelled. No email is sent.</p>
+            <input type="hidden" id="cancelBookingId">
+
+            <label for="cancelSendSms"
+                class="flex items-center gap-2 text-sm text-gray-700 mb-4 cursor-pointer select-none">
+                <input type="checkbox" id="cancelSendSms"
+                    class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                <span>Text the stallholder to let them know</span>
+            </label>
+
+            <div class="flex justify-end gap-3">
+                <button data-action="close-modal" data-modal="cancelBookingModal"
+                    class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded">Back</button>
+                <button id="btn-confirm-cancellation"
+                    class="bg-gray-800 hover:bg-gray-900 text-white font-bold py-2 px-4 rounded shadow-md">Cancel
                     Booking</button>
             </div>
         </div>
@@ -500,6 +535,28 @@
                         placeholder="e.g. Important update about your stall booking"
                         class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
                 </div>
+
+                <!-- Deliberately ABOVE the 300px editor: below it this sat off
+                     the bottom of the scrollable body and was easy to miss. -->
+                <div class="border border-green-200 bg-green-50/40 rounded-lg p-3">
+                    <label for="bulkAlsoSms"
+                        class="flex items-center gap-2 text-sm font-bold text-gray-700 cursor-pointer select-none">
+                        <input type="checkbox" id="bulkAlsoSms"
+                            class="h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-500">
+                        <span>Also send a text message</span>
+                    </label>
+                    <div id="bulkSmsWrap" class="hidden mt-2">
+                        <textarea id="bulkSmsBody" rows="3"
+                            placeholder="Plain text only — the formatted email below is not reused."
+                            class="w-full border border-gray-300 rounded p-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"></textarea>
+                        <p id="bulkSmsCost" class="text-xs text-gray-600 mt-1"></p>
+                        <p class="text-xs text-amber-700 mt-1">Every part is charged for every recipient. Service
+                            messages only — marketing texts need prior consent.</p>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-2">Leave the subject and message below empty to send
+                        <strong>only</strong> a text.</p>
+                </div>
+
                 <div>
                     <label class="block text-sm font-bold text-gray-700 mb-1">Message</label>
                     <div id="bulkEmailEditorContainer"
@@ -520,23 +577,6 @@
                             </span>
                         </div>
                         <div id="bulkEmailEditor" style="height: 300px;"></div>
-                    </div>
-                </div>
-
-                <div class="mt-5 border-t border-gray-200 pt-4">
-                    <label for="bulkAlsoSms"
-                        class="flex items-center gap-2 text-sm font-bold text-gray-700 cursor-pointer select-none">
-                        <input type="checkbox" id="bulkAlsoSms"
-                            class="h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-500">
-                        <span>Also send a text message</span>
-                    </label>
-                    <div id="bulkSmsWrap" class="hidden mt-2">
-                        <textarea id="bulkSmsBody" rows="3"
-                            placeholder="Plain text only — the formatted email above is not reused."
-                            class="w-full border border-gray-300 rounded p-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"></textarea>
-                        <p id="bulkSmsCost" class="text-xs text-gray-600 mt-1"></p>
-                        <p class="text-xs text-amber-700 mt-1">Every part is charged for every recipient. Service
-                            messages only — marketing texts need prior consent.</p>
                     </div>
                 </div>
             </div>

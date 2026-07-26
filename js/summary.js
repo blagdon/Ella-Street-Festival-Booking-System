@@ -1,5 +1,5 @@
 import { fetchKanbanData, updateBookingStatus, addNote, sendEmail, sendBookingSms, queueBulkEmail, queueBulkSms, requestPayment, resendPaymentRequest, LIST_CAP } from './api.js';
-import { sharedUpdateStatus, populateDetailPane, initComposeSmsToggle, initBulkSmsToggle, readOptionalSmsBody, resetSmsToggle } from './shared.js';
+import { sharedUpdateStatus, populateDetailPane, initComposeSmsToggle, initBulkSmsToggle, readOptionalSmsBody, resetSmsToggle, readStatusSmsChecked, resetStatusSmsCheckbox } from './shared.js';
 import { showToast, showConfirm, notifyIfTruncated } from './ui.js';
 import { escapeHtml, sortBookings } from './utils.js';
 import { CONFIG, getStallCost } from './config.js';
@@ -371,9 +371,22 @@ window.saveNote = async function () {
 }
 
 async function promptStatusChange(newStatus) {
+    // Confirm, Reject and Cancel each have their own modal, and that modal IS
+    // the confirmation step — routing them through the generic "Are you sure?"
+    // first would make the admin confirm twice for one action.
     if (newStatus === 'Confirmed') {
         window.closeModal('detailModal');
         showConfirmModalLocal(currentId);
+        return;
+    }
+    if (newStatus === 'Rejected') {
+        window.closeModal('detailModal');
+        window.openRejectModal(currentId);
+        return;
+    }
+    if (newStatus === 'Cancelled') {
+        window.closeModal('detailModal');
+        window.openCancelModal(currentId);
         return;
     }
 
@@ -382,16 +395,9 @@ async function promptStatusChange(newStatus) {
         `Are you sure you want to mark this as ${newStatus}?`,
         async () => {
             try {
-                if (newStatus === 'Rejected') {
-                    window.closeModal('detailModal');
-                    document.getElementById('rejectBookingId').value = currentId;
-                    document.getElementById('rejectReason').value = "";
-                    document.getElementById('rejectReasonModal').classList.remove('opacity-0', 'pointer-events-none');
-                } else {
-                    await updateStatus(currentId, newStatus);
-                    window.closeModal('detailModal');
-                    window.filterTable();
-                }
+                await updateStatus(currentId, newStatus);
+                window.closeModal('detailModal');
+                window.filterTable();
             } catch (e) { showToast("Error changing status: " + e.message, 'error'); }
         }
     );
@@ -444,8 +450,7 @@ function showConfirmModalLocal(id) {
         costInput.value = cost.toFixed(2);
     }
     // Reset the opt-in SMS tickbox so a ticked state never carries over.
-    const smsCb = document.getElementById('confirmSendSms');
-    if (smsCb) smsCb.checked = false;
+    resetStatusSmsCheckbox('confirmSendSms');
     document.getElementById('confirmTypeModal').classList.remove('opacity-0', 'pointer-events-none');
 }
 
@@ -467,7 +472,7 @@ window.finalizeConfirm = function (isChargeable) {
     // Opt-in confirmation SMS — only meaningful on the free path (chargeable
     // is confirmed later server-side). Tickbox labelled "free confirmations
     // only"; ignored here for chargeable.
-    const sendSms = !!(document.getElementById('confirmSendSms') && document.getElementById('confirmSendSms').checked);
+    const sendSms = readStatusSmsChecked('confirmSendSms');
 
     const isFree = !isChargeable || overrideCost === 0;
     if (isFree) {
@@ -527,11 +532,35 @@ window.resendPaymentRequestAction = function (id) {
     return runPaymentAction(id || currentId, resendPaymentRequest, 'Payment Requested', 'Payment request resent.');
 }
 
+window.openRejectModal = function (id) {
+    document.getElementById('rejectBookingId').value = id;
+    document.getElementById('rejectReason').value = "";
+    resetStatusSmsCheckbox('rejectSendSms');
+    document.getElementById('rejectReasonModal').classList.remove('opacity-0', 'pointer-events-none');
+}
+
 window.confirmRejection = function () {
     const id = document.getElementById('rejectBookingId').value;
     const reason = document.getElementById('rejectReason').value;
+    const sendSms = readStatusSmsChecked('rejectSendSms');
     window.closeModal('rejectReasonModal');
-    updateStatus(id, 'Rejected', reason);
+    updateStatus(id, 'Rejected', reason, sendSms);
+}
+
+window.openCancelModal = function (id) {
+    const booking = allBookings.find(b => b.id === id);
+    const nameEl = document.getElementById('cancelBusinessName');
+    if (nameEl) nameEl.innerText = (booking && (booking.business_name || booking.business)) || id;
+    document.getElementById('cancelBookingId').value = id;
+    resetStatusSmsCheckbox('cancelSendSms');
+    document.getElementById('cancelBookingModal').classList.remove('opacity-0', 'pointer-events-none');
+}
+
+window.confirmCancellation = function () {
+    const id = document.getElementById('cancelBookingId').value;
+    const sendSms = readStatusSmsChecked('cancelSendSms');
+    window.closeModal('cancelBookingModal');
+    updateStatus(id, 'Cancelled', null, sendSms);
 }
 
 async function updateStatus(id, status, reason = null, sendSms = false) {
@@ -671,11 +700,6 @@ window.sendBulkEmail = async function (btn) {
     // Quill root.innerHTML usually contains '<p><br></p>' when empty
     const isBodyEmpty = !body || body === '<p><br></p>';
 
-    if (!subject || isBodyEmpty) {
-        showToast('Please fill in the subject and message.', 'error');
-        return;
-    }
-
     // Validated before anything is queued — a ticked-but-empty SMS box should
     // not be discovered after the emails have already gone out.
     let smsBody;
@@ -686,21 +710,40 @@ window.sendBulkEmail = async function (btn) {
         return;
     }
 
+    // Email and SMS are independent channels: either alone is a valid send.
+    // Leaving the email blank while ticking SMS is the "text only" case, which
+    // used to abort here — the reason a bulk SMS could appear to do nothing.
+    const wantsEmail = !!subject || !isBodyEmpty;
+    if (wantsEmail && (!subject || isBodyEmpty)) {
+        showToast('Complete both the subject and message, or clear them to send only a text.', 'error');
+        return;
+    }
+    if (!wantsEmail && !smsBody) {
+        showToast('Nothing to send — write an email, or tick "Also send a text message".', 'error');
+        return;
+    }
+
     const originalContent = btn.innerHTML;
     btn.innerHTML = `<svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white inline-block align-text-bottom" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Sending...`;
     btn.disabled = true;
 
     const ids = confirmed.map(b => b.id);
 
-    try {
-        const { queued } = await queueBulkEmail(ids, subject, body);
+    if (wantsEmail) {
+        try {
+            const { queued } = await queueBulkEmail(ids, subject, body);
+            window.closeModal('bulkEmailModal');
+            showToast(`${queued} email${queued !== 1 ? 's' : ''} queued and sending.`);
+        } catch (e) {
+            showToast('Failed to queue emails: ' + e.message, 'error');
+            btn.innerHTML = originalContent;
+            btn.disabled = false;
+            return;
+        }
+    } else {
+        // Text-only send: close the modal here, since the email branch that
+        // normally does it was skipped.
         window.closeModal('bulkEmailModal');
-        showToast(`${queued} email${queued !== 1 ? 's' : ''} queued and sending.`);
-    } catch (e) {
-        showToast('Failed to queue emails: ' + e.message, 'error');
-        btn.innerHTML = originalContent;
-        btn.disabled = false;
-        return;
     }
 
     // Separate from the email queue above, and reported separately: the
@@ -718,7 +761,10 @@ window.sendBulkEmail = async function (btn) {
                 skipped ? 'info' : 'success'
             );
         } catch (e) {
-            showToast('Emails queued, but the texts failed: ' + e.message, 'error');
+            showToast(
+                (wantsEmail ? 'Emails queued, but the texts failed: ' : 'Failed to queue texts: ') + e.message,
+                'error'
+            );
         }
     }
 

@@ -1,5 +1,5 @@
 import { initAdminPage } from './supabase.js';
-import { initKanban, filterCards, loadBoard, setSort, emailAllConfirmed, closeModal, openEmailModal, saveNote, changeStatus, promptStatusChange, finalizeConfirm, sendSystemEmail, confirmRejection, sendBulkEmail, cancelDrag, resendPaymentRequestAction } from './kanban.js';
+import { initKanban, filterCards, loadBoard, setSort, emailAllConfirmed, closeModal, openEmailModal, saveNote, changeStatus, promptStatusChange, finalizeConfirm, sendSystemEmail, confirmRejection, confirmCancellation, sendBulkEmail, cancelDrag, resendPaymentRequestAction } from './kanban.js';
 
 function init() {
     initKanban();
@@ -31,6 +31,18 @@ function init() {
 
     const btnFinalizeFalse = document.getElementById('btn-finalize-false');
     if (btnFinalizeFalse) btnFinalizeFalse.addEventListener('click', () => finalizeConfirm(false));
+
+    // Backing out of the Reject/Cancel modals must put a dragged card back in
+    // its source column — without this the card sits in the new column while
+    // the database still says otherwise. cancelDrag() no-ops when the change
+    // came from the detail pane rather than a drag.
+    ['btn-cancel-modal-back', 'btn-reject-modal-cancel'].forEach((elId) => {
+        const el = document.getElementById(elId);
+        if (el) el.addEventListener('click', cancelDrag);
+    });
+
+    const btnConfirmCancellation = document.getElementById('btn-confirm-cancellation');
+    if (btnConfirmCancellation) btnConfirmCancellation.addEventListener('click', confirmCancellation);
 
     const btnConfirmRejection = document.getElementById('btn-confirm-rejection');
     if (btnConfirmRejection) btnConfirmRejection.addEventListener('click', confirmRejection);

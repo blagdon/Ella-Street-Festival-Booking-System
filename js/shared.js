@@ -102,6 +102,23 @@ export function readOptionalSmsBody(which) {
     return text;
 }
 
+/**
+ * Reads a plain status-SMS tickbox (confirm / reject / cancel). These differ
+ * from the compose/bulk ones above: there is no textarea, because the wording
+ * comes from an sms_templates row, so the control is just a boolean.
+ * @param {string} elId
+ */
+export function readStatusSmsChecked(elId) {
+    const el = document.getElementById(elId);
+    return !!(el && el.checked);
+}
+
+/** Unticks a status-SMS tickbox so it never carries over to the next booking. */
+export function resetStatusSmsCheckbox(elId) {
+    const el = document.getElementById(elId);
+    if (el) el.checked = false;
+}
+
 /** Clears both SMS sub-forms so a ticked state never carries to the next open. */
 export function resetSmsToggle(which) {
     const ids = which === 'bulk'
@@ -300,6 +317,34 @@ export async function queueLocationEmail(id) {
 }
 
 /**
+ * Sends an optional status-change SMS from a template, when the admin ticked
+ * the box on the confirm/reject/cancel modal.
+ *
+ * Never throws. By the time this runs the status write — and any email — has
+ * already committed, so a texting failure must degrade to a warning rather
+ * than propagate into sharedUpdateStatus's outer catch, which would report
+ * "Failed to update" for a change that actually succeeded. Same rule v7.12.0
+ * established for the email side.
+ *
+ * @param {boolean} sendSms whether the tickbox was ticked
+ * @param {string} templateId row in sms_templates
+ * @param {object} booking
+ * @param {string} id
+ * @param {string} verb past-tense word for the failure toast ("confirmed")
+ */
+async function maybeSendStatusSms(sendSms, templateId, booking, id, verb) {
+    if (!sendSms) return;
+    try {
+        const smsBody = await getSmsFromTemplate(templateId, booking, id);
+        await sendBookingSms(id, smsBody);
+        showToast('Text message sent', 'info');
+    } catch (smsErr) {
+        console.error(`${templateId} SMS failed for ${id}:`, smsErr);
+        showToast(`Booking ${verb}, but the text failed to send: ${smsErr.message}`, 'error');
+    }
+}
+
+/**
  * Shared logic to update a booking status.
  */
 export async function sharedUpdateStatus(id, status, allBookings, options = {}) {
@@ -338,21 +383,7 @@ export async function sharedUpdateStatus(id, status, allBookings, options = {}) 
                     showToast(`Booking confirmed, but the email failed to send: ${emailErr.message}`, 'error');
                 }
 
-                // Optional confirmation SMS — opt-in per confirmation via the
-                // modal tickbox. Independent of the email above (its own
-                // try/catch) so a texting failure never masks a successful
-                // email, and vice versa. Same "already-committed side effect,
-                // degrade to a warning" rule as the email send.
-                if (sendSms) {
-                    try {
-                        const smsBody = await getSmsFromTemplate('booking_confirmed', booking, id);
-                        await sendBookingSms(id, smsBody);
-                        showToast('Confirmation SMS sent', 'info');
-                    } catch (smsErr) {
-                        console.error(`Confirmation SMS failed for ${id}:`, smsErr);
-                        showToast(`Booking confirmed, but the SMS failed to send: ${smsErr.message}`, 'error');
-                    }
-                }
+                await maybeSendStatusSms(sendSms, 'booking_confirmed', booking, id, 'confirmed');
             } else {
                 showToast('Booking confirmed');
             }
@@ -367,8 +398,21 @@ export async function sharedUpdateStatus(id, status, allBookings, options = {}) 
                     console.error(`Rejection email failed for ${id}:`, emailErr);
                     showToast(`Booking rejected, but the email failed to send: ${emailErr.message}`, 'error');
                 }
+
+                await maybeSendStatusSms(sendSms, 'booking_rejected', booking, id, 'rejected');
             } else {
                 showToast('Booking rejected', 'info');
+            }
+        } else if (status === 'Cancelled') {
+            // Deliberately no email here: admin-side cancellation has never
+            // sent one, and adding it would be an unrequested behaviour
+            // change. The optional text may therefore be the ONLY notification
+            // the stallholder gets — which is exactly why it's opt-in per
+            // cancellation rather than automatic.
+            const booking = allBookings.find(b => b.id === id);
+            showToast('Booking cancelled', 'info');
+            if (booking) {
+                await maybeSendStatusSms(sendSms, 'booking_cancelled', booking, id, 'cancelled');
             }
         } else {
             showToast(`Booking moved to ${status}`);
