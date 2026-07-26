@@ -1,7 +1,7 @@
 import { fetchKanbanData, updateBookingStatus, addNote, sendEmail, sendBookingSms, queueBulkEmail, queueBulkSms, requestPayment, resendPaymentRequest, LIST_CAP } from './api.js';
 import { CONFIG, getStallCost } from './config.js';
 import { safeError, escapeHtml, sortBookings } from './utils.js';
-import { sharedUpdateStatus, populateDetailPane, initComposeSmsToggle, initBulkSmsToggle, readOptionalSmsBody, resetSmsToggle } from './shared.js';
+import { sharedUpdateStatus, populateDetailPane, initComposeSmsToggle, initBulkSmsToggle, readOptionalSmsBody, resetSmsToggle, readStatusSmsChecked, resetStatusSmsCheckbox } from './shared.js';
 import { showToast, showConfirm, notifyIfTruncated } from './ui.js';
 
 // Single source of truth for which columns exist, per instance — HCC Checks
@@ -174,9 +174,15 @@ function initDragula() {
 
             // INTERCEPT: Rejection
             if (newStatus === 'Rejected') {
-                document.getElementById('rejectBookingId').value = bookingId;
-                document.getElementById('rejectReason').value = "";
-                document.getElementById('rejectReasonModal').classList.remove('opacity-0', 'pointer-events-none');
+                openRejectModal(bookingId);
+                return;
+            }
+
+            // INTERCEPT: Cancellation — needs a modal now, so the admin can
+            // opt into texting the stallholder. Cancelling sends no email, so
+            // that text may be their only notification.
+            if (newStatus === 'Cancelled') {
+                openCancelModal(bookingId);
                 return;
             }
 
@@ -357,9 +363,22 @@ export async function saveNote() {
 }
 
 export async function promptStatusChange(newStatus) {
+    // Confirm, Reject and Cancel each have their own modal, and that modal IS
+    // the confirmation step — routing them through the generic "Are you sure?"
+    // first would make the admin confirm twice for one action.
     if (newStatus === 'Confirmed') {
         closeModal('detailModal');
         showConfirmModalLocal(currentId);
+        return;
+    }
+    if (newStatus === 'Rejected') {
+        closeModal('detailModal');
+        openRejectModal(currentId);
+        return;
+    }
+    if (newStatus === 'Cancelled') {
+        closeModal('detailModal');
+        openCancelModal(currentId);
         return;
     }
 
@@ -368,15 +387,8 @@ export async function promptStatusChange(newStatus) {
         `Are you sure you want to mark this as ${newStatus}?`,
         async () => {
             try {
-                if (newStatus === 'Rejected') {
-                    closeModal('detailModal');
-                    document.getElementById('rejectBookingId').value = currentId;
-                    document.getElementById('rejectReason').value = "";
-                    document.getElementById('rejectReasonModal').classList.remove('opacity-0', 'pointer-events-none');
-                } else {
-                    await updateStatus(currentId, newStatus);
-                    openDetails(currentId);
-                }
+                await updateStatus(currentId, newStatus);
+                openDetails(currentId);
             } catch (e) { showToast("Error changing status: " + e.message, 'error'); }
         }
     );
@@ -436,11 +448,6 @@ export async function sendBulkEmail(btn) {
     // Quill root.innerHTML usually contains '<p><br></p>' when empty
     const isBodyEmpty = !body || body === '<p><br></p>';
 
-    if (!subject || isBodyEmpty) {
-        showToast('Please fill in the subject and message.', 'error');
-        return;
-    }
-
     // Validated before anything is queued — a ticked-but-empty SMS box should
     // not be discovered after the emails have already gone out.
     let smsBody;
@@ -451,21 +458,40 @@ export async function sendBulkEmail(btn) {
         return;
     }
 
+    // Email and SMS are independent channels: either alone is a valid send.
+    // Leaving the email blank while ticking SMS is the "text only" case, which
+    // used to abort here — the reason a bulk SMS could appear to do nothing.
+    const wantsEmail = !!subject || !isBodyEmpty;
+    if (wantsEmail && (!subject || isBodyEmpty)) {
+        showToast('Complete both the subject and message, or clear them to send only a text.', 'error');
+        return;
+    }
+    if (!wantsEmail && !smsBody) {
+        showToast('Nothing to send — write an email, or tick "Also send a text message".', 'error');
+        return;
+    }
+
     const originalContent = btn.innerHTML;
     btn.innerHTML = `<svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white inline-block align-text-bottom" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Sending...`;
     btn.disabled = true;
 
     const ids = confirmed.map(b => b.id);
 
-    try {
-        const { queued } = await queueBulkEmail(ids, subject, body);
+    if (wantsEmail) {
+        try {
+            const { queued } = await queueBulkEmail(ids, subject, body);
+            closeModal('bulkEmailModal');
+            showToast(`${queued} email${queued !== 1 ? 's' : ''} queued and sending.`);
+        } catch (e) {
+            showToast('Failed to queue emails: ' + e.message, 'error');
+            btn.innerHTML = originalContent;
+            btn.disabled = false;
+            return;
+        }
+    } else {
+        // Text-only send: close the modal here, since the email branch that
+        // normally does it was skipped.
         closeModal('bulkEmailModal');
-        showToast(`${queued} email${queued !== 1 ? 's' : ''} queued and sending.`);
-    } catch (e) {
-        showToast('Failed to queue emails: ' + e.message, 'error');
-        btn.innerHTML = originalContent;
-        btn.disabled = false;
-        return;
     }
 
     // Separate from the email queue above, and reported separately: the
@@ -483,7 +509,10 @@ export async function sendBulkEmail(btn) {
                 skipped ? 'info' : 'success'
             );
         } catch (e) {
-            showToast('Emails queued, but the texts failed: ' + e.message, 'error');
+            showToast(
+                (wantsEmail ? 'Emails queued, but the texts failed: ' : 'Failed to queue texts: ') + e.message,
+                'error'
+            );
         }
     }
 
@@ -570,11 +599,35 @@ export async function sendSystemEmail(btn) {
 }
 
 // Rejection & Confirmation Modal
+export function openRejectModal(id) {
+    document.getElementById('rejectBookingId').value = id;
+    document.getElementById('rejectReason').value = "";
+    resetStatusSmsCheckbox('rejectSendSms');
+    document.getElementById('rejectReasonModal').classList.remove('opacity-0', 'pointer-events-none');
+}
+
 export function confirmRejection() {
     const id = document.getElementById('rejectBookingId').value;
     const reason = document.getElementById('rejectReason').value;
+    const sendSms = readStatusSmsChecked('rejectSendSms');
     closeModal('rejectReasonModal');
-    updateStatus(id, 'Rejected', reason);
+    updateStatus(id, 'Rejected', reason, sendSms);
+}
+
+export function openCancelModal(id) {
+    const booking = allBookings.find(b => b.id === id);
+    const nameEl = document.getElementById('cancelBusinessName');
+    if (nameEl) nameEl.innerText = (booking && (booking.business_name || booking.business)) || id;
+    document.getElementById('cancelBookingId').value = id;
+    resetStatusSmsCheckbox('cancelSendSms');
+    document.getElementById('cancelBookingModal').classList.remove('opacity-0', 'pointer-events-none');
+}
+
+export function confirmCancellation() {
+    const id = document.getElementById('cancelBookingId').value;
+    const sendSms = readStatusSmsChecked('cancelSendSms');
+    closeModal('cancelBookingModal');
+    updateStatus(id, 'Cancelled', null, sendSms);
 }
 
 function showConfirmModalLocal(id) {
@@ -618,8 +671,7 @@ function showConfirmModalLocal(id) {
     }
     // Reset the opt-in SMS tickbox so a ticked state never carries over to the
     // next booking confirmed in the same session.
-    const smsCb = document.getElementById('confirmSendSms');
-    if (smsCb) smsCb.checked = false;
+    resetStatusSmsCheckbox('confirmSendSms');
     document.getElementById('confirmTypeModal').classList.remove('opacity-0', 'pointer-events-none');
 }
 
@@ -645,7 +697,7 @@ export function finalizeConfirm(isChargeable) {
     // confirms the booking here and now; the chargeable path lands on
     // Payment Requested and is confirmed later server-side, so the tickbox
     // is labelled "free confirmations only" and ignored here for chargeable.
-    const sendSms = !!(document.getElementById('confirmSendSms') && document.getElementById('confirmSendSms').checked);
+    const sendSms = readStatusSmsChecked('confirmSendSms');
 
     const isFree = !isChargeable || overrideCost === 0;
     if (isFree) {

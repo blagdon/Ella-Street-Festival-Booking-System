@@ -32,6 +32,9 @@ function init() {
     const btnFinalizeFalse = document.getElementById('btn-finalize-false');
     if (btnFinalizeFalse) btnFinalizeFalse.addEventListener('click', () => window.finalizeConfirm(false));
 
+    const btnConfirmCancellation = document.getElementById('btn-confirm-cancellation');
+    if (btnConfirmCancellation) btnConfirmCancellation.addEventListener('click', () => window.confirmCancellation());
+
     const btnConfirmRejection = document.getElementById('btn-confirm-rejection');
     if (btnConfirmRejection) btnConfirmRejection.addEventListener('click', window.confirmRejection);
 
