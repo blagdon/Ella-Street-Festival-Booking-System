@@ -351,7 +351,10 @@ describe('submit-booking', () => {
     assert.equal(rows[0].status, 'Sent');
     assert.match(rows[0].provider_message_id || '', /^mock-/, 'a Sent row from the mock provider carries a mock- prefixed id');
     assert.ok(rows[0].body.includes(booking.id), 'the reference number (booking id) must appear in the text');
-    assert.equal(rows[0].segments, 1, 'the seeded booking_received template must fit a single billed part');
+    assert.ok(rows[0].body.includes('cancel_booking.html?token='), 'the {{cancel_link}} placeholder must be substituted with a real cancel link');
+    // Carrying the cancel link deliberately pushes this past one billed part
+    // (20260730090000) — an explicit, approved trade-off, not a regression.
+    assert.equal(rows[0].segments, 2, 'expected the booking_received template (with cancel link) to bill as 2 parts');
   });
 
   test('sends no SMS when the booking has no phone number', async () => {

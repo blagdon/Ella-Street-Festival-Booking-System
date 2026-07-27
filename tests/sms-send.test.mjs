@@ -333,10 +333,16 @@ describe('sms_templates', () => {
     });
   }
 
-  test('every template fits a single billed part once placeholders are filled', () => {
-    // Not a hard requirement, but a 2-part "your booking is confirmed" doubles
-    // the cost of the most-sent message in the system, so it should be a
-    // deliberate choice rather than something that drifts in unnoticed.
+  // booking_confirmed, booking_received, and location_update all carry
+  // {{cancel_link}} (and booking_confirmed also {{bank_details}}/{{cost}})
+  // as of 20260730090000 — a deliberate, approved trade-off to always
+  // include a working cancel link and (for the confirmation) the bank
+  // transfer details, even though that means 2 billed parts instead of 1.
+  // booking_rejected and booking_cancelled were NOT touched (nothing left to
+  // cancel once a booking is rejected/cancelled) and must stay single-part.
+  const ALLOWED_MULTIPART = new Set(['booking_confirmed', 'booking_received', 'location_update']);
+
+  test('only the templates approved for it bill as more than one part', () => {
     // Mirrors countSegments() in _shared/sms.ts.
     const GSM7 = /^[A-Za-z0-9 \r\n@£$¥èéùìòÇØøÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ!"#¤%&'()*+,\-./:;<=>?¡ÄÖÑÜ§¿äöñüà^{}\\\[~\]|€]*$/;
     const parts = (t) => {
@@ -348,21 +354,27 @@ describe('sms_templates', () => {
     // is filled at exactly MAX_SMS_REASON_LEN (js/shared.js) — an admin's
     // rejection reason has no length limit of its own, so the true worst
     // case is whatever the app's own truncation guard allows through, not
-    // an arbitrarily long string.
+    // an arbitrarily long string. {{cancel_link}} uses a real-shaped
+    // uuid-token URL; {{bank_details}} uses the same worst-case shape as
+    // the settings card (see tests/stripe-credentials-save.test.mjs-style
+    // fixtures elsewhere in this repo).
     const filled = (b) => b
       .replace(/\{\{owner_name\}\}/g, 'Christopher Fotheringay')
       .replace(/\{\{business_name\}\}/g, 'The Artisan Bakery Company')
       .replace(/\{\{booking_id\}\}/g, 'ESF26-GENERAL-0042')
       .replace(/\{\{cost\}\}/g, '£120.00')
-      .replace(/\{\{reason\}\}/g, 'This is a fairly long admin-typed rea...'); // 40 ASCII chars, matching the truncation guard's own output
+      .replace(/\{\{reason\}\}/g, 'This is a fairly long admin-typed rea...') // 40 ASCII chars, matching the truncation guard's own output
+      .replace(/\{\{cancel_link\}\}/g, 'https://app.ellastreet.co.uk/cancel_booking.html?token=' + 'a'.repeat(36))
+      .replace(/\{\{bank_details\}\}/g, 'Account Name: Ella Street Festival, Sort Code: 12-34-56, Account Number: 12345678');
 
     return service.from('sms_templates').select('id, body').then(({ data, error }) => {
       assert.equal(error, null, error?.message);
       const oversized = (data || [])
         .map((r) => ({ id: r.id, parts: parts(filled(r.body)), len: filled(r.body).length }))
         .filter((r) => r.parts > 1);
-      assert.deepEqual(oversized, [],
-        `these templates bill as more than one part: ${JSON.stringify(oversized)}`);
+      const unapproved = oversized.filter((r) => !ALLOWED_MULTIPART.has(r.id));
+      assert.deepEqual(unapproved, [],
+        `these templates bill as more than one part without being on the approved list: ${JSON.stringify(unapproved)}`);
     });
   });
 });

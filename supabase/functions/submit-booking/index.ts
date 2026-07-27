@@ -179,21 +179,33 @@ async function sendReceivedEmail(supabaseAdmin: ReturnType<typeof createClient>,
  * most likely), and the admin should be able to see it in the SMS Queue —
  * same "a bad number should fail loudly, not vanish" principle documented on
  * normalizePhone() itself.
+ *
+ * Carries {{cancel_link}}, same derivation as sendReceivedEmail()'s — the
+ * booking row returned by the insert already has cancel_token set (column
+ * default), so no extra fetch is needed here.
  */
 async function sendReceivedSms(supabaseAdmin: ReturnType<typeof createClient>, booking: Record<string, any>) {
   if (!booking.phone) return
 
-  const { data: templateData, error: templateErr } = await supabaseAdmin
-    .from('sms_templates').select('body').eq('id', 'booking_received').single()
+  const [{ data: templateData, error: templateErr }, { data: settingRows }] = await Promise.all([
+    supabaseAdmin.from('sms_templates').select('body').eq('id', 'booking_received').single(),
+    supabaseAdmin.from('settings').select('key, value').eq('key', 'cancel_url')
+  ])
 
   if (templateErr || !templateData) {
     throw new Error('Could not load "booking_received" SMS template: ' + (templateErr?.message || 'not found'))
   }
 
+  const cancelUrl = settingRows?.[0]?.value || ''
+  const cancelLink = (cancelUrl && booking.cancel_token)
+    ? `${cancelUrl}?token=${encodeURIComponent(booking.cancel_token)}`
+    : cancelUrl
+
   const body = templateData.body
     .replace(/\{\{owner_name\}\}/g, booking.owner_name || 'Trader')
     .replace(/\{\{business_name\}\}/g, booking.business_name || 'your business')
     .replace(/\{\{booking_id\}\}/g, booking.id || '')
+    .replace(/\{\{cancel_link\}\}/g, cancelLink)
 
   let recipient: string
   try {
