@@ -1,38 +1,45 @@
-import { initAdminPage, getSupabaseClient } from './supabase.js';
+import { getSupabaseClient } from './supabase.js';
 import { showToast } from './ui.js';
 import { escapeHtml } from './utils.js';
 
+// Formerly a standalone page (email_admin.html), now one pane of
+// comms_admin.html (see page-comms-admin.js, which imports initEmailAdmin()
+// and calls initAdminPage() exactly once for the whole merged page — this
+// module must NOT call initAdminPage itself, or the nav header and its
+// listeners would be double-registered). Every element id below is prefixed
+// `email-` so it can coexist on the same page as the SMS pane's ids
+// (page-sms-admin.js), which were previously identical (`templateList`,
+// `editorArea`, `previewModal`, etc.) when each lived on its own page.
 const sb = getSupabaseClient();
 let allTemplates = [];
 let currentTemplateId = null;
 
-function init() {
+export function initEmailAdmin() {
     loadTemplates();
 
     // Event Listeners for statically loaded DOM elements that had click handlers
-    const btnPreviewEmail = document.getElementById('btn-preview-email');
+    const btnPreviewEmail = document.getElementById('email-btn-preview');
     if (btnPreviewEmail) btnPreviewEmail.addEventListener('click', previewEmail);
 
-    const btnSaveTemplate = document.getElementById('btn-save-template');
+    const btnSaveTemplate = document.getElementById('email-btn-save-template');
     if (btnSaveTemplate) btnSaveTemplate.addEventListener('click', saveTemplate);
 
-    const btnBackToTemplates = document.getElementById('btn-back-to-templates');
+    const btnBackToTemplates = document.getElementById('email-btn-back-to-templates');
     if (btnBackToTemplates) {
         btnBackToTemplates.addEventListener('click', () => {
-            document.getElementById('mobile-view-container')?.classList.remove('mobile-detail-active');
+            document.getElementById('email-pane')?.classList.remove('mobile-detail-active');
         });
     }
 
     // Delegation for Modal Close
     document.body.addEventListener('click', (e) => {
-        const closePreviewBtn = e.target.closest('[data-action="close-preview"]');
+        const closePreviewBtn = e.target.closest('[data-action="close-preview-email"]');
         if (closePreviewBtn) {
             closePreview();
             return;
         }
     });
 }
-initAdminPage(init);
 
 async function loadTemplates() {
     try {
@@ -47,7 +54,7 @@ async function loadTemplates() {
 }
 
 function renderSidebar() {
-    const listEl = document.getElementById('templateList');
+    const listEl = document.getElementById('email-templateList');
     listEl.innerHTML = '';
 
     if (allTemplates.length === 0) {
@@ -85,28 +92,28 @@ function selectTemplate(id) {
     if (!template) return;
 
     // Populate editor
-    document.getElementById('editorTitle').innerText = formatName(template.id);
-    document.getElementById('editorDesc').innerText = template.description || "No description provided.";
-    document.getElementById('inputSubject').value = template.subject;
-    document.getElementById('inputBody').value = template.body_html;
+    document.getElementById('email-editorTitle').innerText = formatName(template.id);
+    document.getElementById('email-editorDesc').innerText = template.description || "No description provided.";
+    document.getElementById('email-inputSubject').value = template.subject;
+    document.getElementById('email-inputBody').value = template.body_html;
 
     // Toggle Views
-    document.getElementById('emptyState').style.display = 'none';
-    document.getElementById('editorArea').style.display = 'flex';
+    document.getElementById('email-emptyState').style.display = 'none';
+    document.getElementById('email-editorArea').style.display = 'flex';
 
     // Mobile: switch to editor view (see the max-width:767px rules in
-    // email_admin.html - same list<->detail toggle pattern as
+    // comms_admin.html - same list<->detail toggle pattern as
     // update_details.html's Booking Editor)
-    document.getElementById('mobile-view-container')?.classList.add('mobile-detail-active');
+    document.getElementById('email-pane')?.classList.add('mobile-detail-active');
 }
 
 async function saveTemplate() {
     if (!currentTemplateId) return;
 
-    const btn = document.getElementById('btn-save-template');
+    const btn = document.getElementById('email-btn-save-template');
 
-    const newSubject = document.getElementById('inputSubject').value.trim();
-    const newBody = document.getElementById('inputBody').value.trim();
+    const newSubject = document.getElementById('email-inputSubject').value.trim();
+    const newBody = document.getElementById('email-inputBody').value.trim();
 
     if (!newSubject || !newBody) {
         showToast("Subject and Body cannot be empty.", "error");
@@ -154,8 +161,8 @@ function formatName(str) {
 
 // Preview Email
 function previewEmail() {
-    const subject = document.getElementById('inputSubject').value.trim();
-    const body = document.getElementById('inputBody').value.trim();
+    const subject = document.getElementById('email-inputSubject').value.trim();
+    const body = document.getElementById('email-inputBody').value.trim();
 
     if (!subject || !body) {
         showToast("Please fill in both subject and body before previewing.", "error");
@@ -216,11 +223,11 @@ function previewEmail() {
     });
 
     // Display preview
-    document.getElementById('previewSubject').textContent = previewSubject;
-    document.getElementById('previewBody').innerHTML = previewBody;
-    document.getElementById('previewModal').classList.remove('hidden');
+    document.getElementById('email-previewSubject').textContent = previewSubject;
+    document.getElementById('email-previewBody').innerHTML = previewBody;
+    document.getElementById('email-previewModal').classList.remove('hidden');
 }
 
 function closePreview() {
-    document.getElementById('previewModal').classList.add('hidden');
+    document.getElementById('email-previewModal').classList.add('hidden');
 }

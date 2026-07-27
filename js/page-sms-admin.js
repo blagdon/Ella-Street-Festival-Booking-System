@@ -1,4 +1,4 @@
-import { initAdminPage, getSupabaseClient } from './supabase.js';
+import { getSupabaseClient } from './supabase.js';
 import { showToast } from './ui.js';
 import { escapeHtml, countSmsSegments } from './utils.js';
 
@@ -7,37 +7,44 @@ import { escapeHtml, countSmsSegments } from './utils.js';
 //   - no subject field (the table has no subject column)
 //   - a live billed-segment counter instead of an HTML body
 //   - the preview renders via textContent (an SMS is never HTML)
+//
+// Formerly a standalone page (sms_admin.html), now one pane of
+// comms_admin.html (see page-comms-admin.js, which imports initSmsAdmin()
+// and calls initAdminPage() exactly once for the whole merged page — this
+// module must NOT call initAdminPage itself). Every element id below is
+// prefixed `sms-` so it can coexist with the email pane's ids
+// (page-email-admin.js), which were identical to these when each lived on
+// its own page.
 const sb = getSupabaseClient();
 let allTemplates = [];
 let currentTemplateId = null;
 
-function init() {
+export function initSmsAdmin() {
     loadTemplates();
 
-    const btnPreview = document.getElementById('btn-preview-sms');
+    const btnPreview = document.getElementById('sms-btn-preview');
     if (btnPreview) btnPreview.addEventListener('click', previewSms);
 
-    const btnSaveTemplate = document.getElementById('btn-save-template');
+    const btnSaveTemplate = document.getElementById('sms-btn-save-template');
     if (btnSaveTemplate) btnSaveTemplate.addEventListener('click', saveTemplate);
 
-    const inputBody = document.getElementById('inputBody');
+    const inputBody = document.getElementById('sms-inputBody');
     if (inputBody) inputBody.addEventListener('input', updateSegCounter);
 
-    const btnBackToTemplates = document.getElementById('btn-back-to-templates');
+    const btnBackToTemplates = document.getElementById('sms-btn-back-to-templates');
     if (btnBackToTemplates) {
         btnBackToTemplates.addEventListener('click', () => {
-            document.getElementById('mobile-view-container')?.classList.remove('mobile-detail-active');
+            document.getElementById('sms-pane')?.classList.remove('mobile-detail-active');
         });
     }
 
     // Delegation for modal close.
     document.body.addEventListener('click', (e) => {
-        if (e.target.closest('[data-action="close-preview"]')) {
+        if (e.target.closest('[data-action="close-preview-sms"]')) {
             closePreview();
         }
     });
 }
-initAdminPage(init);
 
 async function loadTemplates() {
     try {
@@ -52,7 +59,7 @@ async function loadTemplates() {
 }
 
 function renderSidebar() {
-    const listEl = document.getElementById('templateList');
+    const listEl = document.getElementById('sms-templateList');
     listEl.innerHTML = '';
 
     if (allTemplates.length === 0) {
@@ -89,23 +96,23 @@ function selectTemplate(id) {
     const template = allTemplates.find(t => t.id === id);
     if (!template) return;
 
-    document.getElementById('editorTitle').innerText = formatName(template.id);
-    document.getElementById('editorDesc').innerText = template.description || "No description provided.";
-    document.getElementById('inputBody').value = template.body || '';
+    document.getElementById('sms-editorTitle').innerText = formatName(template.id);
+    document.getElementById('sms-editorDesc').innerText = template.description || "No description provided.";
+    document.getElementById('sms-inputBody').value = template.body || '';
     updateSegCounter();
 
-    document.getElementById('emptyState').style.display = 'none';
-    document.getElementById('editorArea').style.display = 'flex';
+    document.getElementById('sms-emptyState').style.display = 'none';
+    document.getElementById('sms-editorArea').style.display = 'flex';
 
     // Mobile: switch to editor view.
-    document.getElementById('mobile-view-container')?.classList.add('mobile-detail-active');
+    document.getElementById('sms-pane')?.classList.add('mobile-detail-active');
 }
 
 async function saveTemplate() {
     if (!currentTemplateId) return;
 
-    const btn = document.getElementById('btn-save-template');
-    const newBody = document.getElementById('inputBody').value.trim();
+    const btn = document.getElementById('sms-btn-save-template');
+    const newBody = document.getElementById('sms-inputBody').value.trim();
 
     if (!newBody) {
         showToast("Message text cannot be empty.", "error");
@@ -165,17 +172,17 @@ function fillSampleData(text) {
 }
 
 function updateSegCounter() {
-    const text = document.getElementById('inputBody').value;
+    const text = document.getElementById('sms-inputBody').value;
     const { len, parts, encoding } = countSmsSegments(text);
-    const counterEl = document.getElementById('segCounter');
+    const counterEl = document.getElementById('sms-segCounter');
     counterEl.textContent = `${len} character${len !== 1 ? 's' : ''} · ${parts} SMS part${parts !== 1 ? 's' : ''}`;
     // Nudge the admin when a "confirmation" has spilled into multiple billed parts.
     counterEl.className = parts > 1 ? 'text-amber-600 font-medium' : '';
-    document.getElementById('segEncoding').textContent = encoding;
+    document.getElementById('sms-segEncoding').textContent = encoding;
 }
 
 function previewSms() {
-    const body = document.getElementById('inputBody').value.trim();
+    const body = document.getElementById('sms-inputBody').value.trim();
     if (!body) {
         showToast("Please write some message text before previewing.", "error");
         return;
@@ -184,15 +191,15 @@ function previewSms() {
     const rendered = fillSampleData(body);
     // textContent, not innerHTML: an SMS is plain text and must never be
     // interpreted as markup (both correctness and XSS).
-    document.getElementById('previewBody').textContent = rendered;
+    document.getElementById('sms-previewBody').textContent = rendered;
 
     const { len, parts, encoding } = countSmsSegments(rendered);
-    document.getElementById('previewMeta').textContent =
+    document.getElementById('sms-previewMeta').textContent =
         `${len} character${len !== 1 ? 's' : ''} · ${parts} SMS part${parts !== 1 ? 's' : ''} · ${encoding}`;
 
-    document.getElementById('previewModal').classList.remove('hidden');
+    document.getElementById('sms-previewModal').classList.remove('hidden');
 }
 
 function closePreview() {
-    document.getElementById('previewModal').classList.add('hidden');
+    document.getElementById('sms-previewModal').classList.add('hidden');
 }

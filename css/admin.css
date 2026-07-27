@@ -193,3 +193,27 @@ body.modal-active {
         display: block !important;
     }
 }
+
+/* === TAB SWITCHER ===
+   Used by comms_admin.html and message_queue.html to switch between an
+   Email pane and an SMS pane on the same page. No existing tab pattern in
+   this app to reuse, so this is a small new one — kept minimal and shared
+   here (rather than duplicated per-page) since both pages need it. */
+.tab-btn {
+    padding: 0.625rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 700;
+    color: #6b7280;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+}
+
+.tab-btn:hover {
+    color: #374151;
+}
+
+.tab-btn.tab-active {
+    color: #1d4ed8;
+    border-bottom-color: #2563eb;
+}
