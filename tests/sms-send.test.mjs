@@ -320,7 +320,7 @@ describe('sms_templates', () => {
   // a submitter's phone number into a guaranteed console.warn on every single
   // public submission (submit-booking's sendReceivedSms is unconditional,
   // with no tickbox to skip).
-  const REQUIRED = ['booking_confirmed', 'booking_rejected', 'booking_cancelled', 'booking_received'];
+  const REQUIRED = ['booking_confirmed', 'booking_rejected', 'booking_cancelled', 'booking_received', 'location_update'];
 
   for (const id of REQUIRED) {
     test(`the ${id} template exists and is substitutable`, async () => {

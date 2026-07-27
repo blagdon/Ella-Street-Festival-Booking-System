@@ -1,6 +1,6 @@
 import { fetchLocationData, updateLocation, LIST_CAP } from './api.js';
-import { queueLocationEmail } from './shared.js';
-import { showToast, showConfirm, notifyIfTruncated } from './ui.js';
+import { queueLocationEmail, queueLocationSms } from './shared.js';
+import { showToast, notifyIfTruncated } from './ui.js';
 import { escapeHtml, sortBookings } from './utils.js';
 
 let allBookings = [];
@@ -179,82 +179,177 @@ export function getBookingById(id) {
 }
 
 
-export async function sendEmail(id) {
-    showConfirm(
-        "Send Email",
-        "Send confirmation email to this stallholder?",
-        async () => {
-            try {
-                const statusEl = document.getElementById('statusMsg');
-                if (statusEl) {
-                    statusEl.innerText = "Queuing Email...";
-                    statusEl.classList.remove('hidden');
-                }
-                await queueLocationEmail(id);
-                showToast("Email Added to Queue");
-            } catch (err) {
-                showToast("Email Failed: " + (err.message || err), 'error');
-            } finally {
-                const statusEl = document.getElementById('statusMsg');
-                if (statusEl) statusEl.classList.add('hidden');
-            }
-        }
-    );
+// ==========================================
+// SEND LOCATION EMAIL (+ optional SMS) MODAL
+// ==========================================
+// Shared by the individual per-row "Send Location" button and the bulk
+// "Send Bulk Emails" button — both open the same #locationEmailModal
+// (location_admin.html) with an "Also send a text message" tickbox,
+// differing only in title/message and whether the target is a single
+// booking id or an array of bookings. Listeners are wired lazily on first
+// open (mirroring js/ui.js's showConfirm(), whose singleton modal this
+// replaces for this one action) so page-location-admin.js needs no changes.
+let pendingSendMode = null; // 'single' | 'bulk'
+let pendingSendTarget = null; // booking id (single) or booking array (bulk)
+let locationEmailModalWired = false;
+
+function ensureLocationEmailModalWired() {
+    if (locationEmailModalWired) return;
+    locationEmailModalWired = true;
+    document.getElementById('btn-cancel-location-email')?.addEventListener('click', closeLocationEmailModal);
+    document.getElementById('btn-confirm-location-email')?.addEventListener('click', confirmLocationEmailSend);
 }
 
-export async function sendBulkEmails() {
+function closeLocationEmailModal() {
+    document.getElementById('locationEmailModal')?.classList.add('opacity-0', 'pointer-events-none');
+    pendingSendMode = null;
+    pendingSendTarget = null;
+}
+
+function openLocationEmailModal(mode, target, title, message) {
+    ensureLocationEmailModalWired();
+    pendingSendMode = mode;
+    pendingSendTarget = target;
+
+    const titleEl = document.getElementById('locationEmailModalTitle');
+    const msgEl = document.getElementById('locationEmailModalMessage');
+    if (titleEl) titleEl.innerText = title;
+    if (msgEl) msgEl.innerText = message;
+
+    // Reset every open so a ticked state never carries over to the next
+    // booking/batch, matching every other opt-in SMS tickbox in this app.
+    const smsCb = document.getElementById('locationEmailAlsoSms');
+    if (smsCb) smsCb.checked = false;
+
+    document.getElementById('locationEmailModal')?.classList.remove('opacity-0', 'pointer-events-none');
+}
+
+async function confirmLocationEmailSend() {
+    const alsoSms = !!document.getElementById('locationEmailAlsoSms')?.checked;
+    const mode = pendingSendMode;
+    const target = pendingSendTarget;
+    closeLocationEmailModal();
+
+    if (mode === 'single') {
+        await doSendSingleLocationEmail(target, alsoSms);
+    } else if (mode === 'bulk') {
+        await doSendBulkLocationEmails(target, alsoSms);
+    }
+}
+
+export function sendEmail(id) {
+    const booking = allBookings.find(b => b.id === id);
+    const name = booking ? (booking.business || booking.business_name || id) : id;
+    openLocationEmailModal('single', id, 'Send Location Email', `Send confirmation email to ${name}?`);
+}
+
+export function sendBulkEmails() {
     const targets = allBookings.filter(b => b.location_ids?.length);
     if (targets.length === 0) {
         showToast("No assigned bookings found.", 'warning');
         return;
     }
+    openLocationEmailModal('bulk', targets, 'Send Bulk Location Emails', `Send emails to ALL ${targets.length} assigned stalls?`);
+}
 
-    showConfirm(
-        "Send Bulk Emails",
-        `Send emails to ALL ${targets.length} assigned stalls?`,
-        async () => {
-            let count = 0;
-            let failedCount = 0;
-            const failedIds = [];
-            const statusEl = document.getElementById('statusMsg');
-            if (statusEl) statusEl.classList.remove('hidden');
-
-            const btn = document.getElementById('btn-send-bulk-emails');
-            const originalContent = btn ? btn.innerHTML : '';
-            if (btn) {
-                btn.innerHTML = `<svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white inline-block align-text-bottom" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Sending...`;
-                btn.disabled = true;
-            }
-
-            try {
-                for (const b of targets) {
-                    count++;
-                    try {
-                        if (statusEl) statusEl.innerText = `Queuing ${count}/${targets.length}...`;
-                        await queueLocationEmail(b.id);
-                    } catch (e) {
-                        failedCount++;
-                        failedIds.push(b.id);
-                        console.warn(`Failed to queue location email for ${b.id}:`, e);
-                    }
-                    await new Promise(r => setTimeout(r, 50));
-                }
-
-                if (statusEl) statusEl.classList.add('hidden');
-                if (failedCount > 0) {
-                    showToast(`Queued ${count - failedCount} emails. Failed: ${failedCount} (IDs: ${failedIds.join(', ')})`, 'warning');
-                } else {
-                    showToast(`Queued all ${count} Emails successfully.`);
-                }
-            } finally {
-                if (btn) {
-                    btn.innerHTML = originalContent;
-                    btn.disabled = false;
-                }
-                if (statusEl) statusEl.classList.add('hidden');
-            }
+async function doSendSingleLocationEmail(id, alsoSms) {
+    try {
+        const statusEl = document.getElementById('statusMsg');
+        if (statusEl) {
+            statusEl.innerText = "Queuing Email...";
+            statusEl.classList.remove('hidden');
         }
-    );
+        await queueLocationEmail(id);
+        showToast("Email Added to Queue");
+    } catch (err) {
+        showToast("Email Failed: " + (err.message || err), 'error');
+    } finally {
+        const statusEl = document.getElementById('statusMsg');
+        if (statusEl) statusEl.classList.add('hidden');
+    }
+
+    // Independent of the email above (its own try/catch): a texting failure
+    // must not read as though the email failed too, and vice versa — same
+    // rule every other "email + optional SMS" pairing in this app follows.
+    if (alsoSms) {
+        try {
+            await queueLocationSms(id);
+            showToast("Text message sent", 'info');
+        } catch (err) {
+            showToast("Email queued, but the text failed: " + (err.message || err), 'error');
+        }
+    }
+}
+
+async function doSendBulkLocationEmails(targets, alsoSms) {
+    let count = 0;
+    let failedCount = 0;
+    const failedIds = [];
+    let smsSent = 0;
+    let smsFailed = 0;
+    let smsSkipped = 0; // no phone number — expected, not a real failure
+
+    const statusEl = document.getElementById('statusMsg');
+    if (statusEl) statusEl.classList.remove('hidden');
+
+    const btn = document.getElementById('btn-send-bulk-emails');
+    const originalContent = btn ? btn.innerHTML : '';
+    if (btn) {
+        btn.innerHTML = `<svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white inline-block align-text-bottom" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Sending...`;
+        btn.disabled = true;
+    }
+
+    try {
+        for (const b of targets) {
+            count++;
+            try {
+                if (statusEl) statusEl.innerText = `Queuing ${count}/${targets.length}...`;
+                await queueLocationEmail(b.id);
+            } catch (e) {
+                failedCount++;
+                failedIds.push(b.id);
+                console.warn(`Failed to queue location email for ${b.id}:`, e);
+            }
+
+            // Independent of the email above, per-booking: one stall's SMS
+            // failure (or missing phone) never blocks or is blocked by its
+            // own email outcome, or any other stall's in the batch.
+            if (alsoSms) {
+                try {
+                    await queueLocationSms(b.id);
+                    smsSent++;
+                } catch (e) {
+                    if (/no phone number/i.test(e.message || '')) {
+                        smsSkipped++;
+                    } else {
+                        smsFailed++;
+                        console.warn(`Failed to queue location SMS for ${b.id}:`, e);
+                    }
+                }
+            }
+
+            await new Promise(r => setTimeout(r, 50));
+        }
+
+        if (statusEl) statusEl.classList.add('hidden');
+
+        let msg = failedCount > 0
+            ? `Queued ${count - failedCount} emails. Failed: ${failedCount} (IDs: ${failedIds.join(', ')})`
+            : `Queued all ${count} emails successfully.`;
+        if (alsoSms) {
+            msg += ` · ${smsSent} text${smsSent !== 1 ? 's' : ''} sent`;
+            if (smsSkipped) msg += `, ${smsSkipped} skipped (no phone number)`;
+            if (smsFailed) msg += `, ${smsFailed} failed`;
+            msg += '.';
+        }
+        showToast(msg, (failedCount > 0 || smsFailed > 0) ? 'warning' : 'success');
+    } finally {
+        if (btn) {
+            btn.innerHTML = originalContent;
+            btn.disabled = false;
+        }
+        if (statusEl) statusEl.classList.add('hidden');
+    }
 }
 
 /**

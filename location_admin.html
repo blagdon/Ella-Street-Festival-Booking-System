@@ -314,6 +314,39 @@
     </div>
 
 
+    <!-- Send Location Email modal — shared by the individual per-row "Send
+         Location" button and the bulk "Send Bulk Emails" button (see
+         openLocationEmailModal() in js/locations.js). Title/message are set
+         per-call; the tickbox always defaults off and is reset on every
+         open, matching every other opt-in SMS tickbox in this app. -->
+    <div id="locationEmailModal"
+        class="modal opacity-0 pointer-events-none fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div class="absolute inset-0 bg-gray-900 opacity-50"></div>
+        <div class="bg-white w-full max-w-sm rounded-lg shadow-2xl z-50 p-6 relative">
+            <h2 class="text-lg font-bold mb-2 text-gray-800" id="locationEmailModalTitle">Send Location Email</h2>
+            <p class="text-sm text-gray-600 mb-4" id="locationEmailModalMessage">Send confirmation email to this
+                stallholder?</p>
+
+            <label for="locationEmailAlsoSms"
+                class="flex items-center gap-2 text-sm text-gray-700 mb-4 cursor-pointer select-none">
+                <input type="checkbox" id="locationEmailAlsoSms"
+                    class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                <span>Also send a text message</span>
+            </label>
+
+            <div class="flex gap-3 justify-end">
+                <button id="btn-cancel-location-email"
+                    class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">
+                    Cancel
+                </button>
+                <button id="btn-confirm-location-email"
+                    class="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors">
+                    Send
+                </button>
+            </div>
+        </div>
+    </div>
+
     <div id="flashToast"
         class="fixed bottom-5 right-5 z-50 transform transition-all duration-300 translate-y-20 opacity-0 pointer-events-none">
         <div class="bg-gray-800 text-white px-6 py-3 rounded-lg shadow-lg flex items-center">
