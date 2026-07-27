@@ -167,6 +167,26 @@
             </div>
         </div>
 
+        <!-- Sent/successful/unsuccessful counts, updated on load, refresh, and
+             after a retry (a retry can move a row between Error and Sent).
+             These totals are unfiltered — independent of the search box and
+             status dropdown above, which only affect the table beneath. -->
+        <div class="px-4 md:px-6 py-3 bg-white border-b flex flex-wrap gap-2 items-center text-xs">
+            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gray-100 text-gray-700 font-semibold">
+                Total <span id="sms-statsTotal">—</span>
+            </span>
+            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-green-100 text-green-700 font-semibold">
+                Successful <span id="sms-statsSent">—</span>
+            </span>
+            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-100 text-red-700 font-semibold">
+                Unsuccessful <span id="sms-statsError">—</span>
+            </span>
+            <span id="sms-statsSimulatedWrap" class="hidden inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-100 text-amber-700 font-semibold"
+                title="Sent while SMS Test Mode was ON, via the mock provider — no real text left the system">
+                Simulated (Test Mode) <span id="sms-statsSimulated">—</span>
+            </span>
+        </div>
+
         <div class="flex-grow px-4 md:px-6 py-4 overflow-hidden flex flex-col">
             <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col flex-1">
                 <div class="overflow-y-auto custom-scrollbar flex-1">

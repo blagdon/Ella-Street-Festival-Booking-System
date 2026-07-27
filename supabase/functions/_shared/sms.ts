@@ -34,6 +34,7 @@ interface SmsSettings {
   apiSecret: string     // provider secondary secret (e.g. Twilio auth token)
   accountSid: string    // provider account id (e.g. Twilio Account SID)
   apiUrl: string        // optional override of the provider endpoint
+  testMode: boolean     // see sendViaSms() — short-circuits every send to the mock adapter
 }
 
 const SETTINGS_KEYS = [
@@ -44,6 +45,7 @@ const SETTINGS_KEYS = [
   'sms_api_secret',
   'sms_account_sid',
   'sms_api_url',
+  'sms_test_mode',
 ] as const
 
 async function loadSmsSettings(
@@ -69,6 +71,11 @@ async function loadSmsSettings(
     apiSecret: s['sms_api_secret'] || '',
     accountSid: s['sms_account_sid'] || '',
     apiUrl: s['sms_api_url'] || '',
+    // Absent (e.g. a pre-migration environment) defaults to true — safe by
+    // default, the same posture sms_provider takes defaulting to 'mock'. A
+    // real send requires an admin to have explicitly turned this off in the
+    // Settings page's SMS (The SMS Works) card.
+    testMode: (s['sms_test_mode'] ?? 'true') !== 'false',
   }
 }
 
@@ -215,12 +222,24 @@ export async function sendViaSms(
   }
 
   const settings = await loadSmsSettings(supabaseAdmin)
-  const adapter = ADAPTERS[settings.provider]
-  if (!adapter) {
+
+  // Validate the CONFIGURED provider name even in test mode, so a typo in
+  // sms_provider is caught now rather than only surfacing once test mode is
+  // switched off and a real send is attempted for the first time.
+  if (!ADAPTERS[settings.provider]) {
     throw new Error(
       `Unknown sms_provider "${settings.provider}". Known: ${Object.keys(ADAPTERS).join(', ')}.`
     )
   }
+
+  // Test Mode is a separate, more visible master switch from sms_provider —
+  // see the 20260728090000 migration's docstring. When on, every send is
+  // routed through the mock adapter regardless of which real provider is
+  // configured, so pointing sms_provider at 'thesmsworks' and filling in
+  // live credentials cannot by itself cause a real send — an admin has to
+  // deliberately turn this off first.
+  const effectiveProvider = settings.testMode ? 'mock' : settings.provider
+  const adapter = ADAPTERS[effectiveProvider]
 
   // recipient is expected already-normalised by the caller (queue insert path),
   // but normalise defensively so a hand-inserted row can't send to a bad number.
@@ -231,6 +250,6 @@ export async function sendViaSms(
     success: true,
     providerMessageId,
     segments: countSegments(body),
-    provider: settings.provider,
+    provider: effectiveProvider,
   }
 }

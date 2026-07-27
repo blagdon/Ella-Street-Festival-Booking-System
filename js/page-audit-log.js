@@ -18,10 +18,11 @@ const KNOWN_ACTIONS = [
     'resend_payment_request', 'retry_queued_email', 'retry_queued_sms',
     'send_payment_reminder', 'sms_bulk_queued', 'sms_sent',
     'steward_location_change', 'steward_location_change_sync',
-    'toggle_booking_form', 'toggle_stripe_test_mode', 'update_details',
-    'update_payment', 'update_serpapi_settings', 'update_stall_costs',
-    'update_stall_types', 'update_status', 'update_stripe_settings',
-    'update_system_constants', 'update_zoho_settings',
+    'toggle_booking_form', 'toggle_sms_test_mode', 'toggle_stripe_test_mode',
+    'update_details', 'update_payment', 'update_serpapi_settings',
+    'update_sms_settings', 'update_stall_costs', 'update_stall_types',
+    'update_status', 'update_stripe_settings', 'update_system_constants',
+    'update_zoho_settings',
 ];
 
 let sb;
