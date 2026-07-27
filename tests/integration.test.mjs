@@ -45,6 +45,13 @@ before(async () => {
   // to --test-concurrency=1).
   await service.from('bookings').delete().or('id.like.ESF26-TESTCONFLICT-%,id.like.ESF26-TESTDATASET-%,id.like.ESF26-DEV-%');
   await service.from('email_queue').delete().neq('id', -1);
+  // Scoped the same way as bookings above (not a blanket wipe like
+  // email_queue): sms_queue is shared with tests/sms-send.test.mjs, which
+  // uses different fixture recipients but the same 'ESF26-DEV-' instance
+  // prefix for its own bookings — safe because --test-concurrency=1 means
+  // that file's own after() has already cleaned its rows by the time this
+  // file's tests run, but scoping instead of wiping costs nothing.
+  await service.from('sms_queue').delete().or('instance_prefix.like.ESF26-TESTCONFLICT-%,instance_prefix.like.ESF26-TESTDATASET-%,instance_prefix.like.ESF26-DEV-%');
   await service.from('locations').delete().like('id', 'TESTLOC%');
 });
 
@@ -54,6 +61,7 @@ after(async () => {
     await service.from('bookings').delete().in('id', createdBookingIds);
   }
   await service.from('email_queue').delete().neq('id', -1);
+  await service.from('sms_queue').delete().or('instance_prefix.like.ESF26-TESTCONFLICT-%,instance_prefix.like.ESF26-TESTDATASET-%,instance_prefix.like.ESF26-DEV-%');
   await service.from('locations').delete().like('id', 'TESTLOC%');
 });
 
@@ -316,6 +324,63 @@ describe('submit-booking', () => {
 
     assert.ok(rows.length, 'expected an email_queue row to be logged');
     assert.equal(rows[0].status, 'Error', 'expected the send to fail (no zoho_* settings configured in the test project)');
+  });
+
+  // Unlike Zoho (unconfigured in the test project, so every email attempt
+  // fails), the test project's sms_provider is 'mock', which always
+  // succeeds — so these assert a successful Sent row, not a failure.
+  // Located by ilike on the booking's own id inside the message body
+  // (the reference number the template embeds) rather than by recipient or
+  // created_at ordering, so it can't be confused with any other test's rows
+  // for the same default fixture phone number.
+  test('sends a "booking received" SMS containing the reference number, via the mock provider', async () => {
+    const { status, json } = await callFunction('submit-booking', submitBookingPayload('SMSOK', {
+      instance_prefix: 'ESF26-DEV-',
+    }));
+    assert.equal(status, 200, JSON.stringify(json));
+    const booking = json.data[0];
+    createdBookingIds.push(booking.id);
+
+    const { data: rows } = await service
+      .from('sms_queue')
+      .select('*')
+      .ilike('body', `%${booking.id}%`);
+
+    assert.equal(rows.length, 1, 'expected exactly one sms_queue row logged for this booking');
+    assert.equal(rows[0].recipient, '+447000000000', 'the default fixture phone (07000000000) must normalise to E.164');
+    assert.equal(rows[0].status, 'Sent');
+    assert.match(rows[0].provider_message_id || '', /^mock-/, 'a Sent row from the mock provider carries a mock- prefixed id');
+    assert.ok(rows[0].body.includes(booking.id), 'the reference number (booking id) must appear in the text');
+    assert.equal(rows[0].segments, 1, 'the seeded booking_received template must fit a single billed part');
+  });
+
+  test('sends no SMS when the booking has no phone number', async () => {
+    const { status, json } = await callFunction('submit-booking', submitBookingPayload('SMSNOPHONE', {
+      instance_prefix: 'ESF26-DEV-',
+      phone: '',
+    }));
+    assert.equal(status, 200, JSON.stringify(json));
+    const booking = json.data[0];
+    createdBookingIds.push(booking.id);
+
+    const { data: rows } = await service.from('sms_queue').select('id').ilike('body', `%${booking.id}%`);
+    assert.equal(rows.length, 0, 'no sms_queue row should exist for a booking with no phone number — nothing was ever attempted');
+  });
+
+  test('logs an unnormalisable phone number as an Error row rather than silently dropping it', async () => {
+    const { status, json } = await callFunction('submit-booking', submitBookingPayload('SMSBADPHONE', {
+      instance_prefix: 'ESF26-DEV-',
+      phone: 'not-a-number',
+    }));
+    assert.equal(status, 200, JSON.stringify(json), 'a bad phone number must not fail the booking submission itself');
+    const booking = json.data[0];
+    createdBookingIds.push(booking.id);
+
+    const { data: rows } = await service.from('sms_queue').select('*').ilike('body', `%${booking.id}%`);
+    assert.equal(rows.length, 1, 'expected exactly one sms_queue row for the failed normalisation attempt');
+    assert.equal(rows[0].status, 'Error');
+    assert.equal(rows[0].recipient, 'not-a-number', 'the raw unnormalised input is recorded, since normalisation never produced an E.164 value to log instead');
+    assert.match(rows[0].error_message || '', /international/i);
   });
 });
 

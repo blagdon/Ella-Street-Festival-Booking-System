@@ -313,11 +313,14 @@ describe('queue-bulk-sms', () => {
 });
 
 describe('sms_templates', () => {
-  // Every template the status-change tickboxes reference. getSmsFromTemplate()
-  // throws on a missing row, so an absent template turns the Confirm/Reject/
-  // Cancel tickbox into a guaranteed error toast at the worst moment — after
-  // the status change has already committed.
-  const REQUIRED = ['booking_confirmed', 'booking_rejected', 'booking_cancelled'];
+  // Every template a code path references without an opt-in check first.
+  // getSmsFromTemplate() throws on a missing row, so an absent template turns
+  // the Confirm/Reject/Cancel tickbox into a guaranteed error toast at the
+  // worst moment — after the status change has already committed — and turns
+  // a submitter's phone number into a guaranteed console.warn on every single
+  // public submission (submit-booking's sendReceivedSms is unconditional,
+  // with no tickbox to skip).
+  const REQUIRED = ['booking_confirmed', 'booking_rejected', 'booking_cancelled', 'booking_received'];
 
   for (const id of REQUIRED) {
     test(`the ${id} template exists and is substitutable`, async () => {
