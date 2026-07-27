@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com https://challenges.cloudflare.com https://vercel.live; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; connect-src 'self' https://rsnxhuhibglieofikkpo.supabase.co https://challenges.cloudflare.com https://vercel.live https://cdn.jsdelivr.net https://unpkg.com; frame-src https://challenges.cloudflare.com https://vercel.live; img-src 'self' data: https:; font-src 'self' https://fonts.gstatic.com;">
+    <title>Communication Templates</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="./css/output.css" rel="stylesheet">
+    <script src="js/vendor/supabase.js"></script>
+
+    <link href="./css/admin.css" rel="stylesheet">
+    <style>
+        /* Merged from email_admin.html + sms_admin.html. Both pages had
+           identical mobile list<->editor toggle rules; the id-based
+           selectors now list both panes' prefixed ids since each id is
+           unique to its own pane's DOM subtree — see page-comms-admin.js
+           for why the panes need prefixed ids at all (duplicate ids would
+           otherwise collide once both panes share one page). */
+        .active-template {
+            border-left: 4px solid #2563eb;
+            background-color: #eff6ff;
+        }
+
+        @media (max-width: 767px) {
+            .sidebar-list {
+                display: flex !important;
+                flex: 1;
+            }
+
+            #email-editorArea,
+            #sms-editorArea,
+            #email-emptyState,
+            #sms-emptyState {
+                display: none !important;
+            }
+
+            .mobile-detail-active .sidebar-list {
+                display: none !important;
+            }
+
+            .mobile-detail-active #email-editorArea,
+            .mobile-detail-active #sms-editorArea {
+                display: flex !important;
+                flex: 1;
+            }
+        }
+
+        /* Back button: only visible on mobile */
+        .mobile-back-btn {
+            display: none;
+        }
+
+        @media (max-width: 767px) {
+            .mobile-back-btn {
+                display: flex;
+            }
+        }
+    </style>
+
+    <link rel="icon"
+        href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎪</text></svg>">
+</head>
+
+<body class="bg-gray-100 min-h-screen font-sans text-gray-800 flex flex-col">
+    <div id="nav-container"></div>
+
+    <div class="px-4 md:px-6 py-4 bg-white border-b border-gray-200">
+        <div class="flex items-center gap-3 mb-1">
+            <a href="more.html"
+                class="inline-flex items-center text-gray-500 hover:text-blue-600 transition-colors group bg-gray-50 px-2 py-1 rounded border border-gray-200 text-xs font-bold uppercase tracking-wide">
+                <svg class="w-3 h-3 mr-1.5 group-hover:-translate-x-0.5 transition-transform" fill="none"
+                    stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+                </svg>
+                Back to Tools
+            </a>
+            <div>
+                <h1 class="text-xl font-bold text-gray-800">Communication Templates</h1>
+                <p class="text-xs text-gray-500 mt-0.5">Edit the automated wording sent to stallholders, by email or
+                    text.</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="px-4 md:px-6 bg-white border-b border-gray-200 flex gap-1">
+        <button type="button" id="tab-btn-email" data-tab="email" class="tab-btn tab-active">Email</button>
+        <button type="button" id="tab-btn-sms" data-tab="sms" class="tab-btn">SMS</button>
+    </div>
+
+    <!-- Email pane (formerly email_admin.html). Every id prefixed email-. -->
+    <div id="email-pane" class="flex-1 flex flex-col md:flex-row overflow-hidden">
+
+        <div
+            class="sidebar-list w-full md:w-1/3 lg:w-1/4 bg-white border-r border-gray-200 flex flex-col overflow-y-auto custom-scrollbar shadow-inner">
+            <div class="p-4 border-b border-gray-100 bg-gray-50">
+                <h2 class="text-xs font-bold text-gray-500 uppercase tracking-wider">Available Templates</h2>
+            </div>
+            <div id="email-templateList" class="flex-1">
+                <div class="p-8 text-center text-gray-400 text-sm italic">Loading templates...</div>
+            </div>
+        </div>
+
+        <div class="w-full md:w-2/3 lg:w-3/4 flex flex-col bg-gray-50 p-6 overflow-y-auto custom-scrollbar"
+            id="email-editorArea" style="display: none;">
+
+            <!-- Mobile: back to template list -->
+            <div class="mobile-back-btn items-center gap-2 mb-4 -mt-2">
+                <button id="email-btn-back-to-templates"
+                    class="inline-flex items-center text-gray-600 hover:text-blue-600 font-bold text-sm transition-colors">
+                    <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+                    </svg>
+                    Back to Templates
+                </button>
+            </div>
+
+            <div
+                class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col h-full max-w-4xl mx-auto w-full">
+
+                <div class="p-5 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
+                    <div>
+                        <h2 class="text-lg font-bold text-gray-800" id="email-editorTitle">Edit Template</h2>
+                        <p class="text-xs text-gray-500 mt-1" id="email-editorDesc">Description here</p>
+                    </div>
+                    <div class="flex gap-2">
+                        <button id="email-btn-preview"
+                            class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded shadow font-bold text-sm transition-colors">
+                            👁️ Preview
+                        </button>
+                        <button id="email-btn-save-template"
+                            class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded shadow font-bold text-sm transition-colors">
+                            Save Changes
+                        </button>
+                    </div>
+                </div>
+
+                <div class="p-6 flex-1 flex flex-col space-y-4">
+
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-1">Subject Line</label>
+                        <input type="text" id="email-inputSubject"
+                            class="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                    </div>
+
+                    <div class="flex-1 flex flex-col">
+                        <label class="block text-sm font-bold text-gray-700 mb-1">HTML Body</label>
+                        <textarea id="email-inputBody"
+                            class="w-full flex-1 p-3 border border-gray-300 rounded font-mono text-sm bg-gray-50 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none custom-scrollbar min-h-[300px]"></textarea>
+                    </div>
+
+                    <div class="bg-blue-50 text-blue-800 p-4 rounded text-xs border border-blue-100">
+                        <p class="font-bold mb-1">Available Placeholders (exact match required):</p>
+                        <ul class="list-disc pl-5 space-y-1 mt-2">
+                            <li><code>{{owner_name}}</code> - Name of the stallholder</li>
+                            <li><code>{{business_name}}</code> - Trading name</li>
+                            <li><code>{{booking_id}}</code> - e.g. ESF26-FOOD-0042</li>
+                            <li><code>{{cancel_link}}</code> - Auto-generated secure cancellation URL</li>
+                            <li><code>{{cost}}</code> - Stall price (Only for Confirmed Chargeable)</li>
+                            <li><code>{{bank_details}}</code> - Bank account info (Only for Confirmed Chargeable)</li>
+                            <li><code>{{location_id}}</code> - e.g. Zone A - 01 (Only for Confirmed Free / Location
+                                Updates)</li>
+                            <li><code>{{payment_link}}</code> - Stripe Checkout URL (Only for Payment Requested)</li>
+                            <li><code>{{payment_reference}}</code> - e.g. ESF26-FOOD-0042, the booking ID used as the
+                                bank-transfer reference (Only for Payment Requested)</li>
+                            <li><code>{{bank_account_name}}</code> - Bank transfer account name (Only for Payment
+                                Requested)</li>
+                            <li><code>{{bank_sort_code}}</code> - Bank transfer sort code (Only for Payment
+                                Requested)</li>
+                            <li><code>{{bank_account_number}}</code> - Bank transfer account number (Only for
+                                Payment Requested)</li>
+                            <li><code>{{reason}}</code> - Rejection reason (Only for Rejected)</li>
+                            <li><code>{{trader_list}}</code> - Formatted list of traders (Only for HCC Batch Check)</li>
+                            <li><code>{{email}}</code> - Trader email address (HCC emails)</li>
+                            <li><code>{{phone}}</code> - Trader phone number (HCC emails)</li>
+                            <li><code>{{registered_business_name}}</code> - Official registered business name (HCC
+                                emails)</li>
+                        </ul>
+                        <p class="mt-3 font-bold text-blue-900">Note:</p>
+                        <p class="mt-1">The <strong>HCC Batch Check</strong> template is used when sending multiple
+                            trader details to Hull City Council from the HCC Checks page. The
+                            <code>{{trader_list}}</code> placeholder will be replaced with a formatted table of all
+                            selected traders.
+                        </p>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <div id="email-emptyState"
+            class="w-full md:w-2/3 lg:w-3/4 flex items-center justify-center p-6 text-gray-400 flex-col">
+            <svg class="w-16 h-16 mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z">
+                </path>
+            </svg>
+            <p class="text-lg">Select a template from the sidebar to edit.</p>
+        </div>
+
+    </div>
+
+    <!-- SMS pane (formerly sms_admin.html). Every id prefixed sms-. Hidden by
+         default; page-comms-admin.js toggles which pane is visible. -->
+    <div id="sms-pane" class="hidden flex-1 flex flex-col md:flex-row overflow-hidden">
+
+        <div
+            class="sidebar-list w-full md:w-1/3 lg:w-1/4 bg-white border-r border-gray-200 flex flex-col overflow-y-auto custom-scrollbar shadow-inner">
+            <div class="p-4 border-b border-gray-100 bg-gray-50">
+                <h2 class="text-xs font-bold text-gray-500 uppercase tracking-wider">Available Templates</h2>
+            </div>
+            <div id="sms-templateList" class="flex-1">
+                <div class="p-8 text-center text-gray-400 text-sm italic">Loading templates...</div>
+            </div>
+        </div>
+
+        <div class="w-full md:w-2/3 lg:w-3/4 flex flex-col bg-gray-50 p-6 overflow-y-auto custom-scrollbar"
+            id="sms-editorArea" style="display: none;">
+
+            <!-- Mobile: back to template list -->
+            <div class="mobile-back-btn items-center gap-2 mb-4 -mt-2">
+                <button id="sms-btn-back-to-templates"
+                    class="inline-flex items-center text-gray-600 hover:text-blue-600 font-bold text-sm transition-colors">
+                    <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+                    </svg>
+                    Back to Templates
+                </button>
+            </div>
+
+            <div
+                class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col h-full max-w-4xl mx-auto w-full">
+
+                <div class="p-5 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
+                    <div>
+                        <h2 class="text-lg font-bold text-gray-800" id="sms-editorTitle">Edit Template</h2>
+                        <p class="text-xs text-gray-500 mt-1" id="sms-editorDesc">Description here</p>
+                    </div>
+                    <div class="flex gap-2">
+                        <button id="sms-btn-preview"
+                            class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded shadow font-bold text-sm transition-colors">
+                            👁️ Preview
+                        </button>
+                        <button id="sms-btn-save-template"
+                            class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded shadow font-bold text-sm transition-colors">
+                            Save Changes
+                        </button>
+                    </div>
+                </div>
+
+                <div class="p-6 flex-1 flex flex-col space-y-4">
+
+                    <div class="flex-1 flex flex-col">
+                        <label class="block text-sm font-bold text-gray-700 mb-1">Message Text</label>
+                        <textarea id="sms-inputBody"
+                            class="w-full flex-1 p-3 border border-gray-300 rounded font-mono text-sm bg-gray-50 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none custom-scrollbar min-h-[220px]"></textarea>
+                        <div class="mt-2 text-xs text-gray-500 flex items-center justify-between">
+                            <span id="sms-segCounter">0 characters · 1 SMS part</span>
+                            <span id="sms-segEncoding" class="text-gray-400"></span>
+                        </div>
+                    </div>
+
+                    <div class="bg-blue-50 text-blue-800 p-4 rounded text-xs border border-blue-100">
+                        <p class="font-bold mb-1">Available Placeholders (exact match required):</p>
+                        <ul class="list-disc pl-5 space-y-1 mt-2">
+                            <li><code>{{owner_name}}</code> - Name of the stallholder</li>
+                            <li><code>{{business_name}}</code> - Trading name</li>
+                            <li><code>{{booking_id}}</code> - e.g. ESF26-FOOD-0042</li>
+                            <li><code>{{cost}}</code> - Stall price (e.g. £50.00)</li>
+                            <li><code>{{reason}}</code> - Rejection reason the admin typed (booking_rejected only).
+                                Defaults to "Oversubscribed / Category Full" if left blank, and is cut to 40
+                                characters if longer, so a long reason can't silently push the message to a second
+                                billed part.</li>
+                        </ul>
+                        <p class="mt-3 font-bold text-blue-900">Keep it short:</p>
+                        <p class="mt-1">Every 160 GSM characters (70 if you use emoji or symbols like £ curly quotes)
+                            is one billed SMS part. A confirmation should ideally fit in a single part. There is no
+                            subject line — SMS is plain text, so any HTML would show as literal tags on the phone.</p>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <div id="sms-emptyState"
+            class="w-full md:w-2/3 lg:w-3/4 flex items-center justify-center p-6 text-gray-400 flex-col">
+            <svg class="w-16 h-16 mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-4 4v-4z">
+                </path>
+            </svg>
+            <p class="text-lg">Select a template from the sidebar to edit.</p>
+        </div>
+
+    </div>
+
+    <!-- Email Preview Modal -->
+    <div id="email-previewModal"
+        class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] flex flex-col">
+            <!-- Modal Header -->
+            <div class="p-5 border-b border-gray-200 flex justify-between items-center bg-gray-50 rounded-t-xl">
+                <div>
+                    <h3 class="text-lg font-bold text-gray-800">Email Preview</h3>
+                    <p class="text-xs text-gray-500 mt-1">Preview with sample data</p>
+                </div>
+                <button data-action="close-preview-email"
+                    class="text-gray-500 hover:text-gray-700 p-2 rounded-lg hover:bg-gray-200 transition">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12">
+                        </path>
+                    </svg>
+                </button>
+            </div>
+
+            <!-- Email Preview Content -->
+            <div class="flex-1 overflow-y-auto p-6 bg-gray-50">
+                <div class="bg-white rounded-lg shadow-sm border border-gray-200 max-w-2xl mx-auto">
+                    <!-- Email Header -->
+                    <div class="bg-gray-100 px-6 py-4 border-b border-gray-300">
+                        <div class="text-xs text-gray-500 mb-2">Subject:</div>
+                        <div class="font-bold text-gray-900" id="email-previewSubject"></div>
+                    </div>
+
+                    <!-- Email Body -->
+                    <div class="p-6" id="email-previewBody">
+                        <!-- HTML content will be inserted here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal Footer -->
+            <div class="p-4 border-t border-gray-200 bg-gray-50 rounded-b-xl flex justify-end gap-2">
+                <button data-action="close-preview-email"
+                    class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded shadow font-bold text-sm transition-colors">
+                    Close
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- SMS Preview Modal -->
+    <div id="sms-previewModal"
+        class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-xl shadow-2xl max-w-md w-full max-h-[90vh] flex flex-col">
+            <div class="p-5 border-b border-gray-200 flex justify-between items-center bg-gray-50 rounded-t-xl">
+                <div>
+                    <h3 class="text-lg font-bold text-gray-800">SMS Preview</h3>
+                    <p class="text-xs text-gray-500 mt-1">Preview with sample data</p>
+                </div>
+                <button data-action="close-preview-sms"
+                    class="text-gray-500 hover:text-gray-700 p-2 rounded-lg hover:bg-gray-200 transition">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12">
+                        </path>
+                    </svg>
+                </button>
+            </div>
+
+            <div class="flex-1 overflow-y-auto p-6 bg-gray-100">
+                <!-- Phone-style message bubble. Body is set via textContent (plain
+                     text) — an SMS is never HTML. -->
+                <div class="max-w-[85%]">
+                    <div id="sms-previewBody"
+                        class="bg-green-500 text-white rounded-2xl rounded-bl-sm px-4 py-2.5 text-sm whitespace-pre-wrap break-words shadow"></div>
+                    <div id="sms-previewMeta" class="text-[11px] text-gray-400 mt-1.5 ml-1"></div>
+                </div>
+            </div>
+
+            <div class="p-4 border-t border-gray-200 bg-gray-50 rounded-b-xl flex justify-end gap-2">
+                <button data-action="close-preview-sms"
+                    class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded shadow font-bold text-sm transition-colors">
+                    Close
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="./js/page-comms-admin.js"></script>
+</body>
+
+</html>

@@ -1,8 +1,15 @@
-import { initAdminPage, getSupabaseClient } from './supabase.js';
+import { getSupabaseClient } from './supabase.js';
 import { escapeHtml } from './utils.js';
 import { showToast } from './ui.js';
 import { retryQueuedEmail } from './api.js';
 
+// Formerly a standalone page (email_queue.html), now one pane of
+// message_queue.html (see page-message-queue.js, which imports
+// initEmailQueue() and calls initAdminPage() exactly once for the whole
+// merged page — this module must NOT call initAdminPage itself). Every
+// element id below is prefixed `email-` so it can coexist with the SMS
+// pane's ids (page-sms-queue.js), which were identical to these when each
+// lived on its own page.
 const PAGE_SIZE = 100;
 
 let sb;
@@ -10,28 +17,26 @@ let offset = 0;
 let hasMore = true;
 let searchDebounceTimer = null;
 
-function initEmailQueue() {
+export function initEmailQueue() {
     sb = getSupabaseClient();
 
     // Delegated so rows rendered by "Load older entries" get the handler too,
     // without rebinding per row.
-    document.getElementById('tableBody').addEventListener('click', (e) => {
+    document.getElementById('email-tableBody').addEventListener('click', (e) => {
         const btn = e.target.closest('[data-retry-id]');
         if (btn) handleRetry(btn);
     });
 
-    document.getElementById('btn-refresh').addEventListener('click', () => loadPage(true));
-    document.getElementById('btn-load-more').addEventListener('click', () => loadPage(false));
-    document.getElementById('statusFilter').addEventListener('change', () => loadPage(true));
-    document.getElementById('searchInput').addEventListener('input', () => {
+    document.getElementById('email-btn-refresh').addEventListener('click', () => loadPage(true));
+    document.getElementById('email-btn-load-more').addEventListener('click', () => loadPage(false));
+    document.getElementById('email-statusFilter').addEventListener('change', () => loadPage(true));
+    document.getElementById('email-searchInput').addEventListener('input', () => {
         clearTimeout(searchDebounceTimer);
         searchDebounceTimer = setTimeout(() => loadPage(true), 400);
     });
 
     loadPage(true);
 }
-
-initAdminPage(initEmailQueue);
 
 // PostgREST's .or() filter string uses commas to separate conditions and
 // parentheses for grouping - strip them so a comma/paren in a search term
@@ -41,8 +46,8 @@ function sanitizeForOrFilter(term) {
 }
 
 async function loadPage(reset) {
-    const tbody = document.getElementById('tableBody');
-    const loadMoreBtn = document.getElementById('btn-load-more');
+    const tbody = document.getElementById('email-tableBody');
+    const loadMoreBtn = document.getElementById('email-btn-load-more');
 
     if (reset) {
         offset = 0;
@@ -53,9 +58,9 @@ async function loadPage(reset) {
         loadMoreBtn.textContent = 'Loading...';
     }
 
-    const rawTerm = document.getElementById('searchInput').value.trim();
+    const rawTerm = document.getElementById('email-searchInput').value.trim();
     const term = sanitizeForOrFilter(rawTerm);
-    const statusFilter = document.getElementById('statusFilter').value;
+    const statusFilter = document.getElementById('email-statusFilter').value;
 
     try {
         let query = sb.from('email_queue').select('*').order('id', { ascending: false });
@@ -85,7 +90,7 @@ async function loadPage(reset) {
         loadMoreBtn.classList.toggle('hidden', !hasMore);
 
         const currentCount = tbody.querySelectorAll('tr[data-log-row]').length;
-        document.getElementById('recordCount').textContent =
+        document.getElementById('email-recordCount').textContent =
             `${currentCount} record${currentCount !== 1 ? 's' : ''} shown${hasMore ? ' (more available)' : ''}`;
     } catch (err) {
         if (reset) {
