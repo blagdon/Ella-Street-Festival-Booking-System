@@ -13,7 +13,7 @@ const KNOWN_ACTIONS = [
     'add_admin_note', 'admin_login', 'admin_logout', 'allocate_location',
     'check_sms_delivery', 'email_sent', 'finalize_confirmation', 'hcc_bulk_email_sent',
     'hcc_bulk_save_updated', 'hcc_mobile_status_updated', 'hcc_status_updated',
-    'insert_misc_booking', 'location_email_queued', 'request_payment',
+    'insert_misc_booking', 'location_email_queued', 'location_sms_queued', 'request_payment',
     'refund_issued_stripe', 'refund_recorded', 'resend_confirmation',
     'resend_payment_request', 'retry_queued_email', 'retry_queued_sms',
     'send_payment_reminder', 'sms_bulk_queued', 'sms_sent',

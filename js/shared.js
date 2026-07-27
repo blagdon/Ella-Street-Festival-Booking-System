@@ -294,12 +294,20 @@ export async function getSmsFromTemplate(templateId, booking, id, extraVars = {}
         reason = reason.slice(0, MAX_SMS_REASON_LEN - 3) + '...';
     }
 
+    // Not truncated, unlike reason: an admin assigning several pitches to one
+    // stall is a real, meaningful value, not a rambling free-text field to
+    // guard against. The location_update template is sized to stay within a
+    // single billed part at a realistic multi-pitch length (see the
+    // 20260729090000 migration).
+    const locationId = booking.location_display || 'TBA';
+
     return data.body
         .replace(/\{\{owner_name\}\}/g, ownerName)
         .replace(/\{\{business_name\}\}/g, bizName)
         .replace(/\{\{booking_id\}\}/g, id)
         .replace(/\{\{cost\}\}/g, costStr)
-        .replace(/\{\{reason\}\}/g, reason);
+        .replace(/\{\{reason\}\}/g, reason)
+        .replace(/\{\{location_id\}\}/g, locationId);
 }
 
 /**
@@ -336,6 +344,45 @@ export async function queueLocationEmail(id) {
 
     // 4. Audit Log
     await auditLog('location_email_queued', id, { location_ids: locationIds });
+}
+
+/**
+ * Queues a location allocation SMS using a database template — the optional
+ * SMS counterpart to queueLocationEmail(), sent alongside it from Location
+ * Manager's "Also send a text message" tickbox (both the individual "Send
+ * Location" button and the bulk "Send Bulk Emails" button). Deliberately a
+ * self-contained sibling rather than a shared internal helper: it re-fetches
+ * the booking/location rows independently, matching queueLocationEmail's own
+ * standalone shape, so the two can be called (and can fail) independently of
+ * each other — see the callers in js/locations.js for why that matters.
+ * @param {string} id
+ */
+export async function queueLocationSms(id) {
+    const sb = getSupabaseClient();
+
+    const { data: booking, error: fErr } = await sb
+        .from('bookings')
+        .select('phone, owner_name, business_name, instance_prefix, stall_cost')
+        .eq('id', id)
+        .single();
+
+    if (fErr || !booking) throw new Error("Could not find booking data: " + (fErr?.message || "Not found"));
+    if (!booking.phone) throw new Error("This booking has no phone number.");
+
+    const { data: locRows, error: locErr } = await sb
+        .from('booking_locations')
+        .select('location_id')
+        .eq('booking_id', id);
+    if (locErr) throw locErr;
+
+    const locationIds = (locRows || []).map(r => r.location_id);
+    if (locationIds.length === 0) throw new Error("No location assigned yet.");
+    booking.location_display = locationIds.join(', ');
+
+    const smsBody = await getSmsFromTemplate('location_update', booking, id);
+    await sendBookingSms(id, smsBody);
+
+    await auditLog('location_sms_queued', id, { location_ids: locationIds });
 }
 
 /**
