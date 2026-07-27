@@ -11,7 +11,7 @@ const PAGE_SIZE = 100;
 // action still shows up via search even before this list is updated.
 const KNOWN_ACTIONS = [
     'add_admin_note', 'admin_login', 'admin_logout', 'allocate_location',
-    'email_sent', 'finalize_confirmation', 'hcc_bulk_email_sent',
+    'check_sms_delivery', 'email_sent', 'finalize_confirmation', 'hcc_bulk_email_sent',
     'hcc_bulk_save_updated', 'hcc_mobile_status_updated', 'hcc_status_updated',
     'insert_misc_booking', 'location_email_queued', 'request_payment',
     'refund_issued_stripe', 'refund_recorded', 'resend_confirmation',

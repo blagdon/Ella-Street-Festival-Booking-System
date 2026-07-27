@@ -178,6 +178,75 @@ const sendViaTheSmsWorks: SmsAdapter = async (to, body, s) => {
   return { providerMessageId: json.messageid ?? json.messageId ?? null }
 }
 
+export interface DeliveryStatusResult {
+  status: string | null
+  failureReason: { code?: number; details?: string; permanent?: boolean } | null
+}
+
+/**
+ * Checks a previously-sent message's ACTUAL delivery outcome via
+ * GET /messages/{messageid} — distinct from, and only ever called after,
+ * the send call to POST /message/send. Confirmed against The SMS Works'
+ * official OpenAPI-generated SDK docs (not the marketing site, which
+ * fabricated details on an earlier check): same raw-JWT Authorization
+ * header as sending, response is `{status, failurereason?: {code, details,
+ * permanent}, ...}`.
+ *
+ * `status` is returned VERBATIM and never validated against a hardcoded
+ * list — SMS Works' spec does not enumerate this field (only one value,
+ * EXPIRED, could be confirmed from a primary source), so this function
+ * makes no assumption about the vocabulary. Any coloring/interpretation of
+ * the string happens client-side, as a best-effort heuristic, not here.
+ *
+ * Deliberately SMS-Works-specific (unlike sendViaSms, this has no adapter
+ * dispatch table) — mock/Twilio have no equivalent check implemented, and
+ * this throws if `sms_provider` isn't 'thesmsworks' rather than silently
+ * doing nothing, so checking an old message after switching providers fails
+ * loudly instead of looking like a no-op success.
+ */
+export async function checkDeliveryStatus(
+  supabaseAdmin: ReturnType<typeof createClient>,
+  providerMessageId: string
+): Promise<DeliveryStatusResult> {
+  const settings = await loadSmsSettings(supabaseAdmin)
+  if (settings.provider !== 'thesmsworks') {
+    throw new Error(
+      `Delivery status checking is only implemented for The SMS Works; the ` +
+      `configured sms_provider is "${settings.provider}".`
+    )
+  }
+  if (!settings.apiKey) {
+    throw new Error('The SMS Works selected but sms_api_key (JWT) is not set.')
+  }
+
+  // sms_api_url, when set, overrides the SEND url verbatim (see
+  // sendViaTheSmsWorks) — typically ".../v1/message/send". Derive the
+  // status-check url from the same override by swapping that known suffix
+  // for ".../v1/messages/{id}", so a test (or a future real override) that
+  // points sms_api_url at an alternate host affects both calls consistently
+  // without needing a second settings key purely for this.
+  const url = settings.apiUrl && settings.apiUrl.endsWith('/message/send')
+    ? settings.apiUrl.replace(/\/message\/send$/, `/messages/${providerMessageId}`)
+    : `https://api.thesmsworks.co.uk/v1/messages/${providerMessageId}`
+
+  const res = await fetch(url, {
+    method: 'GET',
+    headers: { 'Authorization': settings.apiKey },
+  })
+  const text = await res.text()
+  if (!res.ok) throw new Error(`The SMS Works status check failed (${res.status}): ${text}`)
+
+  let json: any = {}
+  try { json = JSON.parse(text) } catch {
+    throw new Error(`The SMS Works status check returned a non-JSON body: ${text.slice(0, 200)}`)
+  }
+
+  return {
+    status: json.status ?? null,
+    failureReason: json.failurereason ?? null,
+  }
+}
+
 /**
  * Twilio. Basic auth Account SID:Auth Token, form-encoded body.
  * https://api.twilio.com/2010-04-01/Accounts/{sid}/Messages.json
