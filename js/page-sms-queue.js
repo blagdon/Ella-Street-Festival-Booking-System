@@ -30,7 +30,7 @@ export function initSmsQueue() {
         if (btn) handleRetry(btn);
     });
 
-    document.getElementById('sms-btn-refresh').addEventListener('click', () => loadPage(true));
+    document.getElementById('sms-btn-refresh').addEventListener('click', () => { loadPage(true); loadCounts(); });
     document.getElementById('sms-btn-load-more').addEventListener('click', () => loadPage(false));
     document.getElementById('sms-statusFilter').addEventListener('change', () => loadPage(true));
     document.getElementById('sms-searchInput').addEventListener('input', () => {
@@ -39,6 +39,58 @@ export function initSmsQueue() {
     });
 
     loadPage(true);
+    loadCounts();
+}
+
+/**
+ * Total / Successful / Unsuccessful counts shown above the table, plus how
+ * many of the "Successful" total were only simulated (SMS Test Mode ON, so
+ * the send never left the system via the mock provider) — without that
+ * caveat, "500 sent successfully" is a misleading vanity metric if most of
+ * them never really went anywhere. Deliberately unfiltered (independent of
+ * the search box / status dropdown, which scope the table only) and uses
+ * head:true count-only queries rather than fetching rows, since this must
+ * stay cheap as the queue grows into the thousands.
+ *
+ * A simulated send is identified by provider_message_id's `mock-` prefix —
+ * the same marker _shared/sms.ts's mock adapter has always used, reused here
+ * rather than adding a new column.
+ */
+async function loadCounts() {
+    const totalEl = document.getElementById('sms-statsTotal');
+    const sentEl = document.getElementById('sms-statsSent');
+    const errorEl = document.getElementById('sms-statsError');
+    const simWrap = document.getElementById('sms-statsSimulatedWrap');
+    const simEl = document.getElementById('sms-statsSimulated');
+    if (!totalEl || !sentEl || !errorEl) return;
+
+    try {
+        const [total, sent, errored, simulated] = await Promise.all([
+            sb.from('sms_queue').select('*', { count: 'exact', head: true }),
+            sb.from('sms_queue').select('*', { count: 'exact', head: true }).eq('status', 'Sent'),
+            sb.from('sms_queue').select('*', { count: 'exact', head: true }).eq('status', 'Error'),
+            sb.from('sms_queue').select('*', { count: 'exact', head: true })
+                .eq('status', 'Sent').like('provider_message_id', 'mock-%'),
+        ]);
+        if (total.error) throw total.error;
+        if (sent.error) throw sent.error;
+        if (errored.error) throw errored.error;
+        if (simulated.error) throw simulated.error;
+
+        totalEl.textContent = total.count ?? 0;
+        sentEl.textContent = sent.count ?? 0;
+        errorEl.textContent = errored.count ?? 0;
+
+        if (simWrap && simEl) {
+            const simCount = simulated.count ?? 0;
+            simWrap.classList.toggle('hidden', simCount === 0);
+            simEl.textContent = simCount;
+        }
+    } catch (err) {
+        // Non-fatal — the table itself still loads and works without these.
+        [totalEl, sentEl, errorEl].forEach(el => { el.textContent = '?'; });
+        console.warn('Failed to load SMS queue counts:', err.message);
+    }
 }
 
 // Strip commas/parens so a search term can't corrupt PostgREST's .or() filter
@@ -216,7 +268,9 @@ async function handleRetry(btn) {
         showToast(err.message || 'Failed to retry SMS.', 'error');
     } finally {
         // Reload so the row reflects its true stored state (status, retry count,
-        // fresh error) rather than being patched up locally.
+        // fresh error) rather than being patched up locally. A retry can move
+        // a row between Error and Sent, so the counts need refreshing too.
         await loadPage(true);
+        loadCounts();
     }
 }
