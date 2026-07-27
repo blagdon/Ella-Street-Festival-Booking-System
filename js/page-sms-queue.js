@@ -1,7 +1,7 @@
 import { getSupabaseClient } from './supabase.js';
 import { escapeHtml } from './utils.js';
 import { showToast } from './ui.js';
-import { retryQueuedSms } from './api.js';
+import { retryQueuedSms, checkSmsDelivery } from './api.js';
 
 // SMS twin of page-email-queue.js. Same paging, search, status-filter and
 // retry mechanics; only the columns differ (Message body instead of Subject,
@@ -26,8 +26,10 @@ export function initSmsQueue() {
 
     // Delegated so rows added by "Load older entries" get the handler too.
     document.getElementById('sms-tableBody').addEventListener('click', (e) => {
-        const btn = e.target.closest('[data-retry-id]');
-        if (btn) handleRetry(btn);
+        const retryBtn = e.target.closest('[data-retry-id]');
+        if (retryBtn) { handleRetry(retryBtn); return; }
+        const checkBtn = e.target.closest('[data-check-delivery-id]');
+        if (checkBtn) { handleCheckDelivery(checkBtn); return; }
     });
 
     document.getElementById('sms-btn-refresh').addEventListener('click', () => { loadPage(true); loadCounts(); });
@@ -106,7 +108,7 @@ async function loadPage(reset) {
     if (reset) {
         offset = 0;
         hasMore = true;
-        tbody.innerHTML = '<tr><td colspan="7" class="px-4 py-10 text-center text-gray-400 text-sm animate-pulse">Loading SMS queue...</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" class="px-4 py-10 text-center text-gray-400 text-sm animate-pulse">Loading SMS queue...</td></tr>';
     } else {
         loadMoreBtn.disabled = true;
         loadMoreBtn.textContent = 'Loading...';
@@ -134,7 +136,7 @@ async function loadPage(reset) {
         if (reset) tbody.innerHTML = '';
 
         if (reset && (!data || data.length === 0)) {
-            tbody.innerHTML = '<tr><td colspan="7" class="px-4 py-10 text-center text-gray-400 text-sm">No matching SMS queue entries.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="8" class="px-4 py-10 text-center text-gray-400 text-sm">No matching SMS queue entries.</td></tr>';
         } else {
             (data || []).forEach((row) => tbody.insertAdjacentHTML('beforeend', renderRow(row)));
         }
@@ -148,7 +150,7 @@ async function loadPage(reset) {
             `${currentCount} record${currentCount !== 1 ? 's' : ''} shown${hasMore ? ' (more available)' : ''}`;
     } catch (err) {
         if (reset) {
-            tbody.innerHTML = `<tr><td colspan="7" class="px-4 py-10 text-center text-red-500 text-sm">Error: ${escapeHtml(err.message)}</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="8" class="px-4 py-10 text-center text-red-500 text-sm">Error: ${escapeHtml(err.message)}</td></tr>`;
         } else {
             showToast('Failed to load more entries: ' + err.message, 'error');
         }
@@ -225,6 +227,68 @@ function renderRetryInfo(row) {
     return `<div class="text-[10px] text-gray-400 mt-1">retried ${row.retry_count}×${when ? ` · last ${escapeHtml(when)}` : ''}</div>`;
 }
 
+/**
+ * "Delivery" column — whether the text was actually confirmed delivered to
+ * the handset, as distinct from `status` (did the API call to the provider
+ * succeed). See the 20260728100000 migration's docstring: a Sent row can
+ * still fail downstream (bad number reachability, carrier filtering), and
+ * that is invisible without this separate, on-demand check.
+ *
+ * The badge colour is a best-effort heuristic on the RAW string The SMS
+ * Works returns — their API does not enumerate this field (confirmed
+ * against their own SDK docs), so this must never assume a fixed
+ * vocabulary. Nothing to check (and no button shown) for a row that was
+ * never accepted by a real provider (status !== 'Sent') or was simulated
+ * (provider_message_id carries the mock adapter's `mock-` prefix — the
+ * same marker the queue counts above use to identify a Test Mode send).
+ */
+function renderDeliveryCell(row) {
+    const id = row.provider_message_id;
+    if (row.status !== 'Sent' || !id) return '<span class="text-gray-300 text-xs">—</span>';
+    if (id.startsWith('mock-')) {
+        return '<span class="text-gray-300 text-xs" title="Simulated — SMS Test Mode was on when this was sent">—</span>';
+    }
+
+    if (!row.delivery_status) {
+        return `<button data-check-delivery-id="${row.id}"
+                class="px-2 py-1 text-xs font-semibold rounded bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed">
+            Check
+        </button>`;
+    }
+
+    const raw = row.delivery_status;
+    const isDelivered = /deliver/i.test(raw) && !/undeliver/i.test(raw);
+    const isFailed = /fail|reject|expire|undeliver/i.test(raw);
+    const badgeClass = isDelivered ? 'bg-green-100 text-green-700'
+        : isFailed ? 'bg-red-100 text-red-700'
+        : 'bg-gray-100 text-gray-600';
+
+    const checkedWhen = row.delivery_checked_at ? new Date(row.delivery_checked_at).toLocaleString('en-GB') : '';
+    const failure = row.delivery_failure_reason;
+
+    let failureBlock = '';
+    if (failure && typeof failure === 'object') {
+        const details = failure.details || 'No further details.';
+        const suffix = [
+            failure.code != null ? `code ${failure.code}` : null,
+            failure.permanent ? 'permanent' : null,
+        ].filter(Boolean).join(', ');
+        failureBlock = `
+            <details class="details-cell mt-1">
+                <summary class="text-[10px] text-red-600 cursor-pointer hover:text-red-800">why?</summary>
+                <pre class="text-[10px] font-mono text-red-700 bg-red-50 border border-red-100 rounded p-1.5 whitespace-pre-wrap break-words max-w-xs mt-1">${escapeHtml(details)}${suffix ? ` (${escapeHtml(suffix)})` : ''}</pre>
+            </details>`;
+    }
+
+    return `
+        <div>
+            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${badgeClass}">${escapeHtml(raw)}</span>
+            <button data-check-delivery-id="${row.id}" class="ml-1 text-[10px] text-gray-400 hover:text-blue-600 underline" title="Check again">recheck</button>
+            ${checkedWhen ? `<div class="text-[10px] text-gray-400 mt-1">checked ${escapeHtml(checkedWhen)}</div>` : ''}
+            ${failureBlock}
+        </div>`;
+}
+
 function renderRow(row) {
     const time = row.created_at ? new Date(row.created_at).toLocaleString('en-GB') : '—';
 
@@ -235,6 +299,7 @@ function renderRow(row) {
                 <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${statusBadgeClass(row.status)}">${escapeHtml(row.status || 'Pending')}</span>
                 ${renderRetryInfo(row)}
             </td>
+            <td class="px-4 py-3">${renderDeliveryCell(row)}</td>
             <td class="px-4 py-3 text-xs text-gray-600 break-words whitespace-nowrap">${escapeHtml(row.recipient)}</td>
             <td class="px-4 py-3">${renderMessageCell(row)}</td>
             <td class="px-4 py-3 text-xs text-gray-500">${escapeHtml(row.instance_prefix || '—')}</td>
@@ -272,5 +337,37 @@ async function handleRetry(btn) {
         // a row between Error and Sent, so the counts need refreshing too.
         await loadPage(true);
         loadCounts();
+    }
+}
+
+/**
+ * Checks a single row's real delivery outcome with The SMS Works. On-demand
+ * only, matching checkSmsDelivery()'s own docstring — there is no confirmed
+ * rate limit or delivery-latency SLA from the provider, so this never runs
+ * automatically. Does not touch `status` or the counts above: delivery
+ * outcome is purely informational (see the migration's docstring for why it
+ * must not affect retry eligibility).
+ */
+async function handleCheckDelivery(btn) {
+    const id = Number(btn.dataset.checkDeliveryId);
+    if (!Number.isInteger(id)) return;
+
+    btn.disabled = true;
+    btn.textContent = 'Checking...';
+
+    try {
+        const result = await checkSmsDelivery(id);
+        if (result?.skipped) {
+            showToast(result.reason || 'Nothing to check for this message.', 'info');
+        } else {
+            showToast(`Delivery status: ${result.delivery_status || 'unknown'}`, 'info');
+        }
+    } catch (err) {
+        console.error('Delivery check failed:', err);
+        showToast(err.message || 'Failed to check delivery status.', 'error');
+    } finally {
+        // Reload so the cell reflects the true stored state, same convention
+        // handleRetry uses.
+        await loadPage(true);
     }
 }

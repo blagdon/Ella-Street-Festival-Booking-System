@@ -941,6 +941,41 @@ export async function retryQueuedSms(id) {
 }
 
 /**
+ * Checks a single sms_queue row's actual delivery outcome with The SMS
+ * Works via the check-sms-delivery Edge Function. On-demand only — never
+ * called automatically (no confirmed rate limit from the provider).
+ *
+ * Returns `{skipped: true, reason}` for a simulated send (Test Mode was on)
+ * or a row with no provider message id — that is an expected outcome, not a
+ * caller error, so it does not throw.
+ * @param {number} id sms_queue row id
+ * @returns {Promise<{skipped: boolean, reason?: string, delivery_status?: string|null, delivery_checked_at?: string, delivery_failure_reason?: object|null}>}
+ */
+export async function checkSmsDelivery(id) {
+    const sb = getSupabaseClient();
+    const { data, error } = await sb.functions.invoke('check-sms-delivery', {
+        body: { id }
+    });
+
+    if (error) {
+        let message = error.message;
+        try {
+            const body = await error.context?.json();
+            if (body?.error) message = body.error;
+        } catch { /* keep the generic message if the body isn't readable */ }
+        throw new Error(message);
+    }
+    if (data && data.error) throw new Error(data.error);
+
+    await auditLog('check_sms_delivery', String(id), {
+        skipped: data?.skipped,
+        delivery_status: data?.delivery_status
+    });
+
+    return data;
+}
+
+/**
  * Resolves a booking's stored document storage paths to time-limited
  * signed URLs via the get-booking-documents Edge Function (esf-documents
  * is a private bucket, so paths aren't directly resolvable without this).
