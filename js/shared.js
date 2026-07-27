@@ -301,13 +301,45 @@ export async function getSmsFromTemplate(templateId, booking, id, extraVars = {}
     // 20260729090000 migration).
     const locationId = booking.location_display || 'TBA';
 
+    // Same cancel_link derivation as getEmailFromTemplate(): prefer the
+    // in-memory booking's cancel_token, falling back to a fresh DB fetch
+    // when it's missing from whatever snapshot the caller passed in (e.g.
+    // a Kanban row that never selected the column). Deliberately not
+    // truncated or made optional — this and bank_details are the whole
+    // point of the 20260728100000 migration, so the templates that carry
+    // them are allowed to bill as more than one part (see the segment-budget
+    // test in tests/sms-send.test.mjs, which now exempts these templates).
+    let cancelToken = booking.cancel_token || '';
+    if (!cancelToken && id) {
+        try {
+            const { data: tokenData } = await sb.from('bookings')
+                .select('cancel_token')
+                .eq('id', id)
+                .single();
+            if (tokenData && tokenData.cancel_token) {
+                cancelToken = tokenData.cancel_token;
+            }
+        } catch (e) {
+            console.warn('Could not fetch cancel_token:', e);
+        }
+    }
+    const cancelBase = CONFIG.URLS.CANCEL_URL;
+    const cancelLink = (cancelToken && cancelBase)
+        ? `${cancelBase}?token=${encodeURIComponent(cancelToken)}`
+        : (cancelBase || '');
+    // Built from the same structured settings as getEmailFromTemplate's copy
+    // — not escapeHtml()'d, since SMS is plain text.
+    const bankDetails = `Account Name: ${CONFIG.BANK_ACCOUNT_NAME}, Sort Code: ${CONFIG.BANK_SORT_CODE}, Account Number: ${CONFIG.BANK_ACCOUNT_NUMBER}`;
+
     return data.body
         .replace(/\{\{owner_name\}\}/g, ownerName)
         .replace(/\{\{business_name\}\}/g, bizName)
         .replace(/\{\{booking_id\}\}/g, id)
         .replace(/\{\{cost\}\}/g, costStr)
         .replace(/\{\{reason\}\}/g, reason)
-        .replace(/\{\{location_id\}\}/g, locationId);
+        .replace(/\{\{location_id\}\}/g, locationId)
+        .replace(/\{\{cancel_link\}\}/g, cancelLink)
+        .replace(/\{\{bank_details\}\}/g, bankDetails);
 }
 
 /**
@@ -362,7 +394,7 @@ export async function queueLocationSms(id) {
 
     const { data: booking, error: fErr } = await sb
         .from('bookings')
-        .select('phone, owner_name, business_name, instance_prefix, stall_cost')
+        .select('phone, owner_name, business_name, instance_prefix, stall_cost, cancel_token')
         .eq('id', id)
         .single();
 
