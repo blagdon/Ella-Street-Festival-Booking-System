@@ -124,6 +124,10 @@
                             <li><code>{{business_name}}</code> - Trading name</li>
                             <li><code>{{booking_id}}</code> - e.g. ESF26-FOOD-0042</li>
                             <li><code>{{cost}}</code> - Stall price (e.g. £50.00)</li>
+                            <li><code>{{reason}}</code> - Rejection reason the admin typed (booking_rejected only).
+                                Defaults to "Oversubscribed / Category Full" if left blank, and is cut to 40
+                                characters if longer, so a long reason can't silently push the message to a second
+                                billed part.</li>
                         </ul>
                         <p class="mt-3 font-bold text-blue-900">Keep it short:</p>
                         <p class="mt-1">Every 160 GSM characters (70 if you use emoji or symbols like £ curly quotes)

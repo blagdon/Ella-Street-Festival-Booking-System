@@ -341,12 +341,17 @@ describe('sms_templates', () => {
       return u ? (t.length <= 70 ? 1 : Math.ceil(t.length / 67))
                : (t.length <= 160 ? 1 : Math.ceil(t.length / 153));
     };
-    // Longest realistic substitutions, so this is an upper bound.
+    // Longest realistic substitutions, so this is an upper bound. {{reason}}
+    // is filled at exactly MAX_SMS_REASON_LEN (js/shared.js) — an admin's
+    // rejection reason has no length limit of its own, so the true worst
+    // case is whatever the app's own truncation guard allows through, not
+    // an arbitrarily long string.
     const filled = (b) => b
       .replace(/\{\{owner_name\}\}/g, 'Christopher Fotheringay')
       .replace(/\{\{business_name\}\}/g, 'The Artisan Bakery Company')
       .replace(/\{\{booking_id\}\}/g, 'ESF26-GENERAL-0042')
-      .replace(/\{\{cost\}\}/g, '£120.00');
+      .replace(/\{\{cost\}\}/g, '£120.00')
+      .replace(/\{\{reason\}\}/g, 'This is a fairly long admin-typed rea...'); // 40 ASCII chars, matching the truncation guard's own output
 
     return service.from('sms_templates').select('id, body').then(({ data, error }) => {
       assert.equal(error, null, error?.message);

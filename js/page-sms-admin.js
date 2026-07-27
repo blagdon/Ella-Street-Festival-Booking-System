@@ -150,7 +150,8 @@ const SAMPLE_DATA = {
     '{{owner_name}}': 'John Smith',
     '{{business_name}}': 'The Burger Shack',
     '{{booking_id}}': 'ESF26-FOOD-0042',
-    '{{cost}}': '£50.00'
+    '{{cost}}': '£50.00',
+    '{{reason}}': 'Oversubscribed / Category Full'
 };
 
 function fillSampleData(text) {
