@@ -243,13 +243,24 @@ export async function getEmailFromTemplate(templateId, booking, id, extraVars = 
     };
 }
 
+// SMS templates budget for a fixed-length reason (see the segment-budget
+// test in tests/sms-send.test.mjs). An admin's free-typed rejection reason
+// has no length limit of its own, so it's truncated to this many characters
+// before substitution — otherwise a rambling reason would silently push the
+// message to 2+ billed parts, exactly the bug the templates were fixed for
+// in 20260726100000_sms_templates_single_part.sql.
+const MAX_SMS_REASON_LEN = 40;
+
 /**
  * Fetches a plain-text SMS template from sms_templates and substitutes the
  * same placeholder set as getEmailFromTemplate. Deliberately does NOT
  * escapeHtml() the values: an SMS is plain text, so escaping would render
  * "&amp;" / "&#39;" literally on the handset. Returns the resolved body string.
+ *
+ * @param {object} [extraVars] currently only `reason` (Rejected), mirroring
+ *   getEmailFromTemplate's extraVars. Same default as the email template.
  */
-export async function getSmsFromTemplate(templateId, booking, id) {
+export async function getSmsFromTemplate(templateId, booking, id, extraVars = {}) {
     const sb = getSupabaseClient();
 
     const { data, error } = await sb.from('sms_templates')
@@ -273,11 +284,22 @@ export async function getSmsFromTemplate(templateId, booking, id) {
         costStr = `£${getStallCost(prefix).toFixed(2)}`;
     }
 
+    let reason = extraVars.reason || 'Oversubscribed / Category Full';
+    if (reason.length > MAX_SMS_REASON_LEN) {
+        // ASCII "...", not the "…" glyph: a single non-GSM-7 character forces
+        // the WHOLE message into UCS-2 encoding, dropping the per-part limit
+        // from 160 to 70 — far more expensive than the overlong reason this
+        // truncation exists to guard against. Caught by the segment-budget
+        // test in tests/sms-send.test.mjs.
+        reason = reason.slice(0, MAX_SMS_REASON_LEN - 3) + '...';
+    }
+
     return data.body
         .replace(/\{\{owner_name\}\}/g, ownerName)
         .replace(/\{\{business_name\}\}/g, bizName)
         .replace(/\{\{booking_id\}\}/g, id)
-        .replace(/\{\{cost\}\}/g, costStr);
+        .replace(/\{\{cost\}\}/g, costStr)
+        .replace(/\{\{reason\}\}/g, reason);
 }
 
 /**
@@ -331,11 +353,12 @@ export async function queueLocationEmail(id) {
  * @param {object} booking
  * @param {string} id
  * @param {string} verb past-tense word for the failure toast ("confirmed")
+ * @param {object} [extraVars] forwarded to getSmsFromTemplate (e.g. {reason})
  */
-async function maybeSendStatusSms(sendSms, templateId, booking, id, verb) {
+async function maybeSendStatusSms(sendSms, templateId, booking, id, verb, extraVars = {}) {
     if (!sendSms) return;
     try {
-        const smsBody = await getSmsFromTemplate(templateId, booking, id);
+        const smsBody = await getSmsFromTemplate(templateId, booking, id, extraVars);
         await sendBookingSms(id, smsBody);
         showToast('Text message sent', 'info');
     } catch (smsErr) {
@@ -399,7 +422,7 @@ export async function sharedUpdateStatus(id, status, allBookings, options = {}) 
                     showToast(`Booking rejected, but the email failed to send: ${emailErr.message}`, 'error');
                 }
 
-                await maybeSendStatusSms(sendSms, 'booking_rejected', booking, id, 'rejected');
+                await maybeSendStatusSms(sendSms, 'booking_rejected', booking, id, 'rejected', { reason });
             } else {
                 showToast('Booking rejected', 'info');
             }
