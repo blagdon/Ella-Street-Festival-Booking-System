@@ -1,6 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { getBucketName } from '../_shared/bucket.ts'
 import { sendViaZoho } from '../_shared/zoho.ts'
+import { sendViaSms, normalizePhone } from '../_shared/sms.ts'
 import { ALLOWED_ORIGIN } from '../_shared/cors.ts'
 import { escapeHtml } from '../_shared/format.ts'
 import { PublicError, publicErrorResponse } from '../_shared/errors.ts'
@@ -160,6 +161,81 @@ async function sendReceivedEmail(supabaseAdmin: ReturnType<typeof createClient>,
   if (logErr) console.warn('Failed to write to email_queue log:', logErr.message)
 
   if (status === 'Error') throw new Error(errorMessage || 'Failed to send email')
+}
+
+/**
+ * Sends the "booking received" confirmation text, mirroring
+ * sendReceivedEmail's shape but with no opt-in tickbox — submission is
+ * public/unauthenticated, so there's no admin present to tick anything. It
+ * fires whenever the stallholder supplied a phone number, the same way the
+ * email fires whenever they supplied an email address. Calls sendViaSms()
+ * in-process (never the send-sms Edge Function over HTTP), the same rule
+ * sendViaZoho follows — see _shared/sms.ts's docstring.
+ *
+ * Skipped entirely (no sms_queue row) when there's no phone number at all —
+ * nothing was ever going to be attempted. A phone number that IS present but
+ * can't be normalised to E.164 is logged as an Error row rather than
+ * silently dropped: it's a real, identifiable failure (a stallholder typo,
+ * most likely), and the admin should be able to see it in the SMS Queue —
+ * same "a bad number should fail loudly, not vanish" principle documented on
+ * normalizePhone() itself.
+ */
+async function sendReceivedSms(supabaseAdmin: ReturnType<typeof createClient>, booking: Record<string, any>) {
+  if (!booking.phone) return
+
+  const { data: templateData, error: templateErr } = await supabaseAdmin
+    .from('sms_templates').select('body').eq('id', 'booking_received').single()
+
+  if (templateErr || !templateData) {
+    throw new Error('Could not load "booking_received" SMS template: ' + (templateErr?.message || 'not found'))
+  }
+
+  const body = templateData.body
+    .replace(/\{\{owner_name\}\}/g, booking.owner_name || 'Trader')
+    .replace(/\{\{business_name\}\}/g, booking.business_name || 'your business')
+    .replace(/\{\{booking_id\}\}/g, booking.id || '')
+
+  let recipient: string
+  try {
+    recipient = normalizePhone(booking.phone)
+  } catch (e: any) {
+    const { error: logErr } = await supabaseAdmin.from('sms_queue').insert({
+      recipient: booking.phone,
+      body,
+      status: 'Error',
+      error_message: e.message,
+      instance_prefix: booking.instance_prefix || null
+    })
+    if (logErr) console.warn('Failed to write to sms_queue log:', logErr.message)
+    throw e
+  }
+
+  let status = 'Sent'
+  let errorMessage: string | null = null
+  let providerMessageId: string | null = null
+  let segments: number | null = null
+
+  try {
+    const result = await sendViaSms(supabaseAdmin, { recipient, body })
+    providerMessageId = result.providerMessageId
+    segments = result.segments
+  } catch (e: any) {
+    status = 'Error'
+    errorMessage = e.message
+  }
+
+  const { error: logErr } = await supabaseAdmin.from('sms_queue').insert({
+    recipient,
+    body,
+    status,
+    error_message: errorMessage,
+    provider_message_id: providerMessageId,
+    segments,
+    instance_prefix: booking.instance_prefix || null
+  })
+  if (logErr) console.warn('Failed to write to sms_queue log:', logErr.message)
+
+  if (status === 'Error') throw new Error(errorMessage || 'Failed to send SMS')
 }
 
 Deno.serve(async (req) => {
@@ -325,6 +401,18 @@ Deno.serve(async (req) => {
         await sendReceivedEmail(supabaseAdmin, newBooking)
       } catch (emailErr: any) {
         console.warn('Failed to send "received" auto-responder:', emailErr.message)
+      }
+    }
+
+    // 7. Send the "booking received" confirmation text. Independent of the
+    // email above (its own try/catch) so an SMS failure never masks — or is
+    // masked by — the email outcome, and best-effort for the same reason:
+    // the booking already exists, so this can never fail the submission.
+    if (newBooking?.phone) {
+      try {
+        await sendReceivedSms(supabaseAdmin, newBooking)
+      } catch (smsErr: any) {
+        console.warn('Failed to send "booking received" confirmation SMS:', smsErr.message)
       }
     }
 
