@@ -216,6 +216,40 @@ describe('create-checkout-session', () => {
     assert.ok(booking.stripe_payment_requested_at);
   });
 
+  // Reported live as a gap: the Confirm modal's "also send a text" tickbox
+  // used to be silently dropped once the admin picked "Chargeable" — no
+  // send_sms param existed at all on this endpoint, so ticking it never sent
+  // anything. sms_provider is 'mock' in the test project, so this asserts a
+  // real Sent row, not just "no error".
+  test('send_sms: true also sends a payment_requested SMS when the booking has a phone number', async () => {
+    const id = `${PREFIX}CHECKOUTSMS`;
+    await insertBooking(id, { status: 'Pending', stall_cost: 12.5, phone: '07000000000' });
+
+    const { status, json } = await callFunction('create-checkout-session', { booking_id: id, send_sms: true }, adminToken);
+    assert.equal(status, 200, JSON.stringify(json));
+
+    const { data: rows } = await service
+      .from('sms_queue')
+      .select('*')
+      .ilike('body', `%${id}%`);
+    assert.equal(rows.length, 1, 'expected exactly one sms_queue row logged for this payment request');
+    assert.equal(rows[0].recipient, '+447000000000');
+    assert.equal(rows[0].status, 'Sent');
+    assert.match(rows[0].provider_message_id || '', /^mock-/);
+    assert.ok(!rows[0].body.includes('checkout.stripe.com'), 'the SMS must not carry the raw Stripe checkout link');
+  });
+
+  test('omitting send_sms sends no SMS at all, even with a phone number on file', async () => {
+    const id = `${PREFIX}CHECKOUTNOSMS`;
+    await insertBooking(id, { status: 'Pending', stall_cost: 12.5, phone: '07000000000' });
+
+    const { status } = await callFunction('create-checkout-session', { booking_id: id }, adminToken);
+    assert.equal(status, 200);
+
+    const { data: rows } = await service.from('sms_queue').select('*').ilike('body', `%${id}%`);
+    assert.equal(rows.length, 0, 'expected no sms_queue row when send_sms was not set');
+  });
+
   test('accepts a cost override in the request body (chargeable-confirm now fires with no prior persisted stall_cost) and saves it', async () => {
     const id = `${PREFIX}COSTOVERRIDE`;
     await insertBooking(id, { status: 'HCC Checks', stall_cost: null });

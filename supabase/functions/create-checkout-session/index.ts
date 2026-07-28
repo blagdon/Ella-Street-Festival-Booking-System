@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { sendViaZoho } from '../_shared/zoho.ts'
+import { sendViaSms, normalizePhone } from '../_shared/sms.ts'
 import { resolveStripeMode, getStripeClient, loadStripeSettings } from '../_shared/stripe.ts'
 import { ALLOWED_ORIGIN } from '../_shared/cors.ts'
 import { escapeHtml } from '../_shared/format.ts'
@@ -62,7 +63,7 @@ Deno.serve(async (req) => {
       })
     }
 
-    const { booking_id, cost: costOverride } = await req.json()
+    const { booking_id, cost: costOverride, send_sms: sendSms } = await req.json()
     if (!booking_id || typeof booking_id !== 'string') {
       return new Response(JSON.stringify({ error: 'Missing booking_id.' }), {
         status: 400,
@@ -72,7 +73,7 @@ Deno.serve(async (req) => {
 
     const { data: booking, error: bookingErr } = await supabaseClient
       .from('bookings')
-      .select('id, status, stall_cost, instance_prefix, business_name, owner_name, email, stripe_payment_requested_at, stripe_checkout_session_id, cancel_token')
+      .select('id, status, stall_cost, instance_prefix, business_name, owner_name, email, phone, stripe_payment_requested_at, stripe_checkout_session_id, cancel_token')
       .eq('id', booking_id)
       .single()
 
@@ -232,6 +233,63 @@ Deno.serve(async (req) => {
       })
     } catch (emailErr: any) {
       console.warn('Failed to send payment_requested email:', emailErr.message)
+    }
+
+    // Independent of the email above (its own try/catch): an SMS failure
+    // must never mask — or be masked by — the email outcome. Opt-in via
+    // the same tickbox the Confirm modal already has for the free path;
+    // reported live as a gap — confirming a chargeable booking (or
+    // resending a payment request) with the tickbox ticked silently sent
+    // no text at all, only the email.
+    //
+    // Deliberately does NOT carry session.url — see the payment_requested
+    // sms_templates row's own comment for why (a raw Stripe Checkout link
+    // is 400+ characters, which would bill this text as 6-8 parts).
+    if (sendSms && booking.phone) {
+      try {
+        const { data: smsTemplateData, error: smsTemplateErr } = await supabaseClient
+          .from('sms_templates')
+          .select('body')
+          .eq('id', 'payment_requested')
+          .single()
+
+        if (smsTemplateErr || !smsTemplateData) {
+          throw new Error('Could not load "payment_requested" SMS template: ' + (smsTemplateErr?.message || 'not found'))
+        }
+
+        const costStr = `£${cost.toFixed(2)}`
+        const smsBody = smsTemplateData.body
+          .replace(/\{\{owner_name\}\}/g, booking.owner_name || 'Trader')
+          .replace(/\{\{business_name\}\}/g, booking.business_name || 'your business')
+          .replace(/\{\{booking_id\}\}/g, booking.id || '')
+          .replace(/\{\{cost\}\}/g, costStr)
+
+        const recipient = normalizePhone(booking.phone)
+        let smsStatus = 'Sent'
+        let smsError: string | null = null
+        let providerMessageId: string | null = null
+        let segments: number | null = null
+        try {
+          const result = await sendViaSms(supabaseClient, { recipient, body: smsBody })
+          providerMessageId = result.providerMessageId
+          segments = result.segments
+        } catch (e: any) {
+          smsStatus = 'Error'
+          smsError = e.message
+        }
+
+        await supabaseClient.from('sms_queue').insert({
+          recipient,
+          body: smsBody,
+          status: smsStatus,
+          error_message: smsError,
+          provider_message_id: providerMessageId,
+          segments,
+          instance_prefix: booking.instance_prefix || null
+        })
+      } catch (smsErr: any) {
+        console.warn('Failed to send payment_requested SMS:', smsErr.message)
+      }
     }
 
     return new Response(JSON.stringify({ success: true, checkout_url: session.url }), {

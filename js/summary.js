@@ -469,16 +469,18 @@ window.finalizeConfirm = function (isChargeable) {
     // Stripe entirely and go straight to Confirmed, exactly as today.
     // Otherwise, a chargeable booking immediately gets a Stripe Checkout
     // Session and moves to Payment Requested — no separate step in between.
-    // Opt-in confirmation SMS — only meaningful on the free path (chargeable
-    // is confirmed later server-side). Tickbox labelled "free confirmations
-    // only"; ignored here for chargeable.
+    // Opt-in confirmation SMS — meaningful on BOTH paths now: the free path
+    // sends booking_confirmed immediately; the chargeable path sends
+    // payment_requested alongside the payment-request email (reported live
+    // as a gap — this tickbox used to be silently dropped once the admin
+    // picked "Chargeable", so ticking it never sent anything at all).
     const sendSms = readStatusSmsChecked('confirmSendSms');
 
     const isFree = !isChargeable || overrideCost === 0;
     if (isFree) {
         updateStatus(id, 'Confirmed', null, sendSms);
     } else {
-        confirmChargeableAndRequestPayment(id, overrideCost);
+        confirmChargeableAndRequestPayment(id, overrideCost, sendSms);
     }
 }
 
@@ -489,7 +491,7 @@ window.finalizeConfirm = function (isChargeable) {
  * ('Payment Requested') itself once Stripe confirms the session, so a
  * Stripe/email failure leaves the booking exactly where it was.
  */
-async function confirmChargeableAndRequestPayment(id, overrideCost) {
+async function confirmChargeableAndRequestPayment(id, overrideCost, sendSms = false) {
     const booking = allBookings.find(b => b.id === id);
     const prefix = (booking && booking.instance_prefix) || CONFIG.INSTANCE_MAP['DEV'];
     let cost = overrideCost;
@@ -499,7 +501,7 @@ async function confirmChargeableAndRequestPayment(id, overrideCost) {
             : getStallCost(prefix);
     }
     try {
-        await requestPayment(id, cost);
+        await requestPayment(id, cost, sendSms);
         if (booking) { booking.stall_cost = cost; booking.status = 'Payment Requested'; }
         showToast('Booking confirmed — payment request sent.');
         window.filterTable();
