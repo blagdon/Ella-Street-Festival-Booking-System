@@ -73,7 +73,7 @@ Deno.serve(async (req) => {
 
     const { data: booking, error: bookingErr } = await supabaseClient
       .from('bookings')
-      .select('id, status, stall_cost, instance_prefix, business_name, owner_name, email, phone, stripe_payment_requested_at, stripe_checkout_session_id, cancel_token')
+      .select('id, status, stall_cost, instance_prefix, business_name, owner_name, email, phone, stripe_payment_requested_at, stripe_checkout_session_id, cancel_token, payment_link_code')
       .eq('id', booking_id)
       .single()
 
@@ -243,11 +243,13 @@ Deno.serve(async (req) => {
     // resending a payment request) with the tickbox ticked silently sent
     // no text at all, only the email.
     //
-    // Carries a short first-party redirect (pay.html?token=<session id>),
-    // NOT session.url directly — the raw Stripe Checkout link is 400+
-    // characters, which would bill this text as 6-8 parts on its own. The
-    // redirect target (this same session.url) is stored in
-    // stripe_checkout_url above so get-payment-link can hand it back out.
+    // Carries a short first-party redirect (pay.html?token=<8-char
+    // payment_link_code>), NOT session.url directly — the raw Stripe
+    // Checkout link is 400+ characters, which would bill this text as 6-8
+    // parts on its own. The redirect target (this same session.url) is
+    // stored in stripe_checkout_url above so get-payment-link can hand it
+    // back out, keyed on the booking's payment_link_code rather than the
+    // (longer) Stripe session id itself.
     if (sendSms && booking.phone) {
       try {
         const { data: smsTemplateData, error: smsTemplateErr } = await supabaseClient
@@ -261,7 +263,7 @@ Deno.serve(async (req) => {
         }
 
         const costStr = `£${cost.toFixed(2)}`
-        const paymentLink = `${baseUrl}/pay.html?token=${encodeURIComponent(session.id)}`
+        const paymentLink = `${baseUrl}/pay.html?token=${encodeURIComponent(booking.payment_link_code)}`
         const smsBody = smsTemplateData.body
           .replace(/\{\{owner_name\}\}/g, booking.owner_name || 'Trader')
           .replace(/\{\{business_name\}\}/g, booking.business_name || 'your business')

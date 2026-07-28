@@ -370,11 +370,11 @@ describe('sms_templates', () => {
       .replace(/\{\{reason\}\}/g, 'This is a fairly long admin-typed rea...') // 40 ASCII chars, matching the truncation guard's own output
       .replace(/\{\{cancel_link\}\}/g, 'https://app.ellastreet.co.uk/cancel_booking.html?token=' + 'a'.repeat(36))
       .replace(/\{\{bank_details\}\}/g, 'Account Name: Ella Street Festival, Sort Code: 12-34-56, Account Number: 12345678')
-      // {{payment_link}} is our own short pay.html redirect, but the token
-      // is a real Stripe Checkout Session id (~66 chars, e.g.
-      // "cs_test_a1luHdUVJYpSuJy5cpeq9RgDgM0p0jqdVjniWhjeY1cqFbbxhsJ0oNLTd1"),
-      // not a uuid — matches that real-world length, not {{cancel_link}}'s.
-      .replace(/\{\{payment_link\}\}/g, 'https://app.ellastreet.co.uk/pay.html?token=cs_test_' + 'a'.repeat(58));
+      // {{payment_link}} is our own short pay.html redirect keyed on
+      // bookings.payment_link_code — a fixed 8-char url-safe random code
+      // (20260731110000_payment_link_short_code.sql), not a uuid or the
+      // Stripe session id, so this fake is exact-length, not worst-case.
+      .replace(/\{\{payment_link\}\}/g, 'https://app.ellastreet.co.uk/pay.html?token=' + 'a'.repeat(8));
 
     return service.from('sms_templates').select('id, body').then(({ data, error }) => {
       assert.equal(error, null, error?.message);
