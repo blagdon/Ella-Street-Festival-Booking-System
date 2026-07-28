@@ -32,6 +32,10 @@
         {
           "key": "Permissions-Policy",
           "value": "geolocation=(self), camera=(), microphone=()"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, must-revalidate"
         }
       ]
     }
