@@ -1,6 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import Stripe from 'https://esm.sh/stripe@17.5.0?target=deno'
 import { sendViaZoho } from '../_shared/zoho.ts'
+import { sendViaSms, normalizePhone } from '../_shared/sms.ts'
 import { getStripeClient, getStripeWebhookSecret, loadStripeSettings, type StripeMode } from '../_shared/stripe.ts'
 import { escapeHtml } from '../_shared/format.ts'
 
@@ -93,6 +94,113 @@ async function sendConfirmationEmail(supabaseAdmin: ReturnType<typeof createClie
   if (logErr) console.warn('Failed to write to email_queue log:', logErr.message)
 
   if (status === 'Error') throw new Error(errorMessage || 'Failed to send email')
+}
+
+/**
+ * Best-effort confirmation text after a successful Stripe payment — the SMS
+ * counterpart to sendConfirmationEmail(), reusing the same "booking_confirmed"
+ * template the free-confirm path already sends (js/shared.js's
+ * maybeSendStatusSms), so a Stripe-paid confirmation reads identically to a
+ * free one: cost, bank details, and a cancel link.
+ *
+ * No opt-in tickbox: like submit-booking's sendReceivedSms, there is no admin
+ * present when this webhook fires, so it sends automatically whenever the
+ * booking has a phone number — reported live as a gap: confirming a
+ * chargeable booking via Stripe Checkout never sent any text at all, only
+ * the email, unlike the free-confirm path which already had this.
+ *
+ * Skipped entirely (no sms_queue row) when there's no phone number — nothing
+ * was ever going to be attempted. Throws are caught by the caller, same
+ * contract as sendConfirmationEmail — a failed text must never fail the
+ * webhook response, since the financial state change already committed.
+ */
+async function sendConfirmationSms(supabaseAdmin: ReturnType<typeof createClient>, bookingId: string) {
+  const { data: booking, error: bookingErr } = await supabaseAdmin
+    .from('bookings')
+    .select('phone, owner_name, business_name, instance_prefix, cancel_token, stall_cost')
+    .eq('id', bookingId)
+    .single()
+
+  if (bookingErr || !booking) {
+    throw new Error('Could not load booking for confirmation SMS: ' + (bookingErr?.message || 'not found'))
+  }
+  if (!booking.phone) return
+
+  const { data: templateData, error: templateErr } = await supabaseAdmin
+    .from('sms_templates')
+    .select('body')
+    .eq('id', 'booking_confirmed')
+    .single()
+
+  if (templateErr || !templateData) {
+    throw new Error('Could not load "booking_confirmed" SMS template: ' + (templateErr?.message || 'not found'))
+  }
+
+  const { data: settingsRows } = await supabaseAdmin
+    .from('settings')
+    .select('key, value')
+    .in('key', ['cancel_url', 'bank_account_name', 'bank_sort_code', 'bank_account_number'])
+  const settingsMap: Record<string, string> = {}
+  ;(settingsRows || []).forEach((r: any) => { settingsMap[r.key] = r.value })
+
+  const costStr = (booking.stall_cost !== undefined && booking.stall_cost !== null)
+    ? `£${parseFloat(booking.stall_cost).toFixed(2)}`
+    : 'the agreed fee'
+  const cancelBase = settingsMap['cancel_url'] || ''
+  const cancelLink = (booking.cancel_token && cancelBase)
+    ? `${cancelBase}?token=${encodeURIComponent(booking.cancel_token)}`
+    : (cancelBase || '')
+  // Plain text, not escapeHtml()'d, unlike sendConfirmationEmail's copy.
+  const bankDetails = `Account Name: ${settingsMap['bank_account_name'] || ''}, Sort Code: ${settingsMap['bank_sort_code'] || ''}, Account Number: ${settingsMap['bank_account_number'] || ''}`
+
+  const body = templateData.body
+    .replace(/\{\{owner_name\}\}/g, booking.owner_name || 'Trader')
+    .replace(/\{\{business_name\}\}/g, booking.business_name || 'your business')
+    .replace(/\{\{booking_id\}\}/g, bookingId || '')
+    .replace(/\{\{cost\}\}/g, costStr)
+    .replace(/\{\{bank_details\}\}/g, bankDetails)
+    .replace(/\{\{cancel_link\}\}/g, cancelLink)
+
+  let recipient: string
+  try {
+    recipient = normalizePhone(booking.phone)
+  } catch (e: any) {
+    const { error: logErr } = await supabaseAdmin.from('sms_queue').insert({
+      recipient: booking.phone,
+      body,
+      status: 'Error',
+      error_message: e.message,
+      instance_prefix: booking.instance_prefix || null
+    })
+    if (logErr) console.warn('Failed to write to sms_queue log:', logErr.message)
+    throw e
+  }
+
+  let status = 'Sent'
+  let errorMessage: string | null = null
+  let providerMessageId: string | null = null
+  let segments: number | null = null
+  try {
+    const result = await sendViaSms(supabaseAdmin, { recipient, body })
+    providerMessageId = result.providerMessageId
+    segments = result.segments
+  } catch (e: any) {
+    status = 'Error'
+    errorMessage = e.message
+  }
+
+  const { error: logErr } = await supabaseAdmin.from('sms_queue').insert({
+    recipient,
+    body,
+    status,
+    error_message: errorMessage,
+    provider_message_id: providerMessageId,
+    segments,
+    instance_prefix: booking.instance_prefix || null
+  })
+  if (logErr) console.warn('Failed to write to sms_queue log:', logErr.message)
+
+  if (status === 'Error') throw new Error(errorMessage || 'Failed to send SMS')
 }
 
 Deno.serve(async (req) => {
@@ -211,6 +319,14 @@ Deno.serve(async (req) => {
               await sendConfirmationEmail(supabaseAdmin, bookingId)
             } catch (emailErr: any) {
               console.warn('Failed to send confirmed_chargeable email after Stripe payment:', emailErr.message)
+            }
+
+            // Independent of the email above (its own try/catch) so an SMS
+            // failure never masks — or is masked by — the email outcome.
+            try {
+              await sendConfirmationSms(supabaseAdmin, bookingId)
+            } catch (smsErr: any) {
+              console.warn('Failed to send booking_confirmed SMS after Stripe payment:', smsErr.message)
             }
           }
         }

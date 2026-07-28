@@ -1,5 +1,5 @@
-import { fetchPayments, updatePayment, resendPaymentRequest, recordBankTransferPayment, recordRefund, refundStripePayment, sendEmail, LIST_CAP } from './api.js';
-import { manualSendPaymentReminder, getEmailFromTemplate } from './shared.js';
+import { fetchPayments, updatePayment, resendPaymentRequest, recordBankTransferPayment, recordRefund, refundStripePayment, sendEmail, sendBookingSms, LIST_CAP } from './api.js';
+import { manualSendPaymentReminder, getEmailFromTemplate, getSmsFromTemplate } from './shared.js';
 import { showToast, showConfirm, notifyIfTruncated } from './ui.js';
 import { escapeHtml } from './utils.js';
 import { CONFIG } from './config.js';
@@ -358,6 +358,10 @@ function openBankTransferModal(id) {
     // stallholder actually used a different reference on their transfer.
     document.getElementById('bt-modal-reference').value = r.id;
     document.getElementById('bt-modal-notes').value = '';
+    // Reset every open so a ticked state never carries over to the next
+    // booking, matching every other opt-in SMS tickbox in this app.
+    const smsCb = document.getElementById('btAlsoSms');
+    if (smsCb) smsCb.checked = false;
 
     document.getElementById('bank-transfer-modal').classList.remove('hidden');
 }
@@ -370,6 +374,9 @@ async function saveBankTransferPayment() {
     const id = document.getElementById('bt-modal-id').value;
     const reference = document.getElementById('bt-modal-reference').value;
     const notes = document.getElementById('bt-modal-notes').value;
+    // Read before closeBankTransferModal() below, which would otherwise be
+    // the last chance to see the tickbox's state.
+    const alsoSms = !!document.getElementById('btAlsoSms')?.checked;
 
     if (!reference.trim()) {
         showToast('Payment reference is required.', 'error');
@@ -405,6 +412,26 @@ async function saveBankTransferPayment() {
             }
         } catch (emailErr) {
             showToast('Payment recorded, but the confirmation email failed to send: ' + emailErr.message, 'error');
+        }
+
+        // Independent of the email above: reuses the same "booking_confirmed"
+        // template the free-confirm path already sends (js/shared.js's
+        // maybeSendStatusSms) — a bank-transfer confirmation should text the
+        // stallholder the same cost/bank-details/cancel-link content, not a
+        // different message. Opt-in (unlike stripe-webhook's automatic send,
+        // which has no admin present to tick anything): the admin is right
+        // here clicking this button, so it follows the same tickbox pattern
+        // as every other admin-initiated SMS in this app.
+        if (alsoSms) {
+            try {
+                const booking = allRecords.find(item => item.id === id);
+                if (booking) {
+                    const smsBody = await getSmsFromTemplate('booking_confirmed', booking, id);
+                    await sendBookingSms(id, smsBody);
+                }
+            } catch (smsErr) {
+                showToast('Payment recorded, but the text failed to send: ' + smsErr.message, 'error');
+            }
         }
 
         await loadData();
