@@ -169,6 +169,7 @@ Deno.serve(async (req) => {
       .update({
         stall_cost: cost,
         stripe_checkout_session_id: session.id,
+        stripe_checkout_url: session.url,
         stripe_payment_requested_at: nowIso,
         status: 'Payment Requested'
       })
@@ -242,9 +243,11 @@ Deno.serve(async (req) => {
     // resending a payment request) with the tickbox ticked silently sent
     // no text at all, only the email.
     //
-    // Deliberately does NOT carry session.url — see the payment_requested
-    // sms_templates row's own comment for why (a raw Stripe Checkout link
-    // is 400+ characters, which would bill this text as 6-8 parts).
+    // Carries a short first-party redirect (pay.html?token=<session id>),
+    // NOT session.url directly — the raw Stripe Checkout link is 400+
+    // characters, which would bill this text as 6-8 parts on its own. The
+    // redirect target (this same session.url) is stored in
+    // stripe_checkout_url above so get-payment-link can hand it back out.
     if (sendSms && booking.phone) {
       try {
         const { data: smsTemplateData, error: smsTemplateErr } = await supabaseClient
@@ -258,11 +261,13 @@ Deno.serve(async (req) => {
         }
 
         const costStr = `£${cost.toFixed(2)}`
+        const paymentLink = `${baseUrl}/pay.html?token=${encodeURIComponent(session.id)}`
         const smsBody = smsTemplateData.body
           .replace(/\{\{owner_name\}\}/g, booking.owner_name || 'Trader')
           .replace(/\{\{business_name\}\}/g, booking.business_name || 'your business')
           .replace(/\{\{booking_id\}\}/g, booking.id || '')
           .replace(/\{\{cost\}\}/g, costStr)
+          .replace(/\{\{payment_link\}\}/g, paymentLink)
 
         const recipient = normalizePhone(booking.phone)
         let smsStatus = 'Sent'

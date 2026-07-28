@@ -238,6 +238,12 @@ describe('create-checkout-session', () => {
     const { status, json } = await callFunction('create-checkout-session', { booking_id: id, send_sms: true }, adminToken);
     assert.equal(status, 200, JSON.stringify(json));
 
+    const { data: booking } = await service.from('bookings')
+      .select('stripe_checkout_session_id, stripe_checkout_url')
+      .eq('id', id)
+      .single();
+    assert.ok(booking.stripe_checkout_url && booking.stripe_checkout_url.startsWith('https://checkout.stripe.com/'), 'expected the real Stripe URL to be stored for get-payment-link to hand back out');
+
     const { data: rows } = await service
       .from('sms_queue')
       .select('*')
@@ -247,6 +253,10 @@ describe('create-checkout-session', () => {
     assert.equal(rows[0].status, 'Sent');
     assert.match(rows[0].provider_message_id || '', /^mock-/);
     assert.ok(!rows[0].body.includes('checkout.stripe.com'), 'the SMS must not carry the raw Stripe checkout link');
+    assert.ok(
+      rows[0].body.includes(`/pay.html?token=${encodeURIComponent(booking.stripe_checkout_session_id)}`),
+      'the SMS must carry the short pay.html redirect link instead'
+    );
   });
 
   test('omitting send_sms sends no SMS at all, even with a phone number on file', async () => {
@@ -306,6 +316,48 @@ describe('create-checkout-session', () => {
     assert.ok(json.checkout_url && json.checkout_url.startsWith('https://checkout.stripe.com/'), `expected a real Stripe Test-mode Checkout URL for a Food/General booking with the setting on, got: ${json.checkout_url}`);
 
     await service.from('settings').delete().eq('key', 'stripe_test_mode');
+  });
+});
+
+describe('get-payment-link', () => {
+  // Public/unauthenticated — this is what pay.html calls to resolve the
+  // short SMS link back to a real Stripe Checkout URL, so it deliberately
+  // has no admin-JWT requirement (mirrors cancel-booking, not
+  // create-checkout-session).
+  test('rejects a missing token', async () => {
+    const { status } = await callFunction('get-payment-link', {}, anonKey);
+    assert.equal(status, 400);
+  });
+
+  test('rejects a token that matches no booking', async () => {
+    const { status, json } = await callFunction('get-payment-link', { token: 'cs_test_does_not_exist' }, anonKey);
+    assert.equal(status, 404, JSON.stringify(json));
+  });
+
+  test('resolves a valid token for a booking still awaiting payment', async () => {
+    const id = `${PREFIX}PAYLINK`;
+    await insertBooking(id, { status: 'Pending', stall_cost: 12.5 });
+    const created = await callFunction('create-checkout-session', { booking_id: id }, adminToken);
+    assert.equal(created.status, 200, JSON.stringify(created.json));
+
+    const { data: booking } = await service.from('bookings').select('stripe_checkout_session_id').eq('id', id).single();
+
+    const { status, json } = await callFunction('get-payment-link', { token: booking.stripe_checkout_session_id }, anonKey);
+    assert.equal(status, 200, JSON.stringify(json));
+    assert.equal(json.checkout_url, (await service.from('bookings').select('stripe_checkout_url').eq('id', id).single()).data.stripe_checkout_url);
+  });
+
+  test('refuses a token whose booking has moved on (no longer Payment Requested)', async () => {
+    const id = `${PREFIX}PAYLINKSTALE`;
+    await insertBooking(id, { status: 'Pending', stall_cost: 12.5 });
+    const created = await callFunction('create-checkout-session', { booking_id: id }, adminToken);
+    assert.equal(created.status, 200, JSON.stringify(created.json));
+
+    const { data: booking } = await service.from('bookings').select('stripe_checkout_session_id').eq('id', id).single();
+    await service.from('bookings').update({ status: 'Cancelled' }).eq('id', id);
+
+    const { status, json } = await callFunction('get-payment-link', { token: booking.stripe_checkout_session_id }, anonKey);
+    assert.equal(status, 400, JSON.stringify(json));
   });
 });
 
