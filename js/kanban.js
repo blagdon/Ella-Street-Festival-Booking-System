@@ -756,7 +756,8 @@ async function runPaymentAction(id, action, successMessage) {
 
 export function resendPaymentRequestAction(id) {
     const targetId = id || currentId;
-    return runPaymentAction(targetId, resendPaymentRequest, 'Payment request resent.');
+    const sendSms = readStatusSmsChecked('resendSendSms');
+    return runPaymentAction(targetId, (bookingId) => resendPaymentRequest(bookingId, sendSms), 'Payment request resent.');
 }
 
 function moveCardToStatus(id, status) {

@@ -685,7 +685,12 @@ function populateBasicFields(item) {
         const el = document.getElementById(eid);
         if (el) el.classList.toggle('hidden', !show);
     };
-    toggle('btn-resend-payment-request', item.status === 'Payment Requested');
+    const canResend = item.status === 'Payment Requested';
+    toggle('btn-resend-payment-request', canResend);
+    // Reset every open so a ticked state never carries over to the next
+    // booking, matching every other opt-in SMS tickbox in this app.
+    toggle('resend-sms-wrap', canResend);
+    resetStatusSmsCheckbox('resendSendSms');
 
     const rejContainer = document.getElementById('d-rejection-container');
     const rejReason = document.getElementById('d-rejection-reason');

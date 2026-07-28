@@ -27,6 +27,10 @@ function setupEventListeners() {
     document.getElementById('btn-cancel-bank-transfer')?.addEventListener('click', closeBankTransferModal);
     document.getElementById('btn-save-bank-transfer')?.addEventListener('click', saveBankTransferPayment);
 
+    document.getElementById('resend-payment-modal-overlay')?.addEventListener('click', closeResendPaymentModal);
+    document.getElementById('btn-cancel-resend-payment')?.addEventListener('click', closeResendPaymentModal);
+    document.getElementById('btn-save-resend-payment')?.addEventListener('click', saveResendPayment);
+
     document.getElementById('refund-modal-overlay')?.addEventListener('click', closeRefundModal);
     document.getElementById('btn-cancel-refund')?.addEventListener('click', closeRefundModal);
     document.getElementById('btn-save-refund')?.addEventListener('click', saveRefund);
@@ -47,7 +51,7 @@ function setupEventListeners() {
 
         const resendBtn = e.target.closest('.btn-resend-payment');
         if (resendBtn) {
-            resendPaymentRequestRow(resendBtn.dataset.id);
+            openResendPaymentModal(resendBtn.dataset.id);
             return;
         }
 
@@ -619,14 +623,48 @@ async function sendReminder(id) {
     await manualSendPaymentReminder(id);
 }
 
-async function resendPaymentRequestRow(id) {
-    if (!id) return;
+// Reported live as a gap: this used to fire resendPaymentRequest(id) with no
+// second argument, so a resend could never text the stallholder no matter
+// what — there was no tickbox anywhere on this page to even ask. Mirrors the
+// bank-transfer modal's own "Also send a text message" tickbox shape below.
+function openResendPaymentModal(id) {
+    const r = allRecords.find(item => item.id === id);
+    if (!r) return;
+
+    document.getElementById('resend-modal-id').value = r.id;
+    document.getElementById('resend-modal-booking-display').innerText = `${r.business || r.business_name} (${r.id})`;
+    // Reset every open so a ticked state never carries over to the next
+    // booking, matching every other opt-in SMS tickbox in this app.
+    const smsCb = document.getElementById('resendAlsoSms');
+    if (smsCb) smsCb.checked = false;
+
+    document.getElementById('resend-payment-modal').classList.remove('hidden');
+}
+
+function closeResendPaymentModal() {
+    document.getElementById('resend-payment-modal').classList.add('hidden');
+}
+
+async function saveResendPayment() {
+    const id = document.getElementById('resend-modal-id').value;
+    // Read before closeResendPaymentModal() below, which would otherwise be
+    // the last chance to see the tickbox's state.
+    const sendSms = !!document.getElementById('resendAlsoSms')?.checked;
+
+    const btn = document.getElementById('btn-save-resend-payment');
+    btn.disabled = true;
+    btn.textContent = 'Resending...';
+
     try {
-        await resendPaymentRequest(id);
+        await resendPaymentRequest(id, sendSms);
+        closeResendPaymentModal();
         showToast('Payment request resent.');
         await loadData();
     } catch (e) {
         showToast('Failed to resend: ' + e.message, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Resend Payment Request';
     }
 }
 

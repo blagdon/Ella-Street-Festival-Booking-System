@@ -531,7 +531,8 @@ async function runPaymentAction(id, action, newStatus, successMessage) {
 }
 
 window.resendPaymentRequestAction = function (id) {
-    return runPaymentAction(id || currentId, resendPaymentRequest, 'Payment Requested', 'Payment request resent.');
+    const sendSms = readStatusSmsChecked('resendSendSms');
+    return runPaymentAction(id || currentId, (bookingId) => resendPaymentRequest(bookingId, sendSms), 'Payment Requested', 'Payment request resent.');
 }
 
 window.openRejectModal = function (id) {
