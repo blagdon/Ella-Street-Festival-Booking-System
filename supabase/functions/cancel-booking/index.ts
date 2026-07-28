@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { sendViaZoho } from '../_shared/zoho.ts'
+import { sendViaSms, normalizePhone } from '../_shared/sms.ts'
 import { ALLOWED_ORIGIN } from '../_shared/cors.ts'
 import { escapeHtml } from '../_shared/format.ts'
 import { publicErrorResponse } from '../_shared/errors.ts'
@@ -84,6 +85,88 @@ async function sendCancellationEmail(supabaseAdmin: ReturnType<typeof createClie
   if (status === 'Error') throw new Error(errorMessage || 'Failed to send email')
 }
 
+/**
+ * Sends the cancellation-confirmation text, mirroring sendCancellationEmail's
+ * shape but reusing the existing "booking_cancelled" sms_templates row — the
+ * same one an admin's own Cancel-modal tickbox already sends. No opt-in
+ * tickbox here: self-service cancellation is public/unauthenticated, so
+ * there's no admin present to tick anything — fires automatically whenever
+ * the booking has a phone number, the same "no admin present" reasoning as
+ * submit-booking's sendReceivedSms. Reported live as a gap: whenever an
+ * email is sent, there should be a corresponding SMS option, and this path
+ * (a stallholder cancelling their own booking) had none at all.
+ * Best-effort: throws are caught by the caller, same contract as
+ * sendCancellationEmail.
+ */
+async function sendCancellationSms(supabaseAdmin: ReturnType<typeof createClient>, bookingId: string) {
+  const { data: booking, error: bookingErr } = await supabaseAdmin
+    .from('bookings')
+    .select('phone, owner_name, business_name, instance_prefix')
+    .eq('id', bookingId)
+    .single()
+
+  if (bookingErr || !booking) {
+    throw new Error('Could not load booking for cancellation SMS: ' + (bookingErr?.message || 'not found'))
+  }
+  if (!booking.phone) return
+
+  const { data: templateData, error: templateErr } = await supabaseAdmin
+    .from('sms_templates')
+    .select('body')
+    .eq('id', 'booking_cancelled')
+    .single()
+
+  if (templateErr || !templateData) {
+    throw new Error('Could not load "booking_cancelled" SMS template: ' + (templateErr?.message || 'not found'))
+  }
+
+  const body = templateData.body
+    .replace(/\{\{owner_name\}\}/g, booking.owner_name || 'Trader')
+    .replace(/\{\{business_name\}\}/g, booking.business_name || 'your business')
+    .replace(/\{\{booking_id\}\}/g, bookingId || '')
+
+  let recipient: string
+  try {
+    recipient = normalizePhone(booking.phone)
+  } catch (e: any) {
+    const { error: logErr } = await supabaseAdmin.from('sms_queue').insert({
+      recipient: booking.phone,
+      body,
+      status: 'Error',
+      error_message: e.message,
+      instance_prefix: booking.instance_prefix || null
+    })
+    if (logErr) console.warn('Failed to write to sms_queue log:', logErr.message)
+    throw e
+  }
+
+  let status = 'Sent'
+  let errorMessage: string | null = null
+  let providerMessageId: string | null = null
+  let segments: number | null = null
+  try {
+    const result = await sendViaSms(supabaseAdmin, { recipient, body })
+    providerMessageId = result.providerMessageId
+    segments = result.segments
+  } catch (e: any) {
+    status = 'Error'
+    errorMessage = e.message
+  }
+
+  const { error: logErr } = await supabaseAdmin.from('sms_queue').insert({
+    recipient,
+    body,
+    status,
+    error_message: errorMessage,
+    provider_message_id: providerMessageId,
+    segments,
+    instance_prefix: booking.instance_prefix || null
+  })
+  if (logErr) console.warn('Failed to write to sms_queue log:', logErr.message)
+
+  if (status === 'Error') throw new Error(errorMessage || 'Failed to send SMS')
+}
+
 Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -156,6 +239,14 @@ Deno.serve(async (req) => {
         await sendCancellationEmail(supabaseClient, data.booking_id)
       } catch (emailErr: any) {
         console.warn('Failed to send cancellation confirmation email:', emailErr.message)
+      }
+
+      // Independent of the email above (its own try/catch) so an SMS
+      // failure never masks — or is masked by — the email outcome.
+      try {
+        await sendCancellationSms(supabaseClient, data.booking_id)
+      } catch (smsErr: any) {
+        console.warn('Failed to send cancellation confirmation SMS:', smsErr.message)
       }
     }
 

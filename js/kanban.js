@@ -693,17 +693,18 @@ export function finalizeConfirm(isChargeable) {
     // a chargeable booking immediately gets a Stripe Checkout Session and
     // moves to Payment Requested — there's no separate deliberate step in
     // between anymore.
-    // Opt-in confirmation SMS — only meaningful on the free path, which
-    // confirms the booking here and now; the chargeable path lands on
-    // Payment Requested and is confirmed later server-side, so the tickbox
-    // is labelled "free confirmations only" and ignored here for chargeable.
+    // Opt-in confirmation SMS — meaningful on BOTH paths now: the free path
+    // sends booking_confirmed immediately; the chargeable path sends
+    // payment_requested alongside the payment-request email (reported live
+    // as a gap — this tickbox used to be silently dropped once the admin
+    // picked "Chargeable", so ticking it never sent anything at all).
     const sendSms = readStatusSmsChecked('confirmSendSms');
 
     const isFree = !isChargeable || overrideCost === 0;
     if (isFree) {
         updateStatus(id, 'Confirmed', null, sendSms);
     } else {
-        confirmChargeableAndRequestPayment(id, overrideCost);
+        confirmChargeableAndRequestPayment(id, overrideCost, sendSms);
     }
 }
 
@@ -714,7 +715,7 @@ export function finalizeConfirm(isChargeable) {
  * confirms the session was created — so a Stripe/email failure leaves the
  * booking exactly where it was, not stuck halfway).
  */
-async function confirmChargeableAndRequestPayment(id, overrideCost) {
+async function confirmChargeableAndRequestPayment(id, overrideCost, sendSms = false) {
     const booking = allBookings.find(b => b.id === id);
     const prefix = (booking && booking.instance_prefix) || CONFIG.INSTANCE_MAP['DEV'];
     let cost = overrideCost;
@@ -724,7 +725,7 @@ async function confirmChargeableAndRequestPayment(id, overrideCost) {
             : getStallCost(prefix);
     }
     try {
-        await requestPayment(id, cost);
+        await requestPayment(id, cost, sendSms);
         if (booking) { booking.stall_cost = cost; booking.status = 'Payment Requested'; }
         moveCardToStatus(id, 'Payment Requested');
         showToast('Booking confirmed — payment request sent.');

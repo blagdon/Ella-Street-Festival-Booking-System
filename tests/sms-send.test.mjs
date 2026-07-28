@@ -320,7 +320,7 @@ describe('sms_templates', () => {
   // a submitter's phone number into a guaranteed console.warn on every single
   // public submission (submit-booking's sendReceivedSms is unconditional,
   // with no tickbox to skip).
-  const REQUIRED = ['booking_confirmed', 'booking_rejected', 'booking_cancelled', 'booking_received', 'location_update'];
+  const REQUIRED = ['booking_confirmed', 'booking_rejected', 'booking_cancelled', 'booking_received', 'location_update', 'payment_requested'];
 
   for (const id of REQUIRED) {
     test(`the ${id} template exists and is substitutable`, async () => {
@@ -338,9 +338,13 @@ describe('sms_templates', () => {
   // as of 20260730090000 — a deliberate, approved trade-off to always
   // include a working cancel link and (for the confirmation) the bank
   // transfer details, even though that means 2 billed parts instead of 1.
+  // payment_requested (20260731090000) is 2 parts too, once a realistic
+  // owner name and cost are filled in — deliberately does NOT carry the
+  // Stripe checkout link itself (~400+ chars, would be 6-8 parts), so it
+  // stays far cheaper than that link would have made it.
   // booking_rejected and booking_cancelled were NOT touched (nothing left to
   // cancel once a booking is rejected/cancelled) and must stay single-part.
-  const ALLOWED_MULTIPART = new Set(['booking_confirmed', 'booking_received', 'location_update']);
+  const ALLOWED_MULTIPART = new Set(['booking_confirmed', 'booking_received', 'location_update', 'payment_requested']);
 
   test('only the templates approved for it bill as more than one part', () => {
     // Mirrors countSegments() in _shared/sms.ts.

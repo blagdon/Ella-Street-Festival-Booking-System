@@ -42,12 +42,22 @@ before(async () => {
   await service.from('bookings').delete().like('id', `${PREFIX}%`);
   await service.from('stripe_webhook_events').delete().like('event_id', 'evt_test_%');
   await service.from('settings').delete().eq('key', 'stripe_test_mode');
+  // The payment_requested SMS tests below embed the booking id (which
+  // carries this file's own PREFIX) in the message body — clean those up
+  // too, or a leftover row from a prior run collides with the next run's
+  // exact-count assertion (ilike '%id%' then matches 2 rows, not 1).
+  await service.from('sms_queue').delete().ilike('body', `%${PREFIX}%`);
 });
 
 after(async () => {
   await service.from('bookings').delete().like('id', `${PREFIX}%`);
   await service.from('stripe_webhook_events').delete().like('event_id', 'evt_test_%');
   await service.from('settings').delete().eq('key', 'stripe_test_mode');
+  // The payment_requested SMS tests below embed the booking id (which
+  // carries this file's own PREFIX) in the message body — clean those up
+  // too, or a leftover row from a prior run collides with the next run's
+  // exact-count assertion (ilike '%id%' then matches 2 rows, not 1).
+  await service.from('sms_queue').delete().ilike('body', `%${PREFIX}%`);
 });
 
 async function callFunction(name, body, token = anonKey) {
@@ -214,6 +224,40 @@ describe('create-checkout-session', () => {
     assert.equal(booking.status, 'Payment Requested');
     assert.ok(booking.stripe_checkout_session_id);
     assert.ok(booking.stripe_payment_requested_at);
+  });
+
+  // Reported live as a gap: the Confirm modal's "also send a text" tickbox
+  // used to be silently dropped once the admin picked "Chargeable" — no
+  // send_sms param existed at all on this endpoint, so ticking it never sent
+  // anything. sms_provider is 'mock' in the test project, so this asserts a
+  // real Sent row, not just "no error".
+  test('send_sms: true also sends a payment_requested SMS when the booking has a phone number', async () => {
+    const id = `${PREFIX}CHECKOUTSMS`;
+    await insertBooking(id, { status: 'Pending', stall_cost: 12.5, phone: '07000000000' });
+
+    const { status, json } = await callFunction('create-checkout-session', { booking_id: id, send_sms: true }, adminToken);
+    assert.equal(status, 200, JSON.stringify(json));
+
+    const { data: rows } = await service
+      .from('sms_queue')
+      .select('*')
+      .ilike('body', `%${id}%`);
+    assert.equal(rows.length, 1, 'expected exactly one sms_queue row logged for this payment request');
+    assert.equal(rows[0].recipient, '+447000000000');
+    assert.equal(rows[0].status, 'Sent');
+    assert.match(rows[0].provider_message_id || '', /^mock-/);
+    assert.ok(!rows[0].body.includes('checkout.stripe.com'), 'the SMS must not carry the raw Stripe checkout link');
+  });
+
+  test('omitting send_sms sends no SMS at all, even with a phone number on file', async () => {
+    const id = `${PREFIX}CHECKOUTNOSMS`;
+    await insertBooking(id, { status: 'Pending', stall_cost: 12.5, phone: '07000000000' });
+
+    const { status } = await callFunction('create-checkout-session', { booking_id: id }, adminToken);
+    assert.equal(status, 200);
+
+    const { data: rows } = await service.from('sms_queue').select('*').ilike('body', `%${id}%`);
+    assert.equal(rows.length, 0, 'expected no sms_queue row when send_sms was not set');
   });
 
   test('accepts a cost override in the request body (chargeable-confirm now fires with no prior persisted stall_cost) and saves it', async () => {

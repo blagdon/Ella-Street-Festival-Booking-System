@@ -492,6 +492,52 @@ describe('cancel-booking', () => {
     assert.ok(rows.length, 'expected a cancellation email_queue row to be logged');
     assert.equal(rows[0].status, 'Error');
   });
+
+  // Unlike the email above (Zoho is unconfigured in the test project, so it
+  // always fails), sms_provider is 'mock', so this asserts a real Sent row —
+  // proves self-service cancellation sends a text automatically (no admin
+  // present to tick anything), reusing the same booking_cancelled template
+  // an admin's own Cancel-modal tickbox already sends.
+  test('cancelling with a phone number on file also sends a confirmation SMS, via the mock provider', async () => {
+    const bookingId = 'ESF26-TESTCANCEL-0002';
+    const cancelToken = '22222222-2222-2222-2222-222222222222';
+    createdBookingIds.push(bookingId);
+
+    await service.from('bookings').insert({
+      id: bookingId,
+      status: 'Pending',
+      business_name: 'Cancel SMS Test',
+      owner_name: 'Test',
+      email: 'test@example.test',
+      phone: '07000000000',
+      // DEV, not FOOD: this file's sms_queue cleanup wildcard only covers
+      // TESTCONFLICT-/TESTDATASET-/DEV- prefixes (see before()/after() above)
+      // — FOOD- left a stray row behind after the first run of this test,
+      // which then collided with a second row on the next run/in CI.
+      instance_prefix: 'ESF26-DEV-',
+      stall_type: 'Food',
+      cancel_token: cancelToken,
+    });
+
+    const { status, json } = await callFunction('cancel-booking', {
+      token: TURNSTILE_TEST_TOKEN,
+      cancelToken,
+      reason: 'integration test',
+    });
+    assert.equal(status, 200, JSON.stringify(json));
+    assert.equal(json.success, true);
+
+    await new Promise((r) => setTimeout(r, 1500));
+    const { data: rows } = await service
+      .from('sms_queue')
+      .select('*')
+      .ilike('body', `%${bookingId}%`);
+
+    assert.equal(rows.length, 1, 'expected exactly one sms_queue row logged for this cancellation');
+    assert.equal(rows[0].recipient, '+447000000000');
+    assert.equal(rows[0].status, 'Sent');
+    assert.match(rows[0].provider_message_id || '', /^mock-/);
+  });
 });
 
 describe('queue-bulk-email', () => {

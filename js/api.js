@@ -455,13 +455,17 @@ export async function updatePayment(payload) {
  * passed through when the admin is confirming a booking as chargeable for
  * the first time (there's no separate persistence step before this call);
  * omit it to resend using whatever cost is already saved on the booking.
+ * `sendSms` mirrors the free-confirm path's opt-in tickbox — reported live
+ * as a gap: the Confirm modal's tickbox used to be silently dropped once
+ * the admin picked "Chargeable", so ticking it never sent anything.
  * @param {string} bookingId
  * @param {number|null} cost
+ * @param {boolean} [sendSms]
  */
-export async function requestPayment(bookingId, cost = null) {
+export async function requestPayment(bookingId, cost = null, sendSms = false) {
     validateBookingId(bookingId);
     const sb = getSupabaseClient();
-    const body = { booking_id: bookingId };
+    const body = { booking_id: bookingId, send_sms: !!sendSms };
     if (cost !== null && cost !== undefined) body.cost = cost;
     const { data, error } = await sb.functions.invoke('create-checkout-session', { body });
     if (error) {
@@ -478,9 +482,10 @@ export async function requestPayment(bookingId, cost = null) {
  * saved on the booking) — kept as a separate export so call sites read
  * clearly ("Resend Payment Request" vs "Request Payment").
  * @param {string} bookingId
+ * @param {boolean} [sendSms]
  */
-export async function resendPaymentRequest(bookingId) {
-    const data = await requestPayment(bookingId);
+export async function resendPaymentRequest(bookingId, sendSms = false) {
+    const data = await requestPayment(bookingId, null, sendSms);
     await auditLog('resend_payment_request', bookingId);
     return data;
 }
