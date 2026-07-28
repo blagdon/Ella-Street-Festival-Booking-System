@@ -42,12 +42,22 @@ before(async () => {
   await service.from('bookings').delete().like('id', `${PREFIX}%`);
   await service.from('stripe_webhook_events').delete().like('event_id', 'evt_test_%');
   await service.from('settings').delete().eq('key', 'stripe_test_mode');
+  // The payment_requested SMS tests below embed the booking id (which
+  // carries this file's own PREFIX) in the message body — clean those up
+  // too, or a leftover row from a prior run collides with the next run's
+  // exact-count assertion (ilike '%id%' then matches 2 rows, not 1).
+  await service.from('sms_queue').delete().ilike('body', `%${PREFIX}%`);
 });
 
 after(async () => {
   await service.from('bookings').delete().like('id', `${PREFIX}%`);
   await service.from('stripe_webhook_events').delete().like('event_id', 'evt_test_%');
   await service.from('settings').delete().eq('key', 'stripe_test_mode');
+  // The payment_requested SMS tests below embed the booking id (which
+  // carries this file's own PREFIX) in the message body — clean those up
+  // too, or a leftover row from a prior run collides with the next run's
+  // exact-count assertion (ilike '%id%' then matches 2 rows, not 1).
+  await service.from('sms_queue').delete().ilike('body', `%${PREFIX}%`);
 });
 
 async function callFunction(name, body, token = anonKey) {

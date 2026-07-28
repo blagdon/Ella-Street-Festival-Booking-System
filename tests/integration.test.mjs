@@ -510,7 +510,11 @@ describe('cancel-booking', () => {
       owner_name: 'Test',
       email: 'test@example.test',
       phone: '07000000000',
-      instance_prefix: 'ESF26-FOOD-',
+      // DEV, not FOOD: this file's sms_queue cleanup wildcard only covers
+      // TESTCONFLICT-/TESTDATASET-/DEV- prefixes (see before()/after() above)
+      // — FOOD- left a stray row behind after the first run of this test,
+      // which then collided with a second row on the next run/in CI.
+      instance_prefix: 'ESF26-DEV-',
       stall_type: 'Food',
       cancel_token: cancelToken,
     });
