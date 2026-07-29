@@ -271,6 +271,20 @@ describe('create-checkout-session', () => {
     assert.equal(rows.length, 0, 'expected no sms_queue row when send_sms was not set');
   });
 
+  test('a null payment_link_code fails the SMS loudly rather than sending a broken token=null link', async () => {
+    const id = `${PREFIX}NULLLINKCODE`;
+    // payment_link_code has a DEFAULT but no NOT NULL constraint - explicitly
+    // nulling it here simulates a booking inserted outside the normal flow
+    // (the DEFAULT only applies when the column is omitted from an insert).
+    await insertBooking(id, { status: 'Pending', stall_cost: 12.5, phone: '07000000000', payment_link_code: null });
+
+    const { status, json } = await callFunction('create-checkout-session', { booking_id: id, send_sms: true }, adminToken);
+    assert.equal(status, 200, JSON.stringify(json), 'the checkout session itself must still succeed - the SMS is best-effort');
+
+    const { data: rows } = await service.from('sms_queue').select('*').ilike('body', `%${id}%`);
+    assert.equal(rows.length, 0, 'no SMS should be queued at all - a null payment_link_code must fail loudly server-side, not ship a link reading token=null');
+  });
+
   test('accepts a cost override in the request body (chargeable-confirm now fires with no prior persisted stall_cost) and saves it', async () => {
     const id = `${PREFIX}COSTOVERRIDE`;
     await insertBooking(id, { status: 'HCC Checks', stall_cost: null });
@@ -359,6 +373,25 @@ describe('get-payment-link', () => {
 
     const { status, json } = await callFunction('get-payment-link', { token: booking.payment_link_code }, anonKey);
     assert.equal(status, 400, JSON.stringify(json));
+  });
+
+  test('refuses a token whose underlying Stripe session has expired (24h since stripe_payment_requested_at)', async () => {
+    const id = `${PREFIX}PAYLINKEXPIRED`;
+    await insertBooking(id, { status: 'Pending', stall_cost: 12.5 });
+    const created = await callFunction('create-checkout-session', { booking_id: id }, adminToken);
+    assert.equal(created.status, 200, JSON.stringify(created.json));
+
+    const { data: booking } = await service.from('bookings').select('payment_link_code').eq('id', id).single();
+
+    // Backdate as if the payment request was made 25 hours ago - past
+    // Stripe's default 24h Checkout Session expiry - so this doesn't depend
+    // on a real Stripe session actually expiring.
+    const twentyFiveHoursAgo = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
+    await service.from('bookings').update({ stripe_payment_requested_at: twentyFiveHoursAgo }).eq('id', id);
+
+    const { status, json } = await callFunction('get-payment-link', { token: booking.payment_link_code }, anonKey);
+    assert.equal(status, 400, JSON.stringify(json));
+    assert.match(json.error, /expired/i);
   });
 });
 

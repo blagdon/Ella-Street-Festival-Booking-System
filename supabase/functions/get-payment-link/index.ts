@@ -8,6 +8,19 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
 
+// Stripe Checkout Sessions expire 24h after creation by default, and
+// create-checkout-session never overrides expires_at - so this is a reliable
+// heuristic, not a guess. stripe_payment_requested_at is updated to now() on
+// every request AND every resend (same update call that sets the session
+// url), so it always reflects the currently-active session's creation time,
+// never a stale first-ever request. This can't confirm Stripe's actual
+// server-side state (an admin could someday change expires_at, or the
+// session could already be completed) - it's a cheap, local approximation
+// that avoids redirecting into Stripe's own bare "session expired" page with
+// no ESF context, using data already being tracked for the double-click
+// guard in create-checkout-session.
+const CHECKOUT_SESSION_EXPIRY_MS = 24 * 60 * 60 * 1000
+
 /**
  * Public, unauthenticated redirect-target lookup for pay.html — resolves the
  * short link embedded in the payment_requested SMS (`pay.html?token=<short
@@ -42,7 +55,7 @@ Deno.serve(async (req) => {
 
     const { data: booking, error } = await supabaseClient
       .from('bookings')
-      .select('status, stripe_checkout_url')
+      .select('status, stripe_checkout_url, stripe_payment_requested_at')
       .eq('payment_link_code', token)
       .single()
 
@@ -56,6 +69,17 @@ Deno.serve(async (req) => {
     // just show Stripe's own expired-session page with no context.
     if (booking.status !== 'Payment Requested') {
       throw new PublicError('This booking is no longer awaiting payment — no further action is needed.')
+    }
+
+    // See CHECKOUT_SESSION_EXPIRY_MS above - a booking can sit in
+    // 'Payment Requested' for days if nobody resends, long after Stripe's
+    // own session has expired. Catch that here rather than redirecting into
+    // Stripe's bare error page.
+    if (booking.stripe_payment_requested_at) {
+      const requestedMs = new Date(booking.stripe_payment_requested_at).getTime()
+      if (Date.now() - requestedMs > CHECKOUT_SESSION_EXPIRY_MS) {
+        throw new PublicError('This payment link has expired. Please contact us for a new payment link.')
+      }
     }
 
     return new Response(JSON.stringify({ success: true, checkout_url: booking.stripe_checkout_url }), {

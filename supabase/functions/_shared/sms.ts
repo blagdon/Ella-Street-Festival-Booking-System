@@ -99,24 +99,30 @@ export function normalizePhone(raw: string, defaultCountry = 'GB'): string {
   // 00 international prefix -> +
   if (n.startsWith('00')) n = '+' + n.slice(2)
 
+  // Collapse every recognised form down to bare E.164 digits (no leading +),
+  // then apply ONE length check to all of them. Previously the length check
+  // only ran on the `+...` branch - `normalizePhone('44')` or
+  // `normalizePhone('0')` returned '+44' with no digits at all, since the
+  // GB trunk-0/44 branches skipped validation entirely.
+  let digits: string
   if (n.startsWith('+')) {
-    const digits = n.slice(1)
-    if (digits.length < 8 || digits.length > 15) {
-      throw new Error(`Phone number "${raw}" is not a valid E.164 length.`)
-    }
-    return '+' + digits
+    digits = n.slice(1)
+  } else if (defaultCountry === 'GB' && n.startsWith('0')) {
+    // National format. Only GB's trunk-0 rule is handled automatically.
+    digits = '44' + n.slice(1)
+  } else if (defaultCountry === 'GB' && n.startsWith('44')) {
+    digits = n
+  } else {
+    throw new Error(
+      `Phone number "${raw}" is not in international (+...) form and no rule ` +
+      `exists to normalise it for country ${defaultCountry}.`
+    )
   }
 
-  // National format. Only GB's trunk-0 rule is handled automatically.
-  if (defaultCountry === 'GB') {
-    if (n.startsWith('0')) return '+44' + n.slice(1)
-    if (n.startsWith('44')) return '+' + n
+  if (digits.length < 8 || digits.length > 15) {
+    throw new Error(`Phone number "${raw}" is not a valid E.164 length.`)
   }
-
-  throw new Error(
-    `Phone number "${raw}" is not in international (+...) form and no rule ` +
-    `exists to normalise it for country ${defaultCountry}.`
-  )
+  return '+' + digits
 }
 
 /**

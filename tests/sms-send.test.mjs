@@ -116,6 +116,14 @@ describe('send-sms', () => {
     assert.equal(status, 400, JSON.stringify(json));
   });
 
+  test('rejects bare "44" and "0" - the GB trunk-prefix branches previously skipped length validation entirely', async () => {
+    const bare44 = await callSend({ recipient: '44', body: 'x' });
+    assert.equal(bare44.status, 400, JSON.stringify(bare44.json));
+
+    const bareZero = await callSend({ recipient: '0', body: 'x' });
+    assert.equal(bareZero.status, 400, JSON.stringify(bareZero.json));
+  });
+
   test('sends, normalising a UK national number to E.164 and logging to sms_queue', async () => {
     const { status, json } = await callSend({ recipient: SEND_TO_NATIONAL, body: 'ESF single part test' });
     assert.equal(status, 200, JSON.stringify(json));

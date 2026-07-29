@@ -263,6 +263,17 @@ Deno.serve(async (req) => {
           throw new Error('Could not load "payment_requested" SMS template: ' + (smsTemplateErr?.message || 'not found'))
         }
 
+        // payment_link_code has a DEFAULT (20260731110000) but no NOT NULL
+        // constraint, so a booking inserted outside the normal flow could
+        // still have it null. encodeURIComponent(null) silently coerces to
+        // the string "null", producing a link that looks well-formed and
+        // logs as a successful send - the worst kind of failure, since
+        // nothing here would ever surface it. Fail loudly instead, same
+        // principle normalizePhone() already applies to a bad number.
+        if (!booking.payment_link_code) {
+          throw new Error(`Booking ${booking.id} has no payment_link_code - cannot build a payment link for the SMS.`)
+        }
+
         const costStr = `£${cost.toFixed(2)}`
         const paymentLink = `${baseUrl}/pay.html?token=${encodeURIComponent(booking.payment_link_code)}`
         const smsBody = smsTemplateData.body
