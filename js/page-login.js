@@ -1,7 +1,7 @@
-import { getSupabaseClient } from './supabase.js';
+import { getSupabaseClient, initSentryBrowser } from './supabase.js';
 import { safeError, escapeHtml } from './utils.js';
 import { auditLog } from './api.js';
-import { ESF_PUBLIC_CONFIG, initPublicPage } from '../supabase-public.js';
+import { ESF_PUBLIC_CONFIG, initPublicPage, fetchSentryBrowserLoaderUrl } from '../supabase-public.js';
 
 // --- UTILITIES ---
 let loginAttempts = 0;
@@ -34,6 +34,11 @@ function toggleView(view) {
 // compiled-in canonical BASE_URL, not a DB-loaded override (see the comment
 // on resetPasswordForEmail).
 initPublicPage(async () => {
+    // This page opts out of the full public-settings sync (see the
+    // loadSettings: false note above), so sentry_browser_loader_url needs
+    // its own scoped fetch rather than coming along for free.
+    initSentryBrowser(await fetchSentryBrowserLoaderUrl(getSupabaseClient()));
+
     // Attach event listeners
     document.getElementById('link-forgot-password')?.addEventListener('click', () => toggleView('reset'));
     document.getElementById('link-back-login')?.addEventListener('click', () => toggleView('login'));

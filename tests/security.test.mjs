@@ -401,6 +401,11 @@ describe('anon access to settings (booking open/closed flags)', () => {
       'stall_cost_food', 'stall_cost_general', 'stall_cost_dev', 'turnstile_site_key',
       'base_url', 'cancel_url', 'portal_url', 'booking_prefix', 'bucket_name',
       'hcc_council_email', 'map_center_lat', 'map_center_lng', 'map_default_zoom',
+      // Anon-readable (20260731150000) specifically for login.html/
+      // steward_login.html, which have no session yet - as safe as
+      // turnstile_site_key, both designed for client-visible embedding.
+      // sentry_dsn (the Edge Function backend DSN) is deliberately NOT here.
+      'sentry_browser_loader_url',
       ...bookingOpenKeys,
     ];
     const { data: broad, error: broadErr } = await anon.from('settings').select('key');

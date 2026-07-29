@@ -34,6 +34,44 @@ export function getSupabaseClient() {
  * Checks if the user is authenticated and has the required role.
  * @param {string} requiredRole - 'admin' (default) or 'steward'
  */
+/**
+ * Injects the Sentry Loader Script, once a loader URL has loaded from the
+ * settings table (sentry_browser_loader_url) - replacing the hardcoded
+ * <script src> tag previously duplicated across 20 admin HTML files, so
+ * rotating or disabling monitoring needs a settings.html edit, not a
+ * redeploy.
+ *
+ * Takes the URL as a parameter rather than reading CONFIG directly, since it
+ * has two different callers reading from two different places: requireAuth()
+ * below (CONFIG.SENTRY_BROWSER_LOADER_URL, populated via the authenticated
+ * admin settings read) for every requireAuth()-gated page, and
+ * page-login.js/page-steward-login.js (ESF_PUBLIC_CONFIG.
+ * SENTRY_BROWSER_LOADER_URL, populated via the anon-readable public settings
+ * read - see supabase-public.js) for the two pages that have no session yet
+ * and so can't use requireAuth() at all, despite needing Sentry the most
+ * (that's exactly where auth failures happen).
+ *
+ * Still the Loader Script pattern, not the full SDK: it's a tiny stub that
+ * only pulls the real bundle down on an actual first error, so this stays as
+ * cheap as the hardcoded version was. The one real trade-off is timing - the
+ * old static <head> tag started loading in parallel with HTML parsing,
+ * before any JS ran; this now runs after settings resolve, so an error in
+ * that narrow, well-tested settings-loading path itself wouldn't be
+ * captured. Accepted in exchange for settings-table configurability.
+ *
+ * No-ops with nothing to guard against double-injection beyond the empty-
+ * string check: every caller runs once per page load (a fresh document
+ * every navigation, no SPA routing in this app), so there's no realistic
+ * path that calls this twice.
+ */
+export function initSentryBrowser(loaderUrl) {
+    if (!loaderUrl) return;
+    const script = document.createElement('script');
+    script.src = loaderUrl;
+    script.crossOrigin = 'anonymous';
+    document.head.appendChild(script);
+}
+
 export async function requireAuth(requiredRole = 'admin') {
     try {
         const sb = getSupabaseClient();
@@ -55,6 +93,7 @@ export async function requireAuth(requiredRole = 'admin') {
         // Authorization logic
         if (userRole === 'admin' || userRole === requiredRole) {
             await loadStallCosts(sb);
+            initSentryBrowser(CONFIG.SENTRY_BROWSER_LOADER_URL);
             return session;
         }
 

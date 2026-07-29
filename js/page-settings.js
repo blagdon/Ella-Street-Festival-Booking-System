@@ -18,6 +18,7 @@ function initSettings() {
     initZohoSettings();
     initSmsSettings();
     initSerpApiSettings();
+    initSentrySettings();
 }
 
 initAdminPage(initSettings);
@@ -932,6 +933,73 @@ async function initSmsSettings() {
         } finally {
             btnSave.disabled = false;
             btnSave.textContent = "Save SMS Settings";
+        }
+    });
+}
+
+/**
+ * Error Monitoring (Sentry) — sentry_dsn (Edge Functions, read by
+ * _shared/sentry.ts) and sentry_browser_loader_url (admin dashboard,
+ * injected by supabase.js's requireAuth()). Unlike Stripe/SMS Works, neither
+ * field is write-only: Sentry DSNs and loader URLs are designed to be
+ * embedded in client-visible code, so there's nothing to hide by not
+ * re-displaying the stored value.
+ */
+async function initSentrySettings() {
+    const txtDsn = document.getElementById('sentry-dsn');
+    const txtLoaderUrl = document.getElementById('sentry-browser-loader-url');
+    const btnSave = document.getElementById('btn-save-sentry');
+
+    if (!txtDsn || !txtLoaderUrl || !btnSave) return;
+
+    try {
+        const { data, error } = await sb.from('settings')
+            .select('key, value')
+            .in('key', ['sentry_dsn', 'sentry_browser_loader_url']);
+        if (error) throw error;
+
+        const row = (key) => (data || []).find(r => r.key === key)?.value;
+        txtDsn.value = row('sentry_dsn') || '';
+        txtLoaderUrl.value = row('sentry_browser_loader_url') || '';
+    } catch (err) {
+        showToast("Failed to load Error Monitoring settings: " + err.message, 'error');
+    }
+
+    btnSave.addEventListener('click', async () => {
+        const valDsn = txtDsn.value.trim();
+        const valLoaderUrl = txtLoaderUrl.value.trim();
+
+        btnSave.disabled = true;
+        btnSave.textContent = "Saving...";
+
+        try {
+            const { data: { session } } = await sb.auth.getSession();
+            const userEmail = session?.user?.email || 'admin';
+            const now = new Date().toISOString();
+
+            const { error } = await sb.from('settings').upsert([
+                { key: 'sentry_dsn', value: valDsn, updated_at: now, updated_by: userEmail },
+                { key: 'sentry_browser_loader_url', value: valLoaderUrl, updated_at: now, updated_by: userEmail },
+            ]);
+            if (error) throw error;
+
+            // The browser loader script is injected once per page load
+            // (supabase.js's requireAuth(), which already ran before this
+            // page's own init callback) - a change here takes effect on the
+            // next admin page load, not retroactively on this one.
+            showToast("Error Monitoring settings saved. Reload any open admin tabs to pick up a browser loader URL change.");
+            if (typeof sessionStorage !== 'undefined') {
+                sessionStorage.removeItem('ESF_SETTINGS_CACHE');
+            }
+            await auditLog('update_sentry_settings', 'system', {
+                dsn_set: !!valDsn,
+                browser_loader_url_set: !!valLoaderUrl
+            });
+        } catch (err) {
+            showToast(`Failed to save Error Monitoring settings: ${err.message}`, 'error');
+        } finally {
+            btnSave.disabled = false;
+            btnSave.textContent = "Save Error Monitoring Settings";
         }
     });
 }

@@ -1,14 +1,17 @@
-import { getSupabaseClient } from './supabase.js';
+import { getSupabaseClient, initSentryBrowser } from './supabase.js';
 import { safeError } from './utils.js';
-import { initPublicPage } from '../supabase-public.js';
+import { initPublicPage, fetchSentryBrowserLoaderUrl } from '../supabase-public.js';
 
 // Fix #6: Login rate limiting
 let loginAttempts = 0;
 let lockoutUntil = 0;
 
-// loadSettings: false — this page reads no public settings; keep it free of
-// the DB round-trip.
+// loadSettings: false — this page reads no OTHER public settings; keep it
+// free of the DB round-trip. sentry_browser_loader_url gets its own scoped
+// fetch below instead of coming along for free.
 initPublicPage(async () => {
+    initSentryBrowser(await fetchSentryBrowserLoaderUrl(getSupabaseClient()));
+
     // Check for unauthorized access error from RBAC redirect
     const params = new URLSearchParams(window.location.search);
     const isUnauthorized = params.get('error') === 'unauthorized';

@@ -39,6 +39,12 @@ export const CONFIG = {
     BANK_SORT_CODE: '',
     BANK_ACCOUNT_NUMBER: '',
 
+    // Error monitoring — empty until loaded from the settings table
+    // (sentry_browser_loader_url) via applySettingsToConfig(). No hardcoded
+    // default: this app ships with monitoring off until an admin configures
+    // it via settings.html, same as every other integration here.
+    SENTRY_BROWSER_LOADER_URL: '',
+
     // UI Configuration
     UI: {
         // No hardcoded defaults — populated entirely from the settings table
@@ -150,6 +156,8 @@ export function applySettingsToConfig(data) {
             CONFIG.UI.ALLOWED_TYPES = val.split(',').map(s => s.trim()).filter(Boolean);
         } else if (item.key === 'booking_prefix') {
             ESF_PUBLIC_CONFIG.BOOKING_PREFIX = val;
+        } else if (item.key === 'sentry_browser_loader_url') {
+            CONFIG.SENTRY_BROWSER_LOADER_URL = val;
         }
     });
 }

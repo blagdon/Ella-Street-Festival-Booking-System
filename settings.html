@@ -5,7 +5,6 @@
     <title>System Settings — ESF26 Admin</title>
     <meta charset="UTF-8">
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://js-de.sentry-cdn.com https://browser.sentry-cdn.com https://cdnjs.cloudflare.com https://challenges.cloudflare.com https://vercel.live; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; connect-src 'self' https://rsnxhuhibglieofikkpo.supabase.co https://o4511817083977728.ingest.de.sentry.io https://challenges.cloudflare.com https://vercel.live https://cdn.jsdelivr.net https://unpkg.com; frame-src https://challenges.cloudflare.com https://vercel.live; img-src 'self' data: https:; font-src 'self' https://fonts.gstatic.com;">
-    <script src="https://js-de.sentry-cdn.com/d0ef3b73b545470d469b885c8d9b477a.min.js" crossorigin="anonymous"></script>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link href="./css/output.css" rel="stylesheet">
     <style>
@@ -472,6 +471,54 @@
                 </p>
                 <button id="btn-save-sms" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded transition text-xs tracking-wider uppercase mt-4 cursor-pointer shadow-sm">
                     Save SMS Settings
+                </button>
+            </div>
+
+            <!-- Error Monitoring (Sentry) Settings Card -->
+            <div class="bg-white p-6 rounded-xl border border-gray-200 shadow-sm hover-card col-span-1 md:col-span-2">
+                <div class="flex items-start justify-between mb-4">
+                    <div class="icon-box bg-gray-100 text-gray-600 p-3 rounded-lg">
+                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z">
+                            </path>
+                        </svg>
+                    </div>
+                </div>
+                <h3 class="text-lg font-bold text-gray-800 mb-1">Error Monitoring (Sentry)</h3>
+                <p class="text-xs text-gray-400 mb-4">
+                    Configuration for the <a href="https://sentry.io" target="_blank" rel="noopener"
+                        class="text-blue-600 hover:underline">Sentry</a> integration covering both Edge Functions and
+                    the admin dashboard. Stored in this settings table like every other integration here — neither
+                    field is a secret the way a Stripe/SMS Works API key is (Sentry DSNs and loader URLs are
+                    designed to be embedded in client-visible code), so both are shown in full, not write-only.
+                    Blank means monitoring is off for that side.
+                </p>
+
+                <div class="space-y-4 text-sm">
+                    <div>
+                        <label for="sentry-dsn" class="block text-xs font-semibold text-gray-500 mb-1">BACKEND DSN
+                            (EDGE FUNCTIONS)</label>
+                        <input type="text" id="sentry-dsn" autocomplete="off"
+                            class="w-full p-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:outline-none font-mono text-xs"
+                            placeholder="https://<key>@<org>.ingest.<region>.sentry.io/<project id>">
+                        <p class="text-xs text-gray-400 mt-1">From a Deno/Node project's Client Keys (DSN) page in
+                            Sentry.</p>
+                    </div>
+                    <div>
+                        <label for="sentry-browser-loader-url" class="block text-xs font-semibold text-gray-500 mb-1">BROWSER
+                            LOADER SCRIPT URL (ADMIN DASHBOARD)</label>
+                        <input type="text" id="sentry-browser-loader-url" autocomplete="off"
+                            class="w-full p-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:outline-none font-mono text-xs"
+                            placeholder="https://js-de.sentry-cdn.com/<loader id>.min.js">
+                        <p class="text-xs text-gray-400 mt-1">From a Browser JavaScript project's "Loader Script"
+                            install step in Sentry — the full &lt;script&gt; tag's src attribute, not the DSN
+                            itself.</p>
+                    </div>
+                </div>
+                <button id="btn-save-sentry"
+                    class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded transition text-xs tracking-wider uppercase mt-4 cursor-pointer shadow-sm">
+                    Save Error Monitoring Settings
                 </button>
             </div>
 

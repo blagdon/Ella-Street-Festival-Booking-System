@@ -202,6 +202,27 @@ if (typeof window !== 'undefined') {
     window.getPublicSupabaseClient = getPublicSupabaseClient;
 }
 
+/**
+ * Fetches just the sentry_browser_loader_url setting, for the two pages
+ * (login.html, steward_login.html) that opt out of the full
+ * loadPublicSettings() sync entirely (each for its own documented reason —
+ * see their own initPublicPage() calls) but still need this one value:
+ * they have no session yet, so can't use the authenticated-admin settings
+ * read every other admin page relies on, despite needing Sentry the most
+ * (that's exactly where auth failures happen). Anon-readable since
+ * 20260731150000 — as safe as turnstile_site_key, both designed to be
+ * embedded in client-visible code.
+ */
+export async function fetchSentryBrowserLoaderUrl(sb) {
+    try {
+        const { data } = await sb.from('settings').select('value').eq('key', 'sentry_browser_loader_url').single();
+        return data?.value || '';
+    } catch (e) {
+        console.warn('Failed to load sentry_browser_loader_url:', e.message);
+        return '';
+    }
+}
+
 export function applyPublicSettings(data) {
     if (!data) return;
     data.forEach(item => {
@@ -227,6 +248,15 @@ export function applyPublicSettings(data) {
         } else if (item.key === 'map_default_zoom') {
             const num = parseInt(val, 10);
             if (!isNaN(num)) ESF_PUBLIC_CONFIG.MAP_DEFAULT_ZOOM = num;
+        } else if (item.key === 'sentry_browser_loader_url') {
+            // Anon-readable (20260731150000) specifically for login.html/
+            // steward_login.html, which have no session yet and so can't use
+            // the authenticated-admin settings read every other admin page
+            // uses. Not injected here, or by any genuinely public booking
+            // page's own script - each page that wants Sentry calls
+            // initSentryBrowser() explicitly (see js/supabase.js), so this
+            // being readable doesn't mean it's used everywhere.
+            ESF_PUBLIC_CONFIG.SENTRY_BROWSER_LOADER_URL = val;
         }
     });
 }

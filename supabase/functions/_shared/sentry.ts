@@ -1,9 +1,12 @@
 /**
  * Sentry error capture, shared across every Edge Function.
  *
- * No-op whenever SENTRY_DSN isn't set on a given project - never blocks or
- * breaks a function's own response just because monitoring isn't configured
- * there yet (e.g. before the test project has the secret set).
+ * The DSN lives in the settings table (sentry_dsn), not a Supabase secret -
+ * matching how every other integration (Stripe, Zoho, The SMS Works) is
+ * configured in this app: admin-editable via settings.html, no redeploy
+ * needed to rotate or reconfigure. No-ops cleanly whenever that setting is
+ * empty - never blocks or breaks a function's own response just because
+ * monitoring isn't configured yet.
  *
  * defaultIntegrations: false because the Sentry Deno SDK does not support
  * Deno.serve instrumentation - without this, integrations that assume a
@@ -17,12 +20,36 @@
  * response, which would silently drop an in-flight, unflushed event. See
  * https://supabase.com/docs/guides/functions/examples/sentry-monitoring.
  */
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import * as Sentry from 'npm:@sentry/deno@^8'
 
 let initialized = false
+// undefined = not yet fetched; null = fetched, but unset/empty. Cached for
+// the lifetime of the warm isolate so a burst of errors doesn't re-query
+// settings for every single one.
+let cachedDsn: string | null | undefined = undefined
 
-function ensureInit(): boolean {
-  const dsn = Deno.env.get('SENTRY_DSN')
+async function getDsn(): Promise<string | null> {
+  if (cachedDsn !== undefined) return cachedDsn
+  try {
+    const supabaseAdmin = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    )
+    const { data } = await supabaseAdmin.from('settings').select('value').eq('key', 'sentry_dsn').single()
+    cachedDsn = data?.value || null
+  } catch {
+    // Settings read failed (network hiccup, row missing pre-migration) -
+    // treat as unconfigured rather than throwing; captureAndFlush's own
+    // try/catch would swallow this anyway, but resolving explicitly avoids
+    // re-attempting the query on every single error in this isolate.
+    cachedDsn = null
+  }
+  return cachedDsn
+}
+
+async function ensureInit(): Promise<boolean> {
+  const dsn = await getDsn()
   if (!dsn) return false
   if (!initialized) {
     Sentry.init({
@@ -54,7 +81,7 @@ export async function captureAndFlush(
   extraTags?: Record<string, string>
 ): Promise<void> {
   try {
-    if (!ensureInit()) return
+    if (!(await ensureInit())) return
     Sentry.withScope((scope) => {
       scope.setTag('function', context)
       if (extraTags) {
