@@ -62,6 +62,32 @@
     <div id="nav-container"></div>
 
     <div class="max-w-7xl mx-auto px-4 md:px-6 py-6 md:py-10">
+
+        <!-- At-a-glance summary strip. Combined across all instances (same
+             convention as the Statistics page) - deliberately not scoped to
+             whichever instance happens to be selected, since this is an
+             overview, not a workspace. -->
+        <div id="hub-summary" class="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 mb-6 md:mb-8">
+            <div class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+                <p class="text-2xl font-bold text-gray-800" id="hub-newToday">–</p>
+                <p class="text-xs text-gray-500 mt-1">New bookings today</p>
+            </div>
+            <div class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+                <p class="text-2xl font-bold text-gray-800" id="hub-paymentRequested">–</p>
+                <p class="text-xs text-gray-500 mt-1">Awaiting payment</p>
+            </div>
+            <div class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+                <p class="text-2xl font-bold" id="hub-failedMessages">–</p>
+                <p class="text-xs text-gray-500 mt-1">Failed emails/texts</p>
+            </div>
+            <a id="hub-sentry-link" href="https://ella-street-residents-associat.sentry.io/issues/" target="_blank"
+                rel="noopener noreferrer"
+                class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm hover-card flex flex-col justify-center hover:border-blue-300">
+                <p class="text-sm font-bold text-blue-600">View recent errors →</p>
+                <p class="text-xs text-gray-500 mt-1">Opens Sentry in a new tab</p>
+            </a>
+        </div>
+
         <p class="text-gray-500 mb-4 md:mb-6 font-medium text-sm md:text-base">Select a module to manage:</p>
 
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">

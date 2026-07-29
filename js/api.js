@@ -7,6 +7,7 @@ const TBL_PAYMENTS = 'payments';
 const TBL_LOCATIONS = 'locations';
 const TBL_BOOKING_LOCATIONS = 'booking_locations';
 const TBL_EMAIL_QUEUE = 'email_queue';
+const TBL_SMS_QUEUE = 'sms_queue';
 const TBL_AUDIT_LOGS = 'audit_logs';
 const VIEW_PUBLIC_BOOKINGS_INFO = 'public_bookings_info';
 
@@ -703,6 +704,37 @@ export async function fetchStatsData() {
         sb.from(TBL_BOOKINGS).select('*, payments(refund_amount)').order('created_at', { ascending: false }),
         STATS_CAP
     );
+}
+
+/**
+ * Cheap, at-a-glance counts for the admin Hub's summary strip. Combined
+ * across all instances, matching fetchStatsData()'s convention — this is an
+ * overview, not a workspace scoped to whichever instance happens to be
+ * selected. head:true count-only queries throughout (same pattern as
+ * page-sms-queue.js's loadCounts()), so this stays cheap regardless of how
+ * large bookings/email_queue/sms_queue grow.
+ * @param {string} todaySinceIso - ISO timestamp for the start of "today" in
+ *   the admin's own local time (computed client-side - the server has no
+ *   reliable notion of which timezone "today" should mean for this app).
+ */
+export async function fetchHubSummary(todaySinceIso) {
+    const sb = getSupabaseClient();
+    const [newToday, paymentRequested, emailErrors, smsErrors] = await Promise.all([
+        sb.from(TBL_BOOKINGS).select('*', { count: 'exact', head: true }).gte('created_at', todaySinceIso),
+        sb.from(TBL_BOOKINGS).select('*', { count: 'exact', head: true }).eq('status', 'Payment Requested'),
+        sb.from(TBL_EMAIL_QUEUE).select('*', { count: 'exact', head: true }).eq('status', 'Error'),
+        sb.from(TBL_SMS_QUEUE).select('*', { count: 'exact', head: true }).eq('status', 'Error'),
+    ]);
+    if (newToday.error) throw newToday.error;
+    if (paymentRequested.error) throw paymentRequested.error;
+    if (emailErrors.error) throw emailErrors.error;
+    if (smsErrors.error) throw smsErrors.error;
+
+    return {
+        newBookingsToday: newToday.count ?? 0,
+        paymentRequestedCount: paymentRequested.count ?? 0,
+        failedMessageCount: (emailErrors.count ?? 0) + (smsErrors.count ?? 0),
+    };
 }
 
 /**

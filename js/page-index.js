@@ -2,6 +2,7 @@ import { initAdminPage, getSupabaseClient } from './supabase.js';
 import { getCurrentInstance } from './config.js';
 import { showToast } from './ui.js';
 import { safeError } from './utils.js';
+import { fetchHubSummary } from './api.js';
 
 let sb;
 
@@ -72,6 +73,7 @@ function initIndex() {
     sb = getSupabaseClient();
 
     updateVisibility();
+    loadSummaryStrip();
 
     // Event delegation for navigation cards.
     document.body.addEventListener('click', (e) => {
@@ -96,6 +98,36 @@ function initIndex() {
             }
         }
     });
+}
+
+/**
+ * Populates the Hub's at-a-glance summary strip. Best-effort: a failure here
+ * leaves the tiles at their static "–" placeholder rather than blocking the
+ * rest of the page, which is fully usable without it (this is a convenience
+ * overview, not a page any workflow depends on).
+ */
+async function loadSummaryStrip() {
+    const newTodayEl = document.getElementById('hub-newToday');
+    const paymentRequestedEl = document.getElementById('hub-paymentRequested');
+    const failedMessagesEl = document.getElementById('hub-failedMessages');
+    if (!newTodayEl || !paymentRequestedEl || !failedMessagesEl) return;
+
+    try {
+        // Local midnight, not the server's - "today" means the admin's own
+        // day, not whatever timezone the database happens to run in.
+        const startOfToday = new Date();
+        startOfToday.setHours(0, 0, 0, 0);
+
+        const { newBookingsToday, paymentRequestedCount, failedMessageCount } =
+            await fetchHubSummary(startOfToday.toISOString());
+
+        newTodayEl.textContent = newBookingsToday;
+        paymentRequestedEl.textContent = paymentRequestedCount;
+        failedMessagesEl.textContent = failedMessageCount;
+        failedMessagesEl.classList.add(failedMessageCount > 0 ? 'text-red-600' : 'text-gray-800');
+    } catch (err) {
+        console.warn('Failed to load Hub summary strip:', safeError(err));
+    }
 }
 
 function updateVisibility() {
