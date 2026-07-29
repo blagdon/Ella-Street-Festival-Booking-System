@@ -4,6 +4,7 @@ import { sendViaZoho } from '../_shared/zoho.ts'
 import { sendViaSms, normalizePhone } from '../_shared/sms.ts'
 import { getStripeClient, getStripeWebhookSecret, loadStripeSettings, type StripeMode } from '../_shared/stripe.ts'
 import { escapeHtml } from '../_shared/format.ts'
+import { captureAndFlush } from '../_shared/sentry.ts'
 
 /**
  * Best-effort confirmation email after a successful Stripe payment — reuses
@@ -433,6 +434,7 @@ Deno.serve(async (req) => {
     })
   } catch (error: any) {
     console.error('stripe-webhook processing error:', error.message)
+    await captureAndFlush(error, 'stripe-webhook')
     return new Response(JSON.stringify({ error: error.message }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' }

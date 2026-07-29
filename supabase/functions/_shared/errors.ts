@@ -34,6 +34,7 @@
  * exact messages (refunds, get-reviews, retry-queued-email, create-checkout-
  * session). Don't extend this to them without a reason.
  */
+import { captureAndFlush } from './sentry.ts'
 
 /**
  * An error whose message is written for the end user and is safe to return
@@ -65,10 +66,10 @@ function newErrorReference(): string {
  * (server side, where it is useful) and replaced with a generic message
  * carrying a reference id that appears in that log line.
  */
-export function toPublicError(
+export async function toPublicError(
   error: unknown,
   context: string
-): { message: string; status: number } {
+): Promise<{ message: string; status: number }> {
   if (error instanceof PublicError) {
     return { message: error.message, status: error.status }
   }
@@ -76,6 +77,7 @@ export function toPublicError(
   const reference = newErrorReference()
   const detail = error instanceof Error ? (error.stack || error.message) : String(error)
   console.error(`[${context}] unexpected error (ref ${reference}):`, detail)
+  await captureAndFlush(error, context, { reference })
 
   return {
     message:
@@ -89,12 +91,12 @@ export function toPublicError(
  * Convenience wrapper building the Response itself, so each function's catch
  * block is a single line and cannot forget to sanitise.
  */
-export function publicErrorResponse(
+export async function publicErrorResponse(
   error: unknown,
   context: string,
   corsHeaders: Record<string, string>
-): Response {
-  const { message, status } = toPublicError(error, context)
+): Promise<Response> {
+  const { message, status } = await toPublicError(error, context)
   return new Response(JSON.stringify({ error: message }), {
     status,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' }
