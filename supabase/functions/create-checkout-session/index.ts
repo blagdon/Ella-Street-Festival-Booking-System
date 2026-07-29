@@ -317,6 +317,13 @@ Deno.serve(async (req) => {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })
   } catch (error: any) {
+    // Admin caller — full error.message intentionally returned, not run
+    // through toPublicError/publicErrorResponse like the public endpoints
+    // (get-payment-link, submit-booking, cancel-booking). See
+    // _shared/errors.ts's module comment: sanitisation is per-caller-type,
+    // not universal, and this function is named there as a deliberate
+    // exception. captureAndFlush here only reports to Sentry - it doesn't
+    // sanitise anything itself.
     await captureAndFlush(error, 'create-checkout-session')
     return new Response(JSON.stringify({ error: error.message }), {
       status: 500,
