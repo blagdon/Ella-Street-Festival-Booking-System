@@ -2,6 +2,54 @@
 
 All notable changes to this project are documented in this file.
 
+## [Unreleased]
+
+A short fix batch on top of v7.16.0, plus new repo tooling. `package.json` still reads 7.16.0 — no version bump has been cut for this batch yet.
+
+### Fixed
+
+- **Four related "the SMS silently didn't send" bugs**, all reported live in quick succession. Chargeable-booking confirmations (both the Stripe and bank-transfer paths) never texted at all — neither `stripe-webhook` nor the bank-transfer flow had any SMS logic, unlike the free-confirm path. The Kanban/Summary confirm modal's "also text" tickbox was read but never actually passed through `confirmChargeableAndRequestPayment()`. **Resend Payment Request** had no tickbox anywhere in the UI to opt into a text, even though the server already supported one. And a stale browser cache made an already-deployed fix look broken until a hard refresh — Vercel serves JS with no cache-busting hash, so a plain reload can silently keep running pre-fix code. Fixed at each root cause; `vercel.json` now also sends `Cache-Control: no-cache, must-revalidate` so this class of "deployed but not live for this admin" bug can't recur.
+- A flaky test re-run: two new SMS tests left stray `sms_queue` rows outside their file's cleanup wildcard, so a second run's exact-count assertion could fail against a first run's leftovers.
+- A high-severity `postcss` advisory (XSS / path-traversal via crafted CSS), patched via `npm audit fix` (postcss → 8.5.24, transitive through nanoid). Build-time only; `css/output.css` rebuilds byte-identical, so no redeploy risk.
+
+### Added
+
+- **A short first-party payment link** (`pay.html` + the new `get-payment-link` function) so the `payment_requested` SMS can carry a real link without a ~475-character Stripe Checkout URL eating 6-8 billed parts on its own — mirrors the `cancel_link` trick already used elsewhere. Shortened again shortly after, from the ~110-character Stripe session id to an 8-character `payment_link_code`.
+- **A correctness-only ESLint setup** (`eslint.config.mjs`) — the lint net this 12.7k-line vanilla-JS frontend never had (`no-undef`, `no-unused-vars`, etc., no style/formatting rules). Its first run surfaced 29 pre-existing issues — dead code, silent empty catch blocks, a couple of direct `hasOwnProperty` calls, an unnecessary regex escape — all cleaned up in the same pass, verified against the full test suite and a manual smoke test.
+
+## [v7.16.0] - 2026-07-27
+
+"SMS Cancel Link and Bank Details" — a same-day follow-up to v7.15.0.
+
+### Added
+
+- **`{{cost}}`/`{{bank_details}}` and `{{cancel_link}}` added across SMS templates.** `booking_confirmed` now carries payment details for a stallholder who only reads texts, and every template except `booking_rejected`/`booking_cancelled` (nothing left to cancel there) carries a cancel link. A deliberate, explicit trade-off: these three templates now bill as 2 parts instead of the 1-part budget the previous release had specifically reworded them to hit.
+
+## [v7.15.0] - 2026-07-27
+
+"SMS Integration" — texting goes from inert scaffolding (v7.14.0 shipped with only a no-op mock provider) to a live, working feature: a real provider account, opt-in SMS across every admin action that already emails, delivery-status tracking, and audit coverage. Shipped as PRs #110–#119.
+
+### Added
+
+- **Live SMS sending via The SMS Works**, with a Settings card for its credentials and a **Test Mode master switch** (safe by default, seeded ON) that force-routes every send through the mock adapter regardless of the configured provider — entering real credentials can never itself cause a real send. Sent/Successful/Unsuccessful/Simulated counts added to the SMS Queue.
+- **On-demand SMS delivery-status tracking.** `sms_queue.status` only ever meant "the provider's API accepted the message," not "the text reached the phone" — a real bulk send had rows marked Sent that never arrived. Adds an admin-triggered check against the provider's status endpoint. Deliberately polling, not a webhook: no signature-verification mechanism could be confirmed for The SMS Works' delivery-report callback, and a public receiver trusting an unauthenticated POST was judged not worth building without one. The result is stored for visibility only — it never changes retry eligibility.
+- **Opt-in SMS added to every remaining admin action that already emails**: Compose Email and Bulk Email (Kanban/Summary), reject, cancel, and Location Manager's send/bulk-send — each with its own tickbox, defaulted off and reset on every open. Booking submission and self-service cancellation now also text automatically, with no tickbox since no admin is present to tick one — mirroring their existing auto-emails.
+- **Audit logging for every SMS action** (`sms_sent`, `sms_bulk_queued`, `retry_queued_sms`), including the billed segment count and provider message id, so the audit trail can answer "why was the bill that size," not just "was it sent."
+
+### Fixed
+
+- **The rejection SMS never contained the admin's typed reason** — `getSmsFromTemplate()` had no `{{reason}}` substitution at all, unlike its email equivalent. Fixed, with the reason truncated to 40 characters using ASCII `...` rather than `…` — a single non-GSM-7 character would have forced the whole message into 70-char-per-part UCS-2 encoding, the opposite of what the truncation was for.
+- **All three seeded SMS templates were silently billing as 2 parts instead of 1** (168-198 characters against the 160-char GSM-7 limit). Reworded to fit a single part with headroom, via a guarded migration that skips any row an admin has already hand-edited.
+- **A stray Tailwind CSS bug**: the mock SMS adapter's `[sms:mock]` log tag matched Tailwind v4's arbitrary-property syntax and emitted a junk CSS rule, because `@source` scanned the entire repository including the Deno Edge Functions. Tag renamed; `@source` narrowed to the actual templates.
+
+### Changed
+
+- **Email/SMS Templates and Email/SMS Queue merged into tabbed pages** (`comms_admin.html`, `message_queue.html`), replacing four near-duplicate cards on the tools index with two.
+
+### Testing
+
+- 21 SMS-related integration tests across four files (`sms-delivery-status`, `sms-send`, `sms-test-mode`, plus additions to `integration.test.mjs`), all run against the real deployed functions with a safety interlock that refuses to run unless the test project's provider is `mock`.
+
 ## [v7.14.0] - 2026-07-25
 
 SMS sending, added from a feasibility study into texting stallholders. Minor bump: a genuinely new capability, but one that ships **inert** — the default provider is a no-op, so nothing is sent or billed until someone deliberately configures a real account. The whole pipeline is a deliberate mirror of the existing email queue (`email_queue` → `sms_queue`, `email_templates` → `sms_templates`, `claim_pending_emails()` → `claim_pending_sms()`, `_shared/zoho.ts` → `_shared/sms.ts`), so there is one mental model to maintain rather than two.
