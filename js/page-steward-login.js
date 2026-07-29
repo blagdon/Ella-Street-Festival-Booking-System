@@ -64,7 +64,7 @@ async function handleLogin(e) {
         // Use the sbClient from config.js (or create new if missing)
         const sb = (typeof window.sbClient !== 'undefined') ? window.sbClient : getSupabaseClient();
 
-        const { data, error } = await sb.auth.signInWithPassword({
+        const { error } = await sb.auth.signInWithPassword({
             email: email,
             password: password
         });

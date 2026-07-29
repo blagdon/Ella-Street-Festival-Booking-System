@@ -75,13 +75,6 @@ initPublicPage(async function () {
         });
     }
 
-    // --- SERVER-SIDE ID GENERATION ---
-    async function generateNextId() {
-        const { data, error } = await sb.rpc('get_next_booking_id', { p_prefix: PREFIX });
-        if (error) throw new Error("ID Generation Failed: " + error.message);
-        return data;
-    }
-
     // --- SUBMIT HANDLER ---
     const form = document.getElementById('foodForm');
 

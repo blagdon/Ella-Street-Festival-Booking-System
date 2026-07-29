@@ -119,7 +119,7 @@ function renderCharts(allRows, combinedData, foodData, nonFoodData) {
 
     combinedData.forEach(r => {
         const s = r.status || 'Pending';
-        if (statusCounts.hasOwnProperty(s)) {
+        if (Object.hasOwn(statusCounts, s)) {
             statusCounts[s]++;
         } else {
             statusCounts.Pending++;
@@ -406,7 +406,7 @@ function renderPanel(containerId, data, title, headerClass, borderClass) {
 
     data.forEach(r => {
         const s = r.status || 'Pending';
-        if (statusCounts.hasOwnProperty(s)) statusCounts[s]++;
+        if (Object.hasOwn(statusCounts, s)) statusCounts[s]++;
         else statusCounts.Pending++;
 
         if (s === 'Confirmed') {

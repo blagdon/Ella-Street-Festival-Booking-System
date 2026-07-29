@@ -32,7 +32,7 @@ async function initSteward() {
     window.addEventListener('online', async () => {
         updateStatus(true);
         // Refresh auth session first (may have expired while offline)
-        try { await sb.auth.getSession(); } catch (e) { }
+        try { await sb.auth.getSession(); } catch (e) { console.warn('Session refresh failed:', e.message); }
         // Sync queued changes BEFORE pulling fresh data
         await processSyncQueue();
         await syncDown();

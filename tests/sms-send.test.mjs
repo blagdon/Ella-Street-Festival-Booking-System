@@ -348,7 +348,7 @@ describe('sms_templates', () => {
 
   test('only the templates approved for it bill as more than one part', () => {
     // Mirrors countSegments() in _shared/sms.ts.
-    const GSM7 = /^[A-Za-z0-9 \r\n@£$¥èéùìòÇØøÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ!"#¤%&'()*+,\-./:;<=>?¡ÄÖÑÜ§¿äöñüà^{}\\\[~\]|€]*$/;
+    const GSM7 = /^[A-Za-z0-9 \r\n@£$¥èéùìòÇØøÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ!"#¤%&'()*+,\-./:;<=>?¡ÄÖÑÜ§¿äöñüà^{}\\[~\]|€]*$/;
     const parts = (t) => {
       const u = !GSM7.test(t);
       return u ? (t.length <= 70 ? 1 : Math.ceil(t.length / 67))

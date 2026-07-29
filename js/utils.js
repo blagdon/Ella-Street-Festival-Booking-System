@@ -114,7 +114,10 @@ export async function parseEdgeFunctionError(error, defaultMsg = "Request failed
             } else if (json.message) {
                 errMsg = json.message;
             }
-        } catch (e) {}
+        } catch (e) {
+            // Body wasn't JSON (or had no .error/.message field) - errMsg
+            // already has the generic fallback set above.
+        }
     }
     return errMsg;
 }
@@ -122,7 +125,7 @@ export async function parseEdgeFunctionError(error, defaultMsg = "Request failed
 // GSM-7 character set. Anything outside it forces the whole message to UCS-2,
 // which drops the per-part limit from 160 to 70 — a single £, curly quote or
 // emoji can therefore double the cost of a text.
-const GSM7_RE = /^[A-Za-z0-9 \r\n@£$¥èéùìòÇØøÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ!"#¤%&'()*+,\-./:;<=>?¡ÄÖÑÜ§¿äöñüà^{}\\\[~\]|€]*$/;
+const GSM7_RE = /^[A-Za-z0-9 \r\n@£$¥èéùìòÇØøÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ!"#¤%&'()*+,\-./:;<=>?¡ÄÖÑÜ§¿äöñüà^{}\\[~\]|€]*$/;
 
 /**
  * Billed-SMS-segment estimate for a message body.

@@ -186,7 +186,7 @@ export async function getEmailFromTemplate(templateId, booking, id, extraVars = 
     const bizName = escapeHtml(booking.business_name || booking.business || 'your business');
 
     // Cost calculation logic safely duplicated or imported
-    let costStr = "the agreed fee";
+    let costStr;
     if (booking.stall_cost !== undefined && booking.stall_cost !== null) {
         costStr = `£${parseFloat(booking.stall_cost).toFixed(2)}`;
     } else {
@@ -276,7 +276,7 @@ export async function getSmsFromTemplate(templateId, booking, id, extraVars = {}
     const ownerName = booking.owner_name || booking.owner || 'Trader';
     const bizName = booking.business_name || booking.business || 'your business';
 
-    let costStr = "the agreed fee";
+    let costStr;
     if (booking.stall_cost !== undefined && booking.stall_cost !== null) {
         costStr = `£${parseFloat(booking.stall_cost).toFixed(2)}`;
     } else {

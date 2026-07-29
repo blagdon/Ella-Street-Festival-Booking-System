@@ -1,5 +1,5 @@
 import { initAdminPage } from './supabase.js';
-import { initDetails, selectBooking, filterList, saveChanges, backToList } from './details.js';
+import { initDetails, filterList, saveChanges, backToList } from './details.js';
 
 function init() {
     initDetails();

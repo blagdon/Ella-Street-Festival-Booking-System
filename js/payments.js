@@ -614,10 +614,6 @@ async function savePayment() {
     }
 }
 
-async function refreshData() {
-    await loadData();
-}
-
 async function sendReminder(id) {
     if (!id) return;
     await manualSendPaymentReminder(id);

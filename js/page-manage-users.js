@@ -99,7 +99,6 @@ async function createUser() {
     const password = document.getElementById('newPassword').value;
     const role = document.getElementById('newRole').value;
     const btn = document.getElementById('createBtn');
-    const msgEl = document.getElementById('createMsg');
 
     // Validation
     if (!email || !password) {
@@ -167,13 +166,4 @@ async function createUser() {
         btn.disabled = false;
         btn.innerText = 'Create Account';
     }
-}
-
-function showMsg(text, type) {
-    const el = document.getElementById('createMsg');
-    el.innerText = text;
-    el.className = type === 'success'
-        ? 'text-sm font-semibold rounded-lg px-3 py-2 bg-green-50 text-green-700 border border-green-200'
-        : 'text-sm font-semibold rounded-lg px-3 py-2 bg-red-50 text-red-700 border border-red-200';
-    el.classList.remove('hidden');
 }

@@ -162,7 +162,10 @@ export async function loadStallCosts(sb) {
                 const data = JSON.parse(cached);
                 applySettingsToConfig(data);
                 return;
-            } catch (e) {}
+            } catch (e) {
+                // Corrupt/stale cache - fall through to a fresh fetch below.
+                console.warn('Failed to parse cached settings, refetching:', e.message);
+            }
         }
     }
 

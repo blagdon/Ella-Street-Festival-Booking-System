@@ -19,7 +19,7 @@ export function initDetails() {
 
 function checkDirty(e) {
     const el = e.target;
-    if (trackedFields.includes(el.id) && originalValues.hasOwnProperty(el.id)) {
+    if (trackedFields.includes(el.id) && Object.hasOwn(originalValues, el.id)) {
         el.classList.toggle('field-dirty', el.value !== originalValues[el.id]);
     }
 }

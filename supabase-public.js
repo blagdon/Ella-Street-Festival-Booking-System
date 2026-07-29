@@ -170,12 +170,12 @@ if (esfIsLocalHost()) {
         localStorage.setItem(ESF_OVERRIDE_KEY, JSON.stringify(
             Object.assign({ SUPABASE_KEY: key, PROJECT_LABEL: label || '' }, extra || {})
         ));
-        try { sessionStorage.removeItem('ESF_SETTINGS_CACHE'); } catch (e) {}
+        try { sessionStorage.removeItem('ESF_SETTINGS_CACHE'); } catch (e) { /* private-browsing/quota edge case - ignore */ }
         console.warn('[ESF] Local override set. Reload the page to apply.');
     };
     window.esfUseProduction = function () {
         localStorage.removeItem(ESF_OVERRIDE_KEY);
-        try { sessionStorage.removeItem('ESF_SETTINGS_CACHE'); } catch (e) {}
+        try { sessionStorage.removeItem('ESF_SETTINGS_CACHE'); } catch (e) { /* private-browsing/quota edge case - ignore */ }
         console.warn('[ESF] Local override cleared. Reload the page to return to production.');
     };
 }
@@ -239,7 +239,10 @@ export async function loadPublicSettings() {
                 const data = JSON.parse(cached);
                 applyPublicSettings(data);
                 return;
-            } catch (e) {}
+            } catch (e) {
+                // Corrupt/stale cache - fall through to a fresh fetch below.
+                console.warn('Failed to parse cached public settings, refetching:', e.message);
+            }
         }
     }
 
@@ -265,7 +268,11 @@ export function initPublicSettingsSync() {
             try {
                 const data = JSON.parse(cached);
                 applyPublicSettings(data);
-            } catch (e) {}
+            } catch (e) {
+                // Corrupt/stale cache - loadPublicSettings()'s async fetch
+                // (called alongside this on every page) will refresh it.
+                console.warn('Failed to parse cached public settings:', e.message);
+            }
         }
     }
 }

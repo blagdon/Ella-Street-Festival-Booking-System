@@ -115,7 +115,7 @@ describe('the six directly-rewritten policies (previously plain text, now user_r
   });
 
   test('admin can write performers (performer_admin_access)', async () => {
-    const { data, error } = await authed
+    const { error } = await authed
       .from('performers')
       .update({ admin_notes: 'role enum test' })
       .eq('email', 'nonexistent-role-enum-test@example.test')

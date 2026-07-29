@@ -1,6 +1,6 @@
 import { getSupabaseClient } from './supabase.js';
 import { CONFIG } from './config.js';
-import { validateString, validateEmail, validateBookingId, validateStatus, escapeHtml, parseEdgeFunctionError, MAX_FIELD_LENGTHS } from './utils.js';
+import { validateString, validateEmail, validateBookingId, validateStatus, parseEdgeFunctionError, MAX_FIELD_LENGTHS } from './utils.js';
 
 const TBL_BOOKINGS = 'bookings';
 const TBL_PAYMENTS = 'payments';
@@ -626,12 +626,9 @@ export async function fetchLocationData(currentInstance) {
     await attachLocationIds(sb, bLocs);
 
     // 2. Fetch GLOBAL Occupancy
-    let occupancyFilter = [];
-    if (currentPrefix === CONFIG.INSTANCE_MAP['DEV']) {
-        occupancyFilter = [CONFIG.INSTANCE_MAP['DEV']];
-    } else {
-        occupancyFilter = [CONFIG.INSTANCE_MAP['FOOD'], CONFIG.INSTANCE_MAP['GENERAL'], CONFIG.INSTANCE_MAP['MISC']];
-    }
+    const occupancyFilter = (currentPrefix === CONFIG.INSTANCE_MAP['DEV'])
+        ? [CONFIG.INSTANCE_MAP['DEV']]
+        : [CONFIG.INSTANCE_MAP['FOOD'], CONFIG.INSTANCE_MAP['GENERAL'], CONFIG.INSTANCE_MAP['MISC']];
 
     // Capped like the display query above, with the same reasoning, plus one
     // more: this feeds which pitches LOOK occupied client-side, not whether an
@@ -659,7 +656,9 @@ export async function fetchLocationData(currentInstance) {
     try {
         const { data: lData } = await sb.from(TBL_LOCATIONS).select('*').eq('dataset', dataset).limit(LIST_CAP);
         if (lData) locs = normalizeLocationIds(lData);
-    } catch (e) { }
+    } catch (e) {
+        console.warn('Failed to fetch locations reference data:', e.message);
+    }
 
     return {
         bookings: bLocs,

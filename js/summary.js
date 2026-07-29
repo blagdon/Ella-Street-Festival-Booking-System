@@ -1,4 +1,4 @@
-import { fetchKanbanData, updateBookingStatus, addNote, sendEmail, sendBookingSms, queueBulkEmail, queueBulkSms, requestPayment, resendPaymentRequest, LIST_CAP } from './api.js';
+import { fetchKanbanData, addNote, sendEmail, sendBookingSms, queueBulkEmail, queueBulkSms, requestPayment, resendPaymentRequest, LIST_CAP } from './api.js';
 import { sharedUpdateStatus, populateDetailPane, initComposeSmsToggle, initBulkSmsToggle, readOptionalSmsBody, resetSmsToggle, readStatusSmsChecked, resetStatusSmsCheckbox } from './shared.js';
 import { showToast, showConfirm, notifyIfTruncated } from './ui.js';
 import { escapeHtml, sortBookings } from './utils.js';
@@ -438,13 +438,9 @@ function showConfirmModalLocal(id) {
     const costInput = document.getElementById('confirmCostInput');
     // Simplified cost logic
     const prefix = booking.instance_prefix || CONFIG.INSTANCE_MAP['DEV'];
-    let cost = 0;
-
-    if (booking.stall_cost !== undefined && booking.stall_cost !== null) {
-        cost = parseFloat(booking.stall_cost);
-    } else {
-        cost = getStallCost(prefix);
-    }
+    const cost = (booking.stall_cost !== undefined && booking.stall_cost !== null)
+        ? parseFloat(booking.stall_cost)
+        : getStallCost(prefix);
 
     if (costInput) {
         costInput.value = cost.toFixed(2);
