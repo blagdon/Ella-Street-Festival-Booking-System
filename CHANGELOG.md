@@ -40,7 +40,7 @@ A short fix batch on top of v7.16.0, plus new repo tooling. `package.json` still
 
 - **The rejection SMS never contained the admin's typed reason** — `getSmsFromTemplate()` had no `{{reason}}` substitution at all, unlike its email equivalent. Fixed, with the reason truncated to 40 characters using ASCII `...` rather than `…` — a single non-GSM-7 character would have forced the whole message into 70-char-per-part UCS-2 encoding, the opposite of what the truncation was for.
 - **All three seeded SMS templates were silently billing as 2 parts instead of 1** (168-198 characters against the 160-char GSM-7 limit). Reworded to fit a single part with headroom, via a guarded migration that skips any row an admin has already hand-edited.
-- **A stray Tailwind CSS bug**: the mock SMS adapter's `[sms:mock]` log tag matched Tailwind v4's arbitrary-property syntax and emitted a junk CSS rule, because `@source` scanned the entire repository including the Deno Edge Functions. Tag renamed; `@source` narrowed to the actual templates.
+- **A stray Tailwind CSS bug**: the mock SMS adapter's bracket-colon log tag matched Tailwind v4's arbitrary-property syntax and emitted a junk CSS rule, because `@source` scanned the entire repository including the Deno Edge Functions. Tag renamed; `@source` narrowed to the actual templates.
 
 ### Changed
 

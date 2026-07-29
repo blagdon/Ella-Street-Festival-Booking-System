@@ -3,10 +3,14 @@
 /* Scoped to the actual templates rather than the whole repo (previously
    `@source "../"`). A repo-wide scan also reads files that are not templates —
    Deno Edge Functions, tests, scripts — where Tailwind's arbitrary-property
-   syntax `[name:value]` matches ordinary strings and emits junk rules into the
-   built stylesheet. A log tag `[sms:mock]` in
-   supabase/functions/_shared/sms.ts did exactly that, shipping a
-   `.[sms\:mock] { sms: mock }` rule (caught by css-build-check on PR #109).
+   syntax (a name and a value in square brackets, colon-separated) matches
+   ordinary strings and emits junk rules into the built stylesheet. A log tag
+   shaped exactly like that arbitrary-property syntax, in
+   supabase/functions/_shared/sms.ts, did exactly that, shipping a junk rule
+   into the stylesheet (caught by css-build-check on PR #109). Deliberately
+   not spelled out literally here even in prose - this comment is itself a
+   Tailwind source per @source below, and writing the real bracketed string
+   regenerates the exact bug it describes.
 
    Verified byte-identical to the repo-wide build at the time of this change.
 
