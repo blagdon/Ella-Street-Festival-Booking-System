@@ -4,6 +4,7 @@ import { sendViaSms, normalizePhone } from '../_shared/sms.ts'
 import { ALLOWED_ORIGIN } from '../_shared/cors.ts'
 import { escapeHtml } from '../_shared/format.ts'
 import { publicErrorResponse } from '../_shared/errors.ts'
+import { verifyTurnstile } from '../_shared/turnstile.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
@@ -176,13 +177,6 @@ Deno.serve(async (req) => {
   try {
     const { token, cancelToken, reason } = await req.json()
 
-    if (!token) {
-      return new Response(JSON.stringify({ error: 'Please complete the CAPTCHA verification.' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      })
-    }
-
     if (!cancelToken) {
       return new Response(JSON.stringify({ error: 'Missing cancellation token.' }), {
         status: 400,
@@ -191,28 +185,7 @@ Deno.serve(async (req) => {
     }
 
     // 1. Verify Turnstile CAPTCHA with Cloudflare siteverify API
-    const turnstileSecret = Deno.env.get('TURNSTILE_SECRET_KEY')
-    if (!turnstileSecret) {
-      throw new Error('TURNSTILE_SECRET_KEY is not configured on the server.')
-    }
-
-    const verifyUrl = 'https://challenges.cloudflare.com/turnstile/v0/siteverify'
-    const formData = new URLSearchParams()
-    formData.append('secret', turnstileSecret)
-    formData.append('response', token)
-
-    const verifyResponse = await fetch(verifyUrl, {
-      method: 'POST',
-      body: formData
-    })
-
-    const verifyData = await verifyResponse.json()
-    if (!verifyData.success) {
-      return new Response(JSON.stringify({ error: 'CAPTCHA verification failed. Please try again.' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      })
-    }
+    await verifyTurnstile(token)
 
     // 2. Initialize Supabase client with Service Role Key
     const supabaseClient = createClient(

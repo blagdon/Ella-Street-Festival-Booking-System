@@ -1,6 +1,8 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { ALLOWED_ORIGIN } from '../_shared/cors.ts'
 import { PublicError, publicErrorResponse } from '../_shared/errors.ts'
+import { verifyTurnstile } from '../_shared/turnstile.ts'
+import { resolveStripeMode, getStripeClient, loadStripeSettings } from '../_shared/stripe.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
@@ -8,34 +10,46 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
 
-// Stripe Checkout Sessions expire 24h after creation by default, and
-// create-checkout-session never overrides expires_at - so this is a reliable
-// heuristic, not a guess. stripe_payment_requested_at is updated to now() on
-// every request AND every resend (same update call that sets the session
-// url), so it always reflects the currently-active session's creation time,
-// never a stale first-ever request. This can't confirm Stripe's actual
-// server-side state (an admin could someday change expires_at, or the
-// session could already be completed) - it's a cheap, local approximation
-// that avoids redirecting into Stripe's own bare "session expired" page with
-// no ESF context, using data already being tracked for the double-click
-// guard in create-checkout-session.
-const CHECKOUT_SESSION_EXPIRY_MS = 24 * 60 * 60 * 1000
+// Stripe Checkout Sessions expire 24h after creation by default - this is
+// both "how long a stored session is still considered usable" and the
+// window rpc_claim_stripe_session_slot uses to decide a fresh one is needed.
+const SESSION_FRESHNESS_SECONDS = 24 * 60 * 60
+
+// How long, and how many times, to wait for a concurrent request that has
+// already claimed the slot (created moments ago, Stripe hasn't responded
+// yet) to finish writing the real checkout_url - rather than serving a
+// stale/missing link, or wastefully creating a second session ourselves.
+// 3 x 700ms comfortably covers Stripe's typical response time; if it's
+// still not there, something is genuinely wrong and the caller gets a clear
+// "try again" rather than hanging indefinitely.
+const CLAIM_WAIT_ATTEMPTS = 3
+const CLAIM_WAIT_MS = 700
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
 
 /**
  * Public, unauthenticated redirect-target lookup for pay.html — resolves the
- * short link embedded in the payment_requested SMS (`pay.html?token=<short
- * payment_link_code>`) back to the actual Stripe Checkout URL stored on the
- * booking at creation time (create-checkout-session's `stripe_checkout_url`
- * column), so the SMS never has to carry Stripe's own ~400+ character URL.
+ * short link embedded in the payment_requested email/SMS
+ * (`pay.html?paymentToken=<payment_link_code>`) to a real Stripe Checkout
+ * URL, creating one lazily on the caller's behalf if none exists yet or the
+ * stored one has passed Stripe's 24h default expiry. This means a
+ * stallholder who waits days before clicking always lands on a session
+ * created moments ago, rather than one requested at send-time and long
+ * since expired.
+ *
+ * Now state-changing (creates real, costed Stripe sessions), unlike before —
+ * gated behind Turnstile for the same reason submit-booking/cancel-booking
+ * are: a public endpoint that can spend money must not be a bare, ungated
+ * lookup.
  *
  * The token is `bookings.payment_link_code` — an 8-character random code
  * every booking gets by default (see the `20260731110000_payment_link_short_
- * code.sql` migration), not the Stripe Checkout Session id itself; that
- * earlier design (20260731100000) worked but made for a needlessly long
- * (~110 char) visible SMS link.
- *
- * Read-only lookup, no state change - unlike cancel-booking this isn't
- * destructive, so it isn't gated behind Turnstile.
+ * code.sql` migration). The charged amount is `stripe_requested_cost`
+ * (20260731120000), frozen by create-checkout-session at request/resend
+ * time — never the live `stall_cost`, which Update Details can edit anytime
+ * regardless of an outstanding payment request.
  */
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -43,49 +57,127 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { token } = await req.json()
-    if (!token || typeof token !== 'string') {
+    const { token, paymentToken } = await req.json()
+
+    if (!paymentToken || typeof paymentToken !== 'string') {
       throw new PublicError('Missing payment link token.')
     }
+
+    await verifyTurnstile(token)
 
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    const { data: booking, error } = await supabaseClient
-      .from('bookings')
-      .select('status, stripe_checkout_url, stripe_payment_requested_at')
-      .eq('payment_link_code', token)
-      .single()
+    // Atomically claim the right to (re)create a session for this booking.
+    // Only succeeds if it's still Payment Requested AND the stored session
+    // is missing or stale — see the RPC's own comment for why this must be
+    // a single atomic statement, not a plain read-then-write.
+    const { data: claimedRows, error: claimErr } = await supabaseClient.rpc('rpc_claim_stripe_session_slot', {
+      p_payment_link_code: paymentToken,
+      p_freshness_seconds: SESSION_FRESHNESS_SECONDS,
+    })
+    if (claimErr) throw new Error('Failed to claim payment session slot: ' + claimErr.message)
 
-    if (error || !booking || !booking.stripe_checkout_url) {
-      throw new PublicError('This payment link is invalid or has expired.', 404)
-    }
+    if (claimedRows && claimedRows.length > 0) {
+      // Won the claim — build a fresh session now.
+      const booking = claimedRows[0] as any
 
-    // Anything other than 'Payment Requested' means the underlying Stripe
-    // session is stale (already paid, or the booking moved on some other
-    // way) - redirecting into it would either double-charge confusion or
-    // just show Stripe's own expired-session page with no context.
-    if (booking.status !== 'Payment Requested') {
-      throw new PublicError('This booking is no longer awaiting payment — no further action is needed.')
-    }
+      if (!booking.stripe_requested_cost || booking.stripe_requested_cost <= 0) {
+        throw new Error(`Booking ${booking.id} has no valid stripe_requested_cost — cannot create a Checkout Session.`)
+      }
 
-    // See CHECKOUT_SESSION_EXPIRY_MS above - a booking can sit in
-    // 'Payment Requested' for days if nobody resends, long after Stripe's
-    // own session has expired. Catch that here rather than redirecting into
-    // Stripe's bare error page.
-    if (booking.stripe_payment_requested_at) {
-      const requestedMs = new Date(booking.stripe_payment_requested_at).getTime()
-      if (Date.now() - requestedMs > CHECKOUT_SESSION_EXPIRY_MS) {
-        throw new PublicError('This payment link has expired. Please contact us for a new payment link.')
+      try {
+        const { data: settingsRows } = await supabaseClient
+          .from('settings')
+          .select('value')
+          .eq('key', 'base_url')
+          .single()
+        const baseUrl = settingsRows?.value || 'https://app.ellastreet.co.uk'
+
+        const stripeSettings = await loadStripeSettings(supabaseClient)
+        const mode = resolveStripeMode(booking.instance_prefix, stripeSettings.testModeSetting)
+        const stripe = getStripeClient(mode, stripeSettings)
+
+        const session = await stripe.checkout.sessions.create({
+          mode: 'payment',
+          line_items: [{
+            price_data: {
+              currency: 'gbp',
+              unit_amount: Math.round(booking.stripe_requested_cost * 100),
+              product_data: {
+                name: `Stall fee — ${booking.business_name || 'Booking'} (${booking.id})`
+              }
+            },
+            quantity: 1
+          }],
+          customer_email: booking.email,
+          client_reference_id: booking.id,
+          metadata: { booking_id: booking.id },
+          success_url: `${baseUrl}/payment_success.html?session_id={CHECKOUT_SESSION_ID}`,
+          cancel_url: `${baseUrl}/payment_cancelled.html?booking_id=${encodeURIComponent(booking.id)}`
+        })
+
+        if (!session.url) {
+          throw new Error('Stripe did not return a Checkout Session URL.')
+        }
+
+        const { error: updateErr } = await supabaseClient
+          .from('bookings')
+          .update({ stripe_checkout_session_id: session.id, stripe_checkout_url: session.url })
+          .eq('id', booking.id)
+        if (updateErr) throw new Error('Failed to store the new Checkout Session: ' + updateErr.message)
+
+        return new Response(JSON.stringify({ success: true, checkout_url: session.url }), {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        })
+      } catch (stripeErr: any) {
+        // Revert the claim so the very next click retries cleanly, instead
+        // of the slot looking freshly-claimed with no real session behind
+        // it until SESSION_FRESHNESS_SECONDS quietly passes. Re-throw the
+        // ORIGINAL error (not a PublicError) so it reaches the generic
+        // branch below — a Stripe failure is a genuine, unexpected problem
+        // worth a Sentry capture and a reference code, not a normal
+        // user-facing rejection.
+        await supabaseClient.from('bookings').update({ stripe_session_claimed_at: null }).eq('id', booking.id)
+        throw stripeErr
       }
     }
 
-    return new Response(JSON.stringify({ success: true, checkout_url: booking.stripe_checkout_url }), {
-      status: 200,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    })
+    // Not claimed: either this booking doesn't exist / isn't awaiting
+    // payment, or a fresh session already exists (the common case — a
+    // repeat click). Re-read rather than trust an earlier check, since
+    // status could have moved on in between (e.g. paid via another tab).
+    for (let attempt = 0; ; attempt++) {
+      const { data: current, error: readErr } = await supabaseClient
+        .from('bookings')
+        .select('status, stripe_checkout_url')
+        .eq('payment_link_code', paymentToken)
+        .single()
+
+      if (readErr || !current) {
+        throw new PublicError('This payment link is invalid or has expired.', 404)
+      }
+      if (current.status !== 'Payment Requested') {
+        throw new PublicError('This booking is no longer awaiting payment — no further action is needed.')
+      }
+      if (current.stripe_checkout_url) {
+        return new Response(JSON.stringify({ success: true, checkout_url: current.stripe_checkout_url }), {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        })
+      }
+
+      // Still Payment Requested but no URL yet — another request just
+      // claimed the slot and is still waiting on Stripe. Wait briefly and
+      // re-check rather than serve a broken link.
+      if (attempt + 1 >= CLAIM_WAIT_ATTEMPTS) {
+        throw new PublicError('Your payment link is still being prepared — please try again in a few seconds.')
+      }
+      await sleep(CLAIM_WAIT_MS)
+    }
   } catch (error: any) {
     return publicErrorResponse(error, 'get-payment-link', corsHeaders)
   }

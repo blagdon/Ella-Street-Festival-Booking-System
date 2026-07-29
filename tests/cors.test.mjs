@@ -37,7 +37,7 @@ const PRODUCTION_ORIGIN = 'https://app.ellastreet.co.uk';
 // deployed to this project would be noise, not a real regression signal.
 // stripe-webhook is deliberately excluded too - it's called server-to-server
 // by Stripe, never from a browser, and never had CORS headers at all.
-const FUNCTIONS = ['submit-booking', 'cancel-booking', 'queue-bulk-email', 'create-checkout-session'];
+const FUNCTIONS = ['submit-booking', 'cancel-booking', 'queue-bulk-email', 'create-checkout-session', 'get-payment-link'];
 
 describe('Edge Function CORS header', () => {
   for (const name of FUNCTIONS) {

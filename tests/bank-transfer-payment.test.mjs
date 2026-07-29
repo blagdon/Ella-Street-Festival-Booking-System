@@ -179,7 +179,7 @@ describe('rpc_record_bank_transfer_payment', () => {
 });
 
 describe('payment_requested email includes bank-transfer instructions', () => {
-  test('sent email contains both the Stripe link and bank-transfer details + required wording', async () => {
+  test('sent email contains both the payment link and bank-transfer details + required wording', async () => {
     const id = `${PREFIX}EMAILCONTENT`;
     await insertBooking(id, { status: 'Pending', stall_cost: 12 });
 
@@ -202,7 +202,7 @@ describe('payment_requested email includes bank-transfer instructions', () => {
     assert.ok(emailRow, 'expected a queued email for this booking');
     const body = emailRow.body;
 
-    assert.ok(body.includes(json.checkout_url), 'expected the real Stripe checkout URL in the email body');
+    assert.ok(body.includes(json.payment_link), 'expected the short pay.html payment link in the email body — the real Stripe session is only created lazily when clicked');
     assert.ok(body.includes(id), 'expected the booking id (used as the bank-transfer payment reference) in the email body');
     assert.ok(
       body.includes('Your booking will not be confirmed until payment has been received and verified by an administrator.'),

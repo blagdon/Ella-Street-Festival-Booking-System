@@ -26,6 +26,18 @@ if (!url || !url.includes('qeplpcnrkgpaawfyliap')) {
 const anon = createClient(url, anonKey);
 const service = createClient(url, serviceRoleKey, { auth: { autoRefreshToken: false, persistSession: false } });
 
+// Cloudflare's documented always-passes dummy token, same constant used in
+// integration.test.mjs/public-error-sanitisation.test.mjs - get-payment-link
+// now verifies Turnstile too, since it can create real Stripe sessions.
+const TURNSTILE_TEST_TOKEN = 'XXXX.DUMMY.TOKEN.XXXX';
+
+async function fetchStripeSession(sessionId) {
+  const res = await fetch(`https://api.stripe.com/v1/checkout/sessions/${sessionId}`, {
+    headers: { Authorization: `Bearer ${process.env.TEST_STRIPE_SECRET_KEY}` },
+  });
+  return res.json();
+}
+
 let adminToken;
 // Own prefix (ESF26-TESTSTRIPE-) so this file's cleanup wildcard can never
 // collide with integration.test.mjs/workflow.test.mjs/security.test.mjs
@@ -209,20 +221,27 @@ describe('create-checkout-session', () => {
     assert.equal(status, 400, JSON.stringify(json));
   });
 
-  test('creates a real Stripe Test-mode Checkout Session directly from Pending and moves the booking to Payment Requested', async () => {
+  test('moves the booking to Payment Requested and freezes stripe_requested_cost, without creating a Stripe session yet', async () => {
+    // No Stripe API call happens here anymore - get-payment-link creates
+    // the real Checkout Session lazily, the first time the stallholder
+    // actually clicks the link, so it's never more than moments old
+    // regardless of how long they wait to click.
     const id = `${PREFIX}CHECKOUT`;
     await insertBooking(id, { status: 'Pending', stall_cost: 12.5 });
 
     const { status, json } = await callFunction('create-checkout-session', { booking_id: id }, adminToken);
     assert.equal(status, 200, JSON.stringify(json));
-    assert.ok(json.checkout_url && json.checkout_url.startsWith('https://checkout.stripe.com/'), `expected a real Stripe Checkout URL, got: ${json.checkout_url}`);
+    assert.ok(json.payment_link && json.payment_link.includes('/pay.html?token='), `expected the short pay.html redirect, got: ${json.payment_link}`);
 
     const { data: booking } = await service.from('bookings')
-      .select('status, stripe_checkout_session_id, stripe_payment_requested_at')
+      .select('status, stall_cost, stripe_requested_cost, stripe_checkout_session_id, stripe_checkout_url, stripe_payment_requested_at')
       .eq('id', id)
       .single();
     assert.equal(booking.status, 'Payment Requested');
-    assert.ok(booking.stripe_checkout_session_id);
+    assert.equal(Number(booking.stall_cost), 12.5);
+    assert.equal(Number(booking.stripe_requested_cost), 12.5, 'the cost must be frozen at request time');
+    assert.equal(booking.stripe_checkout_session_id, null, 'no Stripe session should exist until the stallholder actually clicks the link');
+    assert.equal(booking.stripe_checkout_url, null);
     assert.ok(booking.stripe_payment_requested_at);
   });
 
@@ -242,7 +261,7 @@ describe('create-checkout-session', () => {
       .select('stripe_checkout_url, payment_link_code')
       .eq('id', id)
       .single();
-    assert.ok(booking.stripe_checkout_url && booking.stripe_checkout_url.startsWith('https://checkout.stripe.com/'), 'expected the real Stripe URL to be stored for get-payment-link to hand back out');
+    assert.equal(booking.stripe_checkout_url, null, 'no Stripe session is created until get-payment-link is actually clicked');
     assert.match(booking.payment_link_code || '', /^[A-Za-z0-9_-]{8}$/, 'expected the DEFAULT-generated 8-char url-safe payment_link_code');
 
     const { data: rows } = await service
@@ -271,18 +290,28 @@ describe('create-checkout-session', () => {
     assert.equal(rows.length, 0, 'expected no sms_queue row when send_sms was not set');
   });
 
-  test('a null payment_link_code fails the SMS loudly rather than sending a broken token=null link', async () => {
+  test('a null payment_link_code fails the whole request loudly, leaving the booking untouched', async () => {
     const id = `${PREFIX}NULLLINKCODE`;
     // payment_link_code has a DEFAULT but no NOT NULL constraint - explicitly
     // nulling it here simulates a booking inserted outside the normal flow
     // (the DEFAULT only applies when the column is omitted from an insert).
+    //
+    // Now fails the ENTIRE request rather than just skipping the SMS: both
+    // the email and SMS depend on payment_link_code since get-payment-link
+    // creates the real Stripe session lazily rather than eagerly here, so a
+    // missing code means there is no way to build a payment link at all,
+    // not just an SMS-side gap.
     await insertBooking(id, { status: 'Pending', stall_cost: 12.5, phone: '07000000000', payment_link_code: null });
 
     const { status, json } = await callFunction('create-checkout-session', { booking_id: id, send_sms: true }, adminToken);
-    assert.equal(status, 200, JSON.stringify(json), 'the checkout session itself must still succeed - the SMS is best-effort');
+    assert.equal(status, 500, JSON.stringify(json));
+    assert.match(json.error, /payment_link_code/);
+
+    const { data: booking } = await service.from('bookings').select('status').eq('id', id).single();
+    assert.equal(booking.status, 'Pending', 'the booking must not be moved to Payment Requested if no payment link could be built for it');
 
     const { data: rows } = await service.from('sms_queue').select('*').ilike('body', `%${id}%`);
-    assert.equal(rows.length, 0, 'no SMS should be queued at all - a null payment_link_code must fail loudly server-side, not ship a link reading token=null');
+    assert.equal(rows.length, 0);
   });
 
   test('accepts a cost override in the request body (chargeable-confirm now fires with no prior persisted stall_cost) and saves it', async () => {
@@ -308,15 +337,143 @@ describe('create-checkout-session', () => {
     assert.equal(second.status, 429, JSON.stringify(second.json));
   });
 
+  // Stripe mode resolution (live-by-default for Food/General, forced test
+  // mode via the setting) moved to get-payment-link's own tests below —
+  // that's where the actual Stripe API call now happens.
+});
+
+describe('get-payment-link', () => {
+  // Public/unauthenticated — this is what pay.html calls, and it now creates
+  // real Stripe Checkout Sessions lazily (the first time a stallholder
+  // actually clicks), rather than just looking up one create-checkout-session
+  // already made. That's why it needs the same Turnstile gate submit-booking/
+  // cancel-booking already have — a public endpoint that can spend money must
+  // not be a bare, ungated lookup — but still no admin-JWT requirement
+  // (mirrors cancel-booking, not create-checkout-session).
+  test('rejects a missing paymentToken', async () => {
+    const { status } = await callFunction('get-payment-link', { token: TURNSTILE_TEST_TOKEN }, anonKey);
+    assert.equal(status, 400);
+  });
+
+  test('rejects a missing Turnstile token', async () => {
+    const { status, json } = await callFunction('get-payment-link', { paymentToken: 'AAAAAAAA' }, anonKey);
+    assert.equal(status, 400, JSON.stringify(json));
+    assert.match(json.error, /CAPTCHA/i);
+  });
+
+  test('rejects a paymentToken that matches no booking', async () => {
+    const { status, json } = await callFunction('get-payment-link', { token: TURNSTILE_TEST_TOKEN, paymentToken: 'AAAAAAAA' }, anonKey);
+    assert.equal(status, 404, JSON.stringify(json));
+  });
+
+  test('lazily creates a real Stripe Test-mode Checkout Session on first click, using the frozen cost', async () => {
+    const id = `${PREFIX}PAYLINK`;
+    await insertBooking(id, { status: 'Pending', stall_cost: 12.5 });
+    const created = await callFunction('create-checkout-session', { booking_id: id }, adminToken);
+    assert.equal(created.status, 200, JSON.stringify(created.json));
+
+    const { data: before } = await service.from('bookings').select('payment_link_code, stripe_checkout_session_id').eq('id', id).single();
+    assert.equal(before.stripe_checkout_session_id, null, 'sanity check: no session yet before the click');
+
+    const { status, json } = await callFunction('get-payment-link', { token: TURNSTILE_TEST_TOKEN, paymentToken: before.payment_link_code }, anonKey);
+    assert.equal(status, 200, JSON.stringify(json));
+    assert.ok(json.checkout_url && json.checkout_url.startsWith('https://checkout.stripe.com/'), `expected a real Stripe Checkout URL, got: ${json.checkout_url}`);
+
+    const { data: after } = await service.from('bookings').select('stripe_checkout_url, stripe_checkout_session_id').eq('id', id).single();
+    assert.equal(after.stripe_checkout_url, json.checkout_url, 'the created session must be persisted for reuse on a repeat click');
+    assert.ok(after.stripe_checkout_session_id);
+
+    const stripeSession = await fetchStripeSession(after.stripe_checkout_session_id);
+    assert.equal(stripeSession.amount_total, 1250, 'expected the session to charge the frozen 12.50, in pence');
+  });
+
+  test('a repeat click within the freshness window reuses the same session rather than creating a second one', async () => {
+    const id = `${PREFIX}PAYLINKREUSE`;
+    await insertBooking(id, { status: 'Pending', stall_cost: 12.5 });
+    await callFunction('create-checkout-session', { booking_id: id }, adminToken);
+    const { data: booking } = await service.from('bookings').select('payment_link_code').eq('id', id).single();
+
+    const first = await callFunction('get-payment-link', { token: TURNSTILE_TEST_TOKEN, paymentToken: booking.payment_link_code }, anonKey);
+    assert.equal(first.status, 200, JSON.stringify(first.json));
+
+    const second = await callFunction('get-payment-link', { token: TURNSTILE_TEST_TOKEN, paymentToken: booking.payment_link_code }, anonKey);
+    assert.equal(second.status, 200, JSON.stringify(second.json));
+    assert.equal(second.json.checkout_url, first.json.checkout_url, 'a fresh session must not be created for a repeat click');
+  });
+
+  test('refuses a paymentToken whose booking has moved on (no longer Payment Requested)', async () => {
+    const id = `${PREFIX}PAYLINKSTALE`;
+    await insertBooking(id, { status: 'Pending', stall_cost: 12.5 });
+    await callFunction('create-checkout-session', { booking_id: id }, adminToken);
+
+    const { data: booking } = await service.from('bookings').select('payment_link_code').eq('id', id).single();
+    await service.from('bookings').update({ status: 'Cancelled' }).eq('id', id);
+
+    const { status, json } = await callFunction('get-payment-link', { token: TURNSTILE_TEST_TOKEN, paymentToken: booking.payment_link_code }, anonKey);
+    assert.equal(status, 400, JSON.stringify(json));
+  });
+
+  test('regenerates a fresh session after 24h instead of reusing (or rejecting) the stale one', async () => {
+    const id = `${PREFIX}PAYLINKEXPIRED`;
+    await insertBooking(id, { status: 'Pending', stall_cost: 12.5 });
+    await callFunction('create-checkout-session', { booking_id: id }, adminToken);
+    const { data: booking } = await service.from('bookings').select('payment_link_code').eq('id', id).single();
+
+    const first = await callFunction('get-payment-link', { token: TURNSTILE_TEST_TOKEN, paymentToken: booking.payment_link_code }, anonKey);
+    assert.equal(first.status, 200, JSON.stringify(first.json));
+
+    // Backdate as if that first session was created 25 hours ago - past
+    // Stripe's default 24h Checkout Session expiry - so this doesn't depend
+    // on a real Stripe session actually expiring. stripe_session_claimed_at
+    // is the claim RPC's own freshness column - NOT stripe_payment_requested_at,
+    // which create-checkout-session owns for its unrelated double-click guard.
+    const twentyFiveHoursAgo = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
+    await service.from('bookings').update({ stripe_session_claimed_at: twentyFiveHoursAgo }).eq('id', id);
+
+    const second = await callFunction('get-payment-link', { token: TURNSTILE_TEST_TOKEN, paymentToken: booking.payment_link_code }, anonKey);
+    assert.equal(second.status, 200, JSON.stringify(second.json));
+    assert.notEqual(second.json.checkout_url, first.json.checkout_url, 'expected a genuinely new session, not the 25h-old one');
+  });
+
+  // Same technique as email-retry.test.mjs/sms-send.test.mjs's own
+  // "the row claim is atomic" tests: two genuinely concurrent DB calls via
+  // Promise.all, not two HTTP requests (whose network timing can't
+  // guarantee real overlap and would make this test unreliably flaky).
+  test('rpc_claim_stripe_session_slot is atomic: only one of two concurrent claims wins', async () => {
+    const id = `${PREFIX}PAYLINKCLAIMRACE`;
+    await insertBooking(id, { status: 'Pending', stall_cost: 12.5 });
+    await callFunction('create-checkout-session', { booking_id: id }, adminToken);
+    const { data: booking } = await service.from('bookings').select('payment_link_code').eq('id', id).single();
+
+    const [c1, c2] = await Promise.all([
+      service.rpc('rpc_claim_stripe_session_slot', { p_payment_link_code: booking.payment_link_code, p_freshness_seconds: 86400 }),
+      service.rpc('rpc_claim_stripe_session_slot', { p_payment_link_code: booking.payment_link_code, p_freshness_seconds: 86400 }),
+    ]);
+
+    const winners = [c1, c2].filter((r) => (r.data || []).length > 0);
+    assert.equal(winners.length, 1,
+      `exactly one concurrent claim should match, got ${winners.length} - ` +
+      `two winners would mean two callers could both create a real Stripe session for the same booking`);
+  });
+
+  // Stripe mode resolution now happens here, at click-time, rather than in
+  // create-checkout-session - these two moved from that describe block.
   test('a Food/General booking uses the LIVE key by default (fails safely here, since the test project deliberately has no live key configured)', async () => {
     await service.from('settings').delete().eq('key', 'stripe_test_mode');
 
     const id = `${PREFIX}LIVEBYDEFAULT`;
     await insertBooking(id, { status: 'Pending', stall_cost: 9, instance_prefix: 'ESF26-FOOD-' });
+    await callFunction('create-checkout-session', { booking_id: id }, adminToken);
+    const { data: booking } = await service.from('bookings').select('payment_link_code').eq('id', id).single();
 
-    const { status, json } = await callFunction('create-checkout-session', { booking_id: id }, adminToken);
+    // get-payment-link is public, so unlike create-checkout-session's own
+    // (admin-only) detailed errors, this goes through the same sanitised
+    // path submit-booking/cancel-booking use — the caller sees a generic
+    // reference-coded message, never the raw config error.
+    const { status, json } = await callFunction('get-payment-link', { token: TURNSTILE_TEST_TOKEN, paymentToken: booking.payment_link_code }, anonKey);
     assert.equal(status, 500, JSON.stringify(json));
-    assert.match(json.error, /stripe_secret_key_live/, 'expected the live-key config error, confirming a Food/General booking resolves to live mode by default');
+    assert.match(json.error, /reference [A-Z0-9]{6}/i);
+    assert.doesNotMatch(json.error, /stripe_secret_key_live/, 'the internal config error must never reach a public caller');
   });
 
   test('turning on stripe_test_mode forces Test Mode for a Food/General booking too', async () => {
@@ -325,73 +482,34 @@ describe('create-checkout-session', () => {
 
     const id = `${PREFIX}FORCEDTESTMODE`;
     await insertBooking(id, { status: 'Pending', stall_cost: 9, instance_prefix: 'ESF26-FOOD-' });
+    await callFunction('create-checkout-session', { booking_id: id }, adminToken);
+    const { data: booking } = await service.from('bookings').select('payment_link_code').eq('id', id).single();
 
-    const { status, json } = await callFunction('create-checkout-session', { booking_id: id }, adminToken);
+    const { status, json } = await callFunction('get-payment-link', { token: TURNSTILE_TEST_TOKEN, paymentToken: booking.payment_link_code }, anonKey);
     assert.equal(status, 200, JSON.stringify(json));
     assert.ok(json.checkout_url && json.checkout_url.startsWith('https://checkout.stripe.com/'), `expected a real Stripe Test-mode Checkout URL for a Food/General booking with the setting on, got: ${json.checkout_url}`);
 
     await service.from('settings').delete().eq('key', 'stripe_test_mode');
   });
-});
 
-describe('get-payment-link', () => {
-  // Public/unauthenticated — this is what pay.html calls to resolve the
-  // short SMS link back to a real Stripe Checkout URL, so it deliberately
-  // has no admin-JWT requirement (mirrors cancel-booking, not
-  // create-checkout-session).
-  test('rejects a missing token', async () => {
-    const { status } = await callFunction('get-payment-link', {}, anonKey);
-    assert.equal(status, 400);
-  });
-
-  test('rejects a token that matches no booking', async () => {
-    const { status, json } = await callFunction('get-payment-link', { token: 'AAAAAAAA' }, anonKey);
-    assert.equal(status, 404, JSON.stringify(json));
-  });
-
-  test('resolves a valid token for a booking still awaiting payment', async () => {
-    const id = `${PREFIX}PAYLINK`;
-    await insertBooking(id, { status: 'Pending', stall_cost: 12.5 });
-    const created = await callFunction('create-checkout-session', { booking_id: id }, adminToken);
-    assert.equal(created.status, 200, JSON.stringify(created.json));
-
+  test('the frozen stripe_requested_cost survives an unrelated stall_cost edit made while payment is outstanding', async () => {
+    const id = `${PREFIX}FROZENCOST`;
+    await insertBooking(id, { status: 'Pending', stall_cost: 20 });
+    await callFunction('create-checkout-session', { booking_id: id }, adminToken);
     const { data: booking } = await service.from('bookings').select('payment_link_code').eq('id', id).single();
 
-    const { status, json } = await callFunction('get-payment-link', { token: booking.payment_link_code }, anonKey);
+    // Simulate an admin editing the booking's cost via Update Details for
+    // record-keeping, after payment was already requested at the old price.
+    await service.from('bookings').update({ stall_cost: 999 }).eq('id', id);
+
+    const { status, json } = await callFunction('get-payment-link', { token: TURNSTILE_TEST_TOKEN, paymentToken: booking.payment_link_code }, anonKey);
     assert.equal(status, 200, JSON.stringify(json));
-    assert.equal(json.checkout_url, (await service.from('bookings').select('stripe_checkout_url').eq('id', id).single()).data.stripe_checkout_url);
-  });
 
-  test('refuses a token whose booking has moved on (no longer Payment Requested)', async () => {
-    const id = `${PREFIX}PAYLINKSTALE`;
-    await insertBooking(id, { status: 'Pending', stall_cost: 12.5 });
-    const created = await callFunction('create-checkout-session', { booking_id: id }, adminToken);
-    assert.equal(created.status, 200, JSON.stringify(created.json));
+    const { data: after } = await service.from('bookings').select('stripe_checkout_session_id, stripe_requested_cost').eq('id', id).single();
+    assert.equal(Number(after.stripe_requested_cost), 20, 'stripe_requested_cost must not have moved');
 
-    const { data: booking } = await service.from('bookings').select('payment_link_code').eq('id', id).single();
-    await service.from('bookings').update({ status: 'Cancelled' }).eq('id', id);
-
-    const { status, json } = await callFunction('get-payment-link', { token: booking.payment_link_code }, anonKey);
-    assert.equal(status, 400, JSON.stringify(json));
-  });
-
-  test('refuses a token whose underlying Stripe session has expired (24h since stripe_payment_requested_at)', async () => {
-    const id = `${PREFIX}PAYLINKEXPIRED`;
-    await insertBooking(id, { status: 'Pending', stall_cost: 12.5 });
-    const created = await callFunction('create-checkout-session', { booking_id: id }, adminToken);
-    assert.equal(created.status, 200, JSON.stringify(created.json));
-
-    const { data: booking } = await service.from('bookings').select('payment_link_code').eq('id', id).single();
-
-    // Backdate as if the payment request was made 25 hours ago - past
-    // Stripe's default 24h Checkout Session expiry - so this doesn't depend
-    // on a real Stripe session actually expiring.
-    const twentyFiveHoursAgo = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
-    await service.from('bookings').update({ stripe_payment_requested_at: twentyFiveHoursAgo }).eq('id', id);
-
-    const { status, json } = await callFunction('get-payment-link', { token: booking.payment_link_code }, anonKey);
-    assert.equal(status, 400, JSON.stringify(json));
-    assert.match(json.error, /expired/i);
+    const stripeSession = await fetchStripeSession(after.stripe_checkout_session_id);
+    assert.equal(stripeSession.amount_total, 2000, 'the stallholder must be charged the originally-quoted £20, not the £999 later edit');
   });
 });
 

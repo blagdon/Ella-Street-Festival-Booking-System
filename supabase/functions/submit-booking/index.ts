@@ -5,6 +5,7 @@ import { sendViaSms, normalizePhone } from '../_shared/sms.ts'
 import { ALLOWED_ORIGIN } from '../_shared/cors.ts'
 import { escapeHtml } from '../_shared/format.ts'
 import { PublicError, publicErrorResponse } from '../_shared/errors.ts'
+import { verifyTurnstile } from '../_shared/turnstile.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
@@ -259,38 +260,15 @@ Deno.serve(async (req) => {
   try {
     const { token, bookingData, tempUuid, fileNames } = await req.json()
 
-    if (!token || !bookingData) {
-      return new Response(JSON.stringify({ error: 'Missing CAPTCHA token or booking data.' }), {
+    if (!bookingData) {
+      return new Response(JSON.stringify({ error: 'Missing booking data.' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
     }
 
     // 1. Verify Cloudflare Turnstile CAPTCHA
-    const turnstileSecret = Deno.env.get('TURNSTILE_SECRET_KEY')
-    if (!turnstileSecret) {
-      throw new Error('TURNSTILE_SECRET_KEY is not configured on the server.')
-    }
-
-    const cfVerify = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        secret: turnstileSecret,
-        response: token
-      }),
-    })
-    
-    const cfResponse = await cfVerify.json()
-    if (!cfResponse.success) {
-      const cfErrors = cfResponse['error-codes'] ? cfResponse['error-codes'].join(', ') : 'Unknown Cloudflare Error';
-      return new Response(JSON.stringify({ 
-        error: `CAPTCHA Rejected by Cloudflare. Reason: [${cfErrors}]` 
-      }), { 
-        status: 400, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      })
-    }
+    await verifyTurnstile(token)
 
     // 2. Initialize Supabase client with service role to bypass RLS for insertion
     const supabaseAdmin = createClient(

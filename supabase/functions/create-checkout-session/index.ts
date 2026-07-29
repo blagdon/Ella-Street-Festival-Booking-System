@@ -1,7 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { sendViaZoho } from '../_shared/zoho.ts'
 import { sendViaSms, normalizePhone } from '../_shared/sms.ts'
-import { resolveStripeMode, getStripeClient, loadStripeSettings } from '../_shared/stripe.ts'
 import { ALLOWED_ORIGIN } from '../_shared/cors.ts'
 import { escapeHtml } from '../_shared/format.ts'
 import { captureAndFlush } from '../_shared/sentry.ts'
@@ -118,6 +117,20 @@ Deno.serve(async (req) => {
       })
     }
 
+    // payment_link_code has a DEFAULT (20260731110000) but no NOT NULL
+    // constraint, so a booking inserted outside the normal flow could still
+    // have it null. Both the email and SMS below need it now that the real
+    // Stripe session is created lazily by get-payment-link at click-time
+    // rather than eagerly here - checked before anything is written, so a
+    // missing code fails the whole request cleanly rather than leaving the
+    // booking marked Payment Requested with no way to actually pay.
+    if (!booking.payment_link_code) {
+      return new Response(JSON.stringify({ error: `Booking ${booking.id} has no payment_link_code — cannot build a payment link.` }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
+    }
+
     // Double-click guard.
     if (booking.stripe_payment_requested_at) {
       const lastRequestedMs = new Date(booking.stripe_payment_requested_at).getTime()
@@ -137,48 +150,35 @@ Deno.serve(async (req) => {
     ;(settingsRows || []).forEach((r: any) => { settingsMap[r.key] = r.value })
     const baseUrl = settingsMap['base_url'] || 'https://app.ellastreet.co.uk'
 
-    const stripeSettings = await loadStripeSettings(supabaseClient)
-    const mode = resolveStripeMode(booking.instance_prefix, stripeSettings.testModeSetting)
-    const stripe = getStripeClient(mode, stripeSettings)
-
-    const session = await stripe.checkout.sessions.create({
-      mode: 'payment',
-      line_items: [{
-        price_data: {
-          currency: 'gbp',
-          unit_amount: Math.round(cost * 100),
-          product_data: {
-            name: `Stall fee — ${booking.business_name || 'Booking'} (${booking.id})`
-          }
-        },
-        quantity: 1
-      }],
-      customer_email: booking.email,
-      client_reference_id: booking.id,
-      metadata: { booking_id: booking.id },
-      success_url: `${baseUrl}/payment_success.html?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${baseUrl}/payment_cancelled.html?booking_id=${encodeURIComponent(booking.id)}`
-    })
-
-    if (!session.url) {
-      throw new Error('Stripe did not return a Checkout Session URL.')
-    }
-
+    // No Stripe API call here anymore — the real Checkout Session is created
+    // lazily by get-payment-link, the first time the stallholder actually
+    // clicks the link, so it's never more than moments old regardless of how
+    // long they wait to click (Stripe's Checkout Sessions expire 24h after
+    // creation by default). stripe_requested_cost freezes what will be
+    // charged, separate from stall_cost (which Update Details can edit any
+    // time) — an unrelated later price edit must not silently change what an
+    // already-outstanding payment request charges. stripe_checkout_url/
+    // stripe_checkout_session_id are cleared so a resend correctly forces a
+    // fresh session on the next click rather than reusing one tied to a cost
+    // this request/resend may have just changed.
     const nowIso = new Date().toISOString()
     const { error: updateErr } = await supabaseClient
       .from('bookings')
       .update({
         stall_cost: cost,
-        stripe_checkout_session_id: session.id,
-        stripe_checkout_url: session.url,
+        stripe_requested_cost: cost,
+        stripe_checkout_session_id: null,
+        stripe_checkout_url: null,
         stripe_payment_requested_at: nowIso,
         status: 'Payment Requested'
       })
       .eq('id', booking.id)
 
     if (updateErr) {
-      throw new Error('Failed to update booking after creating Checkout Session: ' + updateErr.message)
+      throw new Error('Failed to update booking after requesting payment: ' + updateErr.message)
     }
+
+    const paymentLink = `${baseUrl}/pay.html?token=${encodeURIComponent(booking.payment_link_code)}`
 
     // Send the payment-request email — best-effort, matching the rest of
     // this repo's send-then-log pattern. Own inline placeholder
@@ -206,7 +206,7 @@ Deno.serve(async (req) => {
           .replace(/\{\{business_name\}\}/g, escapeHtml(booking.business_name || 'your business'))
           .replace(/\{\{booking_id\}\}/g, booking.id || '')
           .replace(/\{\{cost\}\}/g, costStr)
-          .replace(/\{\{payment_link\}\}/g, session.url as string)
+          .replace(/\{\{payment_link\}\}/g, paymentLink)
           .replace(/\{\{cancel_link\}\}/g, cancelLink)
           .replace(/\{\{payment_reference\}\}/g, booking.id || '')
           .replace(/\{\{bank_account_name\}\}/g, escapeHtml(settingsMap['bank_account_name'] || ''))
@@ -244,13 +244,10 @@ Deno.serve(async (req) => {
     // resending a payment request) with the tickbox ticked silently sent
     // no text at all, only the email.
     //
-    // Carries a short first-party redirect (pay.html?token=<8-char
-    // payment_link_code>), NOT session.url directly — the raw Stripe
-    // Checkout link is 400+ characters, which would bill this text as 6-8
-    // parts on its own. The redirect target (this same session.url) is
-    // stored in stripe_checkout_url above so get-payment-link can hand it
-    // back out, keyed on the booking's payment_link_code rather than the
-    // (longer) Stripe session id itself.
+    // Carries the same short pay.html redirect the email above now uses too
+    // (the real Stripe Checkout link is 400+ characters, which would bill
+    // this text as 6-8 parts on its own) — get-payment-link resolves it to
+    // whatever session it creates lazily on click, keyed on payment_link_code.
     if (sendSms && booking.phone) {
       try {
         const { data: smsTemplateData, error: smsTemplateErr } = await supabaseClient
@@ -263,19 +260,7 @@ Deno.serve(async (req) => {
           throw new Error('Could not load "payment_requested" SMS template: ' + (smsTemplateErr?.message || 'not found'))
         }
 
-        // payment_link_code has a DEFAULT (20260731110000) but no NOT NULL
-        // constraint, so a booking inserted outside the normal flow could
-        // still have it null. encodeURIComponent(null) silently coerces to
-        // the string "null", producing a link that looks well-formed and
-        // logs as a successful send - the worst kind of failure, since
-        // nothing here would ever surface it. Fail loudly instead, same
-        // principle normalizePhone() already applies to a bad number.
-        if (!booking.payment_link_code) {
-          throw new Error(`Booking ${booking.id} has no payment_link_code - cannot build a payment link for the SMS.`)
-        }
-
         const costStr = `£${cost.toFixed(2)}`
-        const paymentLink = `${baseUrl}/pay.html?token=${encodeURIComponent(booking.payment_link_code)}`
         const smsBody = smsTemplateData.body
           .replace(/\{\{owner_name\}\}/g, booking.owner_name || 'Trader')
           .replace(/\{\{business_name\}\}/g, booking.business_name || 'your business')
@@ -311,7 +296,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    return new Response(JSON.stringify({ success: true, checkout_url: session.url }), {
+    return new Response(JSON.stringify({ success: true, payment_link: paymentLink }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })
