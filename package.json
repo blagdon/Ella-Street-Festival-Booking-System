@@ -10,6 +10,7 @@
     "postinstall": "git config core.hooksPath .githooks || true",
     "check:rls-grants": "bash scripts/check-rls-grants-snapshot.sh",
     "check:innerhtml-escaping": "node scripts/check-unescaped-innerhtml.mjs",
+    "lint": "eslint .",
     "test:setup": "node scripts/seed-test-project.mjs",
     "test:integration": "node --test --test-concurrency=1"
   },
@@ -18,8 +19,11 @@
   "license": "ISC",
   "type": "commonjs",
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@supabase/supabase-js": "^2.110.5",
     "autoprefixer": "^10.4.24",
+    "eslint": "^10.8.0",
+    "globals": "^17.8.0",
     "postcss": "^8.5.6",
     "tailwindcss": "^4.2.0"
   }
