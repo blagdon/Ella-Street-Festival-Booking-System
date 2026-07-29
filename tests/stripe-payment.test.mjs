@@ -59,6 +59,9 @@ before(async () => {
   // too, or a leftover row from a prior run collides with the next run's
   // exact-count assertion (ilike '%id%' then matches 2 rows, not 1).
   await service.from('sms_queue').delete().ilike('body', `%${PREFIX}%`);
+  // Same reasoning for the sms_sent audit_logs row create-checkout-session
+  // now writes on a successful send.
+  await service.from('audit_logs').delete().like('target_id', `${PREFIX}%`);
 });
 
 after(async () => {
@@ -70,6 +73,9 @@ after(async () => {
   // too, or a leftover row from a prior run collides with the next run's
   // exact-count assertion (ilike '%id%' then matches 2 rows, not 1).
   await service.from('sms_queue').delete().ilike('body', `%${PREFIX}%`);
+  // Same reasoning for the sms_sent audit_logs row create-checkout-session
+  // now writes on a successful send.
+  await service.from('audit_logs').delete().like('target_id', `${PREFIX}%`);
 });
 
 async function callFunction(name, body, token = anonKey) {
@@ -277,6 +283,23 @@ describe('create-checkout-session', () => {
       rows[0].body.includes(`/pay.html?token=${encodeURIComponent(booking.payment_link_code)}`),
       'the SMS must carry the short pay.html redirect link, keyed on the short payment_link_code'
     );
+
+    // Every other SMS send path audits via sendBookingSms (js/api.js); this
+    // one didn't, so a booking's audit trail couldn't tell whether a
+    // payment request came with a text - fixed alongside the NOT NULL
+    // migration above.
+    const { data: auditRows } = await service
+      .from('audit_logs')
+      .select('*')
+      .eq('action', 'sms_sent')
+      .eq('target_id', id);
+    assert.equal(auditRows.length, 1, 'expected exactly one sms_sent audit_logs row for this payment request');
+    // details is a text column (see page-audit-log.js's renderDetailsCell,
+    // which JSON.parses it for display) - stored as a JSON string, not jsonb.
+    const auditDetails = JSON.parse(auditRows[0].details);
+    assert.equal(auditDetails.recipient, '+447000000000');
+    assert.equal(auditDetails.segments, rows[0].segments);
+    assert.equal(auditDetails.provider_message_id, rows[0].provider_message_id);
   });
 
   test('omitting send_sms sends no SMS at all, even with a phone number on file', async () => {
@@ -290,28 +313,30 @@ describe('create-checkout-session', () => {
     assert.equal(rows.length, 0, 'expected no sms_queue row when send_sms was not set');
   });
 
-  test('a null payment_link_code fails the whole request loudly, leaving the booking untouched', async () => {
+  test('the database rejects a null payment_link_code outright', async () => {
     const id = `${PREFIX}NULLLINKCODE`;
-    // payment_link_code has a DEFAULT but no NOT NULL constraint - explicitly
-    // nulling it here simulates a booking inserted outside the normal flow
-    // (the DEFAULT only applies when the column is omitted from an insert).
-    //
-    // Now fails the ENTIRE request rather than just skipping the SMS: both
-    // the email and SMS depend on payment_link_code since get-payment-link
-    // creates the real Stripe session lazily rather than eagerly here, so a
-    // missing code means there is no way to build a payment link at all,
-    // not just an SMS-side gap.
-    await insertBooking(id, { status: 'Pending', stall_cost: 12.5, phone: '07000000000', payment_link_code: null });
-
-    const { status, json } = await callFunction('create-checkout-session', { booking_id: id, send_sms: true }, adminToken);
-    assert.equal(status, 500, JSON.stringify(json));
-    assert.match(json.error, /payment_link_code/);
-
-    const { data: booking } = await service.from('bookings').select('status').eq('id', id).single();
-    assert.equal(booking.status, 'Pending', 'the booking must not be moved to Payment Requested if no payment link could be built for it');
-
-    const { data: rows } = await service.from('sms_queue').select('*').ilike('body', `%${id}%`);
-    assert.equal(rows.length, 0);
+    // Migration 20260731160000 added a NOT NULL constraint on top of the
+    // DEFAULT + backfill from 20260731110000. Before that migration, a
+    // booking inserted outside the normal flow (bulk import, manual fix)
+    // could still end up with a null payment_link_code, and only
+    // create-checkout-session's app-level guard (see the comment above its
+    // `if (!booking.payment_link_code)` check) would catch it. Now the
+    // insert itself is rejected, so the scenario the guard defends against
+    // can no longer be constructed at all - this asserts the DB enforces it
+    // directly rather than routing through the function.
+    const { error } = await service.from('bookings').insert({
+      id,
+      status: 'Pending',
+      business_name: `Stripe Test ${id}`,
+      owner_name: 'Test Owner',
+      email: 'stripe-test@example.test',
+      instance_prefix: 'ESF26-DEV-',
+      stall_type: 'Food',
+      phone: '07000000000',
+      payment_link_code: null,
+    });
+    assert.ok(error, 'expected the NOT NULL constraint to reject this insert');
+    assert.match(error.message, /payment_link_code/);
   });
 
   test('accepts a cost override in the request body (chargeable-confirm now fires with no prior persisted stall_cost) and saves it', async () => {

@@ -117,13 +117,14 @@ Deno.serve(async (req) => {
       })
     }
 
-    // payment_link_code has a DEFAULT (20260731110000) but no NOT NULL
-    // constraint, so a booking inserted outside the normal flow could still
-    // have it null. Both the email and SMS below need it now that the real
-    // Stripe session is created lazily by get-payment-link at click-time
-    // rather than eagerly here - checked before anything is written, so a
-    // missing code fails the whole request cleanly rather than leaving the
-    // booking marked Payment Requested with no way to actually pay.
+    // payment_link_code has had a NOT NULL constraint since 20260731160000
+    // (on top of the DEFAULT from 20260731110000), so the DB itself now
+    // rejects a booking without one. Kept here as defense in depth - both
+    // the email and SMS below need it now that the real Stripe session is
+    // created lazily by get-payment-link at click-time rather than eagerly
+    // here, so a missing code should fail the whole request cleanly rather
+    // than leaving the booking marked Payment Requested with no way to
+    // actually pay.
     if (!booking.payment_link_code) {
       return new Response(JSON.stringify({ error: `Booking ${booking.id} has no payment_link_code — cannot build a payment link.` }), {
         status: 500,
@@ -291,6 +292,21 @@ Deno.serve(async (req) => {
           segments,
           instance_prefix: booking.instance_prefix || null
         })
+
+        // Every other SMS send path goes through sendBookingSms (js/api.js),
+        // which writes an 'sms_sent' audit_logs row on success. This path
+        // only wrote to sms_queue, so a booking's audit trail couldn't tell
+        // whether a payment request came with a text. Mirrored here, same
+        // action name, only on a real send (not on smsError).
+        if (smsStatus === 'Sent') {
+          await supabaseClient.from('audit_logs').insert({
+            action: 'sms_sent',
+            target_id: booking.id,
+            user_email: user.email,
+            details: { recipient, segments, provider_message_id: providerMessageId },
+            instance: booking.instance_prefix || null
+          })
+        }
       } catch (smsErr: any) {
         console.warn('Failed to send payment_requested SMS:', smsErr.message)
       }

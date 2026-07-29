@@ -153,12 +153,23 @@ function formatName(str) {
 // Sample values for the placeholder set getSmsFromTemplate (js/shared.js) knows
 // how to substitute — kept in sync with that list, which is the SMS subset of
 // the email placeholders.
+//
+// {{payment_link}} is deliberately absent from that list: only
+// create-checkout-session has the Stripe context to build the real URL, so
+// getSmsFromTemplate never substitutes it. Shown here with a readable
+// placeholder instead, so an admin previewing "payment_requested" sees
+// intent rather than an unreplaced token.
 const SAMPLE_DATA = {
     '{{owner_name}}': 'John Smith',
     '{{business_name}}': 'The Burger Shack',
     '{{booking_id}}': 'ESF26-FOOD-0042',
     '{{cost}}': '£50.00',
-    '{{reason}}': 'Oversubscribed / Category Full'
+    '{{reason}}': 'Oversubscribed / Category Full',
+    // Plain hyphen, not an em dash: this string feeds the same segment
+    // counter the real preview uses, and a non-GSM-7 character here would
+    // misreport the encoding/part count for a message that, once the real
+    // link is substituted at send time, is actually plain ASCII.
+    '{{payment_link}}': '[pay link - generated at send time]'
 };
 
 function fillSampleData(text) {
