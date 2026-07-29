@@ -161,7 +161,12 @@ Deno.serve(async (req) => {
         throw new PublicError('This payment link is invalid or has expired.', 404)
       }
       if (current.status !== 'Payment Requested') {
-        throw new PublicError('This booking is no longer awaiting payment — no further action is needed.')
+        // 409, not the default 400 - a terminal state (already paid via
+        // another channel, cancelled, etc.), not something retrying could
+        // ever fix. The frontend uses this to hide the Continue button
+        // rather than leaving it sitting next to a message saying there's
+        // nothing left to do.
+        throw new PublicError('This booking is no longer awaiting payment — no further action is needed.', 409)
       }
       if (current.stripe_checkout_url) {
         return new Response(JSON.stringify({ success: true, checkout_url: current.stripe_checkout_url }), {

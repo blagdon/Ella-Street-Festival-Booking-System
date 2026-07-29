@@ -410,7 +410,11 @@ describe('get-payment-link', () => {
     await service.from('bookings').update({ status: 'Cancelled' }).eq('id', id);
 
     const { status, json } = await callFunction('get-payment-link', { token: TURNSTILE_TEST_TOKEN, paymentToken: booking.payment_link_code }, anonKey);
-    assert.equal(status, 400, JSON.stringify(json));
+    // 409, not a generic 400 - a terminal state the frontend uses to hide
+    // the Continue button (reported live: it stayed visible next to this
+    // exact message after paying via one channel and clicking the link
+    // from the other).
+    assert.equal(status, 409, JSON.stringify(json));
   });
 
   test('regenerates a fresh session after 24h instead of reusing (or rejecting) the stale one', async () => {

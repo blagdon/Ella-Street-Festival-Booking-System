@@ -70,7 +70,17 @@ initPublicPage(async () => {
             const { data, error } = await sb.functions.invoke('get-payment-link', {
                 body: { token: captchaToken.value, paymentToken: paymentLinkCode }
             });
-            if (error) throw new Error(await parseEdgeFunctionError(error, 'Server error'));
+            if (error) {
+                const err = new Error(await parseEdgeFunctionError(error, 'Server error'));
+                // error.context is the raw fetch Response - 404 (no such
+                // token) and 409 (booking no longer awaiting payment, e.g.
+                // already paid via the OTHER channel) are terminal: no
+                // amount of retrying fixes them. Everything else (a missed
+                // CAPTCHA, the momentary "still preparing" race) is a normal
+                // 400 and stays retryable.
+                err.terminal = error.context && (error.context.status === 404 || error.context.status === 409);
+                throw err;
+            }
             if (data && data.error) throw new Error(data.error);
             if (!data || !data.checkout_url) throw new Error('No payment link was returned.');
 
@@ -80,13 +90,19 @@ initPublicPage(async () => {
             // Mirrors page-cancel.js's reasoning: err.message here is always
             // either a message the server deliberately crafted for the end
             // user, or a generic browser/network error — never a raw internal
-            // one, so it's safe to show verbatim. The form stays visible/
-            // usable so a recoverable failure (a momentary "still preparing"
-            // race, an expired CAPTCHA) can just be retried.
+            // one, so it's safe to show verbatim.
             showStatus((err && err.message) ? err.message : 'Something went wrong. Please try again or contact us.');
-            continueBtn.disabled = false;
-            continueBtnText.textContent = 'Continue to Payment';
-            if (typeof turnstile !== 'undefined') turnstile.reset();
+            if (err && err.terminal) {
+                // Nothing left to retry (already paid, cancelled, invalid
+                // link) - hide the CAPTCHA/button rather than leave
+                // "Continue to Payment" sitting next to a message saying
+                // there's nothing left to do.
+                document.getElementById('payFormControls').classList.add('hidden');
+            } else {
+                continueBtn.disabled = false;
+                continueBtnText.textContent = 'Continue to Payment';
+                if (typeof turnstile !== 'undefined') turnstile.reset();
+            }
         }
     });
 }, { loadSettings: false });

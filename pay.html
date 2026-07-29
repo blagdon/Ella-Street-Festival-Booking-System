@@ -31,20 +31,25 @@
           directly</a>.</p>
     </div>
 
-    <!-- Main state (shown whenever a token is present): stays visible
-         through a failed attempt so a recoverable error (forgot the
-         CAPTCHA, a momentary "still preparing" race) can just be retried,
-         rather than dead-ending the page. Only success navigates away. -->
+    <!-- Main state (shown whenever a token is present). payFormControls
+         (the CAPTCHA + button) stays visible through a RECOVERABLE failure
+         (forgot the CAPTCHA, a momentary "still preparing" race) so it can
+         just be retried - but is hidden on a TERMINAL one (already paid/
+         cancelled, invalid token), where offering "Continue to Payment"
+         next to a message saying there's nothing left to do would be
+         actively misleading. Only success navigates away. -->
     <div id="payForm" class="hidden">
-      <h2 class="text-lg font-bold text-gray-800 mb-1">Ready to pay your stall fee</h2>
-      <p class="text-sm text-gray-500 mb-4">Please complete the check below to continue to secure payment.</p>
+      <div id="payFormControls">
+        <h2 class="text-lg font-bold text-gray-800 mb-1">Ready to pay your stall fee</h2>
+        <p class="text-sm text-gray-500 mb-4">Please complete the check below to continue to secure payment.</p>
 
-      <div class="cf-turnstile mx-auto mb-4 flex justify-center" data-sitekey="" data-theme="light"></div>
+        <div class="cf-turnstile mx-auto mb-4 flex justify-center" data-sitekey="" data-theme="light"></div>
 
-      <button type="button" id="continueBtn"
-        class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-lg transition duration-200 shadow-sm flex justify-center items-center">
-        <span id="continueBtnText">Continue to Payment</span>
-      </button>
+        <button type="button" id="continueBtn"
+          class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-lg transition duration-200 shadow-sm flex justify-center items-center">
+          <span id="continueBtnText">Continue to Payment</span>
+        </button>
+      </div>
 
       <div id="statusMessage" class="hidden mt-4 p-4 rounded-lg bg-yellow-50 border border-yellow-200 text-center text-sm text-yellow-800"></div>
 
