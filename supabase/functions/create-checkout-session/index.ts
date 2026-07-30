@@ -4,6 +4,7 @@ import { sendViaSms, normalizePhone } from '../_shared/sms.ts'
 import { ALLOWED_ORIGIN } from '../_shared/cors.ts'
 import { escapeHtml } from '../_shared/format.ts'
 import { captureAndFlush } from '../_shared/sentry.ts'
+import { resolveStripeMode, getStripeClient, loadStripeSettings } from '../_shared/stripe.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
@@ -151,17 +152,38 @@ Deno.serve(async (req) => {
     ;(settingsRows || []).forEach((r: any) => { settingsMap[r.key] = r.value })
     const baseUrl = settingsMap['base_url'] || 'https://app.ellastreet.co.uk'
 
-    // No Stripe API call here anymore — the real Checkout Session is created
-    // lazily by get-payment-link, the first time the stallholder actually
-    // clicks the link, so it's never more than moments old regardless of how
-    // long they wait to click (Stripe's Checkout Sessions expire 24h after
-    // creation by default). stripe_requested_cost freezes what will be
-    // charged, separate from stall_cost (which Update Details can edit any
-    // time) — an unrelated later price edit must not silently change what an
-    // already-outstanding payment request charges. stripe_checkout_url/
-    // stripe_checkout_session_id are cleared so a resend correctly forces a
-    // fresh session on the next click rather than reusing one tied to a cost
-    // this request/resend may have just changed.
+    // The real Checkout Session is still created lazily by get-payment-link,
+    // the first time the stallholder actually clicks the link, so it's never
+    // more than moments old regardless of how long they wait to click.
+    // stripe_requested_cost freezes what will be charged, separate from
+    // stall_cost (which Update Details can edit any time) — an unrelated
+    // later price edit must not silently change what an already-outstanding
+    // payment request charges. stripe_checkout_url/stripe_checkout_session_id
+    // are cleared so a resend correctly forces a fresh session on the next
+    // click rather than reusing one tied to a cost this request/resend may
+    // have just changed.
+    //
+    // One Stripe API call DOES still happen here, though (best-effort, right
+    // below): expiring whatever OLD session this resend is replacing.
+    // Without it, a stallholder who'd already been redirected to the raw
+    // checkout.stripe.com URL once (rather than reusing the pay.html link)
+    // could still complete payment on it — at whatever cost was frozen into
+    // that session — for up to Stripe's 24h default expiry, even after this
+    // resend intentionally changed the price.
+    if (booking.stripe_checkout_session_id) {
+      try {
+        const stripeSettings = await loadStripeSettings(supabaseClient)
+        const mode = resolveStripeMode(booking.instance_prefix, stripeSettings.testModeSetting)
+        const stripe = getStripeClient(mode, stripeSettings)
+        await stripe.checkout.sessions.expire(booking.stripe_checkout_session_id)
+      } catch (e: any) {
+        // Never blocks the resend: an already-completed/already-expired
+        // session, a stale-by-then test/live mode resolution, or a
+        // transient API failure are not reasons to fail a routine resend.
+        console.warn(`Could not expire previous Stripe session ${booking.stripe_checkout_session_id}:`, e.message)
+      }
+    }
+
     const nowIso = new Date().toISOString()
     const { error: updateErr } = await supabaseClient
       .from('bookings')

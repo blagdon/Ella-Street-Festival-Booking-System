@@ -261,14 +261,23 @@ export function applyPublicSettings(data) {
     });
 }
 
+// Same TTL and {data, timestamp} cache shape as js/config.js's
+// loadStallCosts - both read/write this SAME sessionStorage key, so must
+// agree on the same cache-freshness policy. See that file's comment for why
+// a TTL is needed at all (sessionStorage outlives a reload, and a settings
+// edit only clears the SAME tab's own cache, not other open tabs').
+const SETTINGS_CACHE_TTL_MS = 5 * 60 * 1000;
+
 export async function loadPublicSettings() {
     if (typeof sessionStorage !== 'undefined') {
         const cached = sessionStorage.getItem('ESF_SETTINGS_CACHE');
         if (cached) {
             try {
-                const data = JSON.parse(cached);
-                applyPublicSettings(data);
-                return;
+                const { data, timestamp } = JSON.parse(cached);
+                if (data && Date.now() - timestamp < SETTINGS_CACHE_TTL_MS) {
+                    applyPublicSettings(data);
+                    return;
+                }
             } catch (e) {
                 // Corrupt/stale cache - fall through to a fresh fetch below.
                 console.warn('Failed to parse cached public settings, refetching:', e.message);
@@ -283,7 +292,7 @@ export async function loadPublicSettings() {
         if (data) {
             applyPublicSettings(data);
             if (typeof sessionStorage !== 'undefined') {
-                sessionStorage.setItem('ESF_SETTINGS_CACHE', JSON.stringify(data));
+                sessionStorage.setItem('ESF_SETTINGS_CACHE', JSON.stringify({ data, timestamp: Date.now() }));
             }
         }
     } catch (e) {
@@ -296,8 +305,10 @@ export function initPublicSettingsSync() {
         const cached = sessionStorage.getItem('ESF_SETTINGS_CACHE');
         if (cached) {
             try {
-                const data = JSON.parse(cached);
-                applyPublicSettings(data);
+                const { data, timestamp } = JSON.parse(cached);
+                if (data && Date.now() - timestamp < SETTINGS_CACHE_TTL_MS) {
+                    applyPublicSettings(data);
+                }
             } catch (e) {
                 // Corrupt/stale cache - loadPublicSettings()'s async fetch
                 // (called alongside this on every page) will refresh it.

@@ -464,6 +464,51 @@ describe('get-payment-link', () => {
     assert.notEqual(second.json.checkout_url, first.json.checkout_url, 'expected a genuinely new session, not the 25h-old one');
   });
 
+  test('an unfulfilled claim (no checkout_url stored) is re-claimable after the short lease, without waiting out the 24h freshness window', async () => {
+    const id = `${PREFIX}PAYLINKUNFULFILLED`;
+    await insertBooking(id, { status: 'Pending', stall_cost: 12.5 });
+    await callFunction('create-checkout-session', { booking_id: id }, adminToken);
+    const { data: booking } = await service.from('bookings').select('payment_link_code').eq('id', id).single();
+
+    // Simulates the crash this migration (20260731180000) exists for: a
+    // claim was taken (stripe_session_claimed_at set) but the Stripe API
+    // call failed and its revert never ran, so stripe_checkout_url is still
+    // null. Backdated 3 minutes - past the default 2-minute unfulfilled-claim
+    // lease, but nowhere near the 24h freshness window a fulfilled session
+    // would still get.
+    const threeMinutesAgo = new Date(Date.now() - 3 * 60 * 1000).toISOString();
+    await service.from('bookings').update({ stripe_session_claimed_at: threeMinutesAgo }).eq('id', id);
+
+    const { data: claimed, error: claimErr } = await service.rpc('rpc_claim_stripe_session_slot', {
+      p_payment_link_code: booking.payment_link_code,
+      p_freshness_seconds: 86400,
+      p_unfulfilled_claim_seconds: 120,
+    });
+    assert.equal(claimErr, null, claimErr?.message);
+    assert.equal(claimed.length, 1, 'an unfulfilled claim older than the short lease must be re-claimable, not stuck for the full 24h freshness window');
+  });
+
+  test('an unfulfilled claim within the short lease is NOT yet re-claimable', async () => {
+    const id = `${PREFIX}PAYLINKUNFULFILLEDFRESH`;
+    await insertBooking(id, { status: 'Pending', stall_cost: 12.5 });
+    await callFunction('create-checkout-session', { booking_id: id }, adminToken);
+    const { data: booking } = await service.from('bookings').select('payment_link_code').eq('id', id).single();
+
+    // Claimed moments ago, no checkout_url yet - indistinguishable (from
+    // this RPC's point of view) from a request that's still genuinely
+    // waiting on Stripe's response.
+    const { data: firstClaim } = await service.rpc('rpc_claim_stripe_session_slot', {
+      p_payment_link_code: booking.payment_link_code, p_freshness_seconds: 86400, p_unfulfilled_claim_seconds: 120,
+    });
+    assert.equal(firstClaim.length, 1);
+
+    const { data: secondClaim, error: claimErr } = await service.rpc('rpc_claim_stripe_session_slot', {
+      p_payment_link_code: booking.payment_link_code, p_freshness_seconds: 86400, p_unfulfilled_claim_seconds: 120,
+    });
+    assert.equal(claimErr, null, claimErr?.message);
+    assert.equal(secondClaim.length, 0, 'a claim only seconds old must not be re-claimable — it may still be genuinely in flight');
+  });
+
   // Same technique as email-retry.test.mjs/sms-send.test.mjs's own
   // "the row claim is atomic" tests: two genuinely concurrent DB calls via
   // Promise.all, not two HTTP requests (whose network timing can't
@@ -539,6 +584,38 @@ describe('get-payment-link', () => {
 
     const stripeSession = await fetchStripeSession(after.stripe_checkout_session_id);
     assert.equal(stripeSession.amount_total, 2000, 'the stallholder must be charged the originally-quoted £20, not the £999 later edit');
+  });
+
+  test('resending a payment request expires the OLD Stripe session, not just clearing it locally', async () => {
+    const id = `${PREFIX}RESENDEXPIRES`;
+    await insertBooking(id, { status: 'Pending', stall_cost: 20 });
+    await callFunction('create-checkout-session', { booking_id: id }, adminToken);
+    const { data: booking } = await service.from('bookings').select('payment_link_code').eq('id', id).single();
+
+    // Stallholder clicks once at the original £20 quote - a real Stripe
+    // session now exists.
+    const first = await callFunction('get-payment-link', { token: TURNSTILE_TEST_TOKEN, paymentToken: booking.payment_link_code }, anonKey);
+    assert.equal(first.status, 200, JSON.stringify(first.json));
+    const { data: beforeResend } = await service.from('bookings').select('stripe_checkout_session_id').eq('id', id).single();
+    const oldSessionId = beforeResend.stripe_checkout_session_id;
+    assert.ok(oldSessionId);
+
+    // Clear DUPLICATE_REQUEST_WINDOW_MS's double-click guard (10s), which
+    // this test would otherwise hit immediately - it's testing the resend
+    // itself, not that guard.
+    const twentySecondsAgo = new Date(Date.now() - 20_000).toISOString();
+    await service.from('bookings').update({ stripe_payment_requested_at: twentySecondsAgo }).eq('id', id);
+
+    // Admin corrects the price and resends, before the stallholder pays.
+    const resend = await callFunction('create-checkout-session', { booking_id: id, cost: 30 }, adminToken);
+    assert.equal(resend.status, 200, JSON.stringify(resend.json));
+
+    // Without this fix, a stallholder who'd bookmarked the raw
+    // checkout.stripe.com URL from the first click could still complete
+    // payment on it at the old £20, even after this resend intentionally
+    // changed the price to £30.
+    const oldSession = await fetchStripeSession(oldSessionId);
+    assert.equal(oldSession.status, 'expired', 'the previous session must be expired at Stripe, not just unlinked locally');
   });
 });
 

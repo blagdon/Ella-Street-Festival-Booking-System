@@ -28,9 +28,6 @@ export function getSupabaseClient() {
 }
 
 /**
- * Checks if the user is authenticated. If not, redirects to login.html.
- */
-/**
  * Checks if the user is authenticated and has the required role.
  * @param {string} requiredRole - 'admin' (default) or 'steward'
  */

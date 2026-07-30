@@ -15,6 +15,16 @@ const corsHeaders = {
 // window rpc_claim_stripe_session_slot uses to decide a fresh one is needed.
 const SESSION_FRESHNESS_SECONDS = 24 * 60 * 60
 
+// A much shorter lease for a claim that never got a checkout_url stored -
+// the Stripe API call itself failed, and the revert below either hasn't run
+// yet or (isolate crash, network drop) never will. Without this, that slot
+// would otherwise be stuck for the full 24h SESSION_FRESHNESS_SECONDS with
+// nothing to self-heal it (no webhook fires - no Stripe object was ever
+// created). See rpc_claim_stripe_session_slot's own migration comment
+// (20260731180000) for why 2 minutes is safely clear of a merely-slow
+// (not crashed) in-flight claim.
+const UNFULFILLED_CLAIM_SECONDS = 2 * 60
+
 // How long, and how many times, to wait for a concurrent request that has
 // already claimed the slot (created moments ago, Stripe hasn't responded
 // yet) to finish writing the real checkout_url - rather than serving a
@@ -77,6 +87,7 @@ Deno.serve(async (req) => {
     const { data: claimedRows, error: claimErr } = await supabaseClient.rpc('rpc_claim_stripe_session_slot', {
       p_payment_link_code: paymentToken,
       p_freshness_seconds: SESSION_FRESHNESS_SECONDS,
+      p_unfulfilled_claim_seconds: UNFULFILLED_CLAIM_SECONDS,
     })
     if (claimErr) throw new Error('Failed to claim payment session slot: ' + claimErr.message)
 
@@ -134,9 +145,13 @@ Deno.serve(async (req) => {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         })
       } catch (stripeErr: any) {
-        // Revert the claim so the very next click retries cleanly, instead
-        // of the slot looking freshly-claimed with no real session behind
-        // it until SESSION_FRESHNESS_SECONDS quietly passes. Re-throw the
+        // Best-effort revert so an IMMEDIATE next click retries cleanly,
+        // rather than waiting out even UNFULFILLED_CLAIM_SECONDS. Not load-
+        // bearing for correctness, though: if this update itself never runs
+        // (isolate crash, network drop right here), the claim isn't stuck
+        // for SESSION_FRESHNESS_SECONDS - rpc_claim_stripe_session_slot's own
+        // shorter lease for an unfulfilled claim (stripe_checkout_url still
+        // null) is what actually bounds the worst case now. Re-throw the
         // ORIGINAL error (not a PublicError) so it reaches the generic
         // branch below — a Stripe failure is a genuine, unexpected problem
         // worth a Sentry capture and a reference code, not a normal

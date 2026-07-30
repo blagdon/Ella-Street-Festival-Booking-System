@@ -162,14 +162,27 @@ export function applySettingsToConfig(data) {
     });
 }
 
+// sessionStorage survives a plain reload (only tab close clears it), and
+// settings.html only removeItem()s this key in the SAME tab that saved a
+// change - any OTHER already-open tab (a second window, another admin's own
+// session) keeps serving whatever it first cached until it's closed. This
+// TTL bounds that: worst case, a settings edit reaches every open tab within
+// SETTINGS_CACHE_TTL_MS, not "whenever that tab happens to be closed".
+// supabase-public.js's loadPublicSettings/initPublicSettingsSync read and
+// write this SAME sessionStorage key for public pages - keep the constant
+// and the {data, timestamp} shape in sync with those.
+const SETTINGS_CACHE_TTL_MS = 5 * 60 * 1000;
+
 export async function loadStallCosts(sb) {
     if (typeof sessionStorage !== 'undefined') {
         const cached = sessionStorage.getItem('ESF_SETTINGS_CACHE');
         if (cached) {
             try {
-                const data = JSON.parse(cached);
-                applySettingsToConfig(data);
-                return;
+                const { data, timestamp } = JSON.parse(cached);
+                if (data && Date.now() - timestamp < SETTINGS_CACHE_TTL_MS) {
+                    applySettingsToConfig(data);
+                    return;
+                }
             } catch (e) {
                 // Corrupt/stale cache - fall through to a fresh fetch below.
                 console.warn('Failed to parse cached settings, refetching:', e.message);
@@ -183,7 +196,7 @@ export async function loadStallCosts(sb) {
         if (data) {
             applySettingsToConfig(data);
             if (typeof sessionStorage !== 'undefined') {
-                sessionStorage.setItem('ESF_SETTINGS_CACHE', JSON.stringify(data));
+                sessionStorage.setItem('ESF_SETTINGS_CACHE', JSON.stringify({ data, timestamp: Date.now() }));
             }
         }
     } catch (e) {
