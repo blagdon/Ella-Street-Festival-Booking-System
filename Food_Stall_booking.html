@@ -34,6 +34,46 @@
       border-color: #16a34a;
     }
 
+    /* Colour alone isn't enough here (WCAG 1.4.1) - confirmed by simulating
+       deuteranopia/protanopia on this exact red/green pair, which render as
+       the same pale tan and become indistinguishable. A cross/tick icon
+       repeats the same signal as a shape, not just a colour. Checkboxes,
+       radios and the file input are excluded: they already have their own
+       native "checked" affordance, and are too small for a corner icon.
+       Selects get the icon on the LEFT instead of the right, so it doesn't
+       collide with the browser's own native dropdown arrow. */
+    input:not([type=checkbox]):not([type=radio]):not([type=file]):user-invalid {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23dc2626' stroke-width='3' stroke-linecap='round'%3E%3Cline x1='6' y1='6' x2='18' y2='18'/%3E%3Cline x1='18' y1='6' x2='6' y2='18'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 0.75rem center;
+      background-size: 1.1rem;
+      padding-right: 2.5rem;
+    }
+
+    input:not([type=checkbox]):not([type=radio]):not([type=file]):user-valid {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2316a34a' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='5,13 10,18 19,7'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 0.75rem center;
+      background-size: 1.1rem;
+      padding-right: 2.5rem;
+    }
+
+    select:user-invalid {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23dc2626' stroke-width='3' stroke-linecap='round'%3E%3Cline x1='6' y1='6' x2='18' y2='18'/%3E%3Cline x1='18' y1='6' x2='6' y2='18'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: left 0.6rem center;
+      background-size: 1.1rem;
+      padding-left: 2.25rem;
+    }
+
+    select:user-valid {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2316a34a' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='5,13 10,18 19,7'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: left 0.6rem center;
+      background-size: 1.1rem;
+      padding-left: 2.25rem;
+    }
+
     input[type=number]::-webkit-inner-spin-button,
     input[type=number]::-webkit-outer-spin-button {
       -webkit-appearance: none;
