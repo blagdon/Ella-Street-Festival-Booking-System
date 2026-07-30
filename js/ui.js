@@ -50,6 +50,18 @@ export function showToast(message, type = 'success') {
 
     toastMsg.innerText = message;
 
+    // Screen readers get nothing from this otherwise: role/aria-live tell
+    // assistive tech to announce the toast as it appears, matching the
+    // visual urgency (errors interrupt immediately; success/info wait for a
+    // pause) rather than staying silent.
+    if (type === 'error') {
+        toast.setAttribute('role', 'alert');
+        toast.setAttribute('aria-live', 'assertive');
+    } else {
+        toast.setAttribute('role', 'status');
+        toast.setAttribute('aria-live', 'polite');
+    }
+
     // Configure based on type
     if (type === 'success') {
         toastTitle.innerText = 'Success';
@@ -129,6 +141,10 @@ export function showConfirm(title, message, onConfirm) {
     if (!modal) {
         modal = document.createElement('div');
         modal.id = 'confirmModal';
+        modal.setAttribute('role', 'dialog');
+        modal.setAttribute('aria-modal', 'true');
+        modal.setAttribute('aria-labelledby', 'confirmTitle');
+        modal.setAttribute('aria-describedby', 'confirmMessage');
         modal.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-50 opacity-0 pointer-events-none transition-opacity duration-200';
         modal.innerHTML = `
             <div class="bg-white rounded-lg shadow-2xl max-w-md w-full mx-4 transform transition-all">

@@ -248,7 +248,7 @@
         </div>
     </div>
 
-    <div id="bank-transfer-modal" class="fixed z-10 inset-0 overflow-y-auto hidden" aria-labelledby="bank-transfer-modal-title" role="dialog"
+    <div id="bank-transfer-modal" class="fixed z-10 inset-0 overflow-y-auto hidden" aria-labelledby="bank-transfer-modal-title" aria-describedby="bank-transfer-modal-desc" role="dialog"
         aria-modal="true">
         <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
             <div id="bank-transfer-modal-overlay" class="fixed inset-0 bg-gray-500/75 transition-opacity"
@@ -266,7 +266,7 @@
                 class="relative z-50 inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
                 <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
                     <h3 class="text-lg leading-6 font-medium text-gray-900" id="bank-transfer-modal-title">Record Bank Transfer Payment</h3>
-                    <p class="mt-1 text-sm text-gray-500">Recording this will mark the payment as received and automatically confirm the booking.</p>
+                    <p class="mt-1 text-sm text-gray-500" id="bank-transfer-modal-desc">Recording this will mark the payment as received and automatically confirm the booking.</p>
                     <div class="mt-4 space-y-4">
                         <input type="hidden" id="bt-modal-id">
 
@@ -319,7 +319,7 @@
         </div>
     </div>
 
-    <div id="resend-payment-modal" class="fixed z-10 inset-0 overflow-y-auto hidden" aria-labelledby="resend-payment-modal-title"
+    <div id="resend-payment-modal" class="fixed z-10 inset-0 overflow-y-auto hidden" aria-labelledby="resend-payment-modal-title" aria-describedby="resend-payment-modal-desc"
         role="dialog" aria-modal="true">
         <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
             <div id="resend-payment-modal-overlay" class="fixed inset-0 bg-gray-500/75 transition-opacity"
@@ -331,7 +331,7 @@
                 class="relative z-50 inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
                 <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
                     <h3 class="text-lg leading-6 font-medium text-gray-900" id="resend-payment-modal-title">Resend Payment Request</h3>
-                    <p class="mt-1 text-sm text-gray-500">Recreates the payment link and re-emails the stallholder.</p>
+                    <p class="mt-1 text-sm text-gray-500" id="resend-payment-modal-desc">Recreates the payment link and re-emails the stallholder.</p>
                     <div class="mt-4 space-y-4">
                         <input type="hidden" id="resend-modal-id">
 
@@ -361,7 +361,7 @@
         </div>
     </div>
 
-    <div id="refund-modal" class="fixed z-10 inset-0 overflow-y-auto hidden" aria-labelledby="refund-modal-title" role="dialog"
+    <div id="refund-modal" class="fixed z-10 inset-0 overflow-y-auto hidden" aria-labelledby="refund-modal-title" aria-describedby="refund-modal-intro" role="dialog"
         aria-modal="true">
         <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
             <div id="refund-modal-overlay" class="fixed inset-0 bg-gray-500/75 transition-opacity"
