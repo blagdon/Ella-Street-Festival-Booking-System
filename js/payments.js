@@ -5,6 +5,11 @@ import { escapeHtml } from './utils.js';
 import { CONFIG } from './config.js';
 
 let allRecords = [];
+// Tracked separately from btn-save-refund's own disabled state: closeRefundModal
+// (Cancel / overlay click) checks this specifically, since the button is only
+// re-enabled in performRefund's `finally`, which runs AFTER a successful
+// close already needs to have happened.
+let refundInFlight = false;
 
 export async function initPayments() {
     setupEventListeners();
@@ -493,6 +498,14 @@ function openRefundModal(id) {
 }
 
 function closeRefundModal() {
+    // Refuse to close while a refund request is in flight. Cancel and the
+    // overlay click both route here, and used to just hide the modal —
+    // letting an admin close it, reopen it against stale (not-yet-refreshed)
+    // local data, and fire a second concurrent refund request before the
+    // first had even resolved. rpc_record_refund's atomic claim (see its
+    // 2026-07-31 migration) closes that race server-side; this closes the
+    // other way into it.
+    if (refundInFlight) return;
     document.getElementById('refund-modal').classList.add('hidden');
 }
 
@@ -537,9 +550,12 @@ async function saveRefund() {
 
 async function performRefund(id, parsedAmount, reference, notes, isStripe) {
     const btn = document.getElementById('btn-save-refund');
+    const cancelBtn = document.getElementById('btn-cancel-refund');
     const originalLabel = btn.textContent;
 
+    refundInFlight = true;
     btn.disabled = true;
+    if (cancelBtn) cancelBtn.disabled = true;
     btn.textContent = isStripe ? 'Refunding...' : 'Recording...';
 
     try {
@@ -549,6 +565,7 @@ async function performRefund(id, parsedAmount, reference, notes, isStripe) {
                 amount: parsedAmount,
                 notes: notes || null
             });
+            refundInFlight = false;
             closeRefundModal();
             showToast(`Refund of £${parsedAmount.toFixed(2)} issued via Stripe (${result?.refund_id || 'no id returned'}).`);
         } else {
@@ -558,6 +575,7 @@ async function performRefund(id, parsedAmount, reference, notes, isStripe) {
                 refund_reference: reference,
                 notes: notes || null
             });
+            refundInFlight = false;
             closeRefundModal();
             showToast('Refund recorded.');
         }
@@ -566,7 +584,9 @@ async function performRefund(id, parsedAmount, reference, notes, isStripe) {
     } catch (err) {
         showToast('Refund failed: ' + err.message, 'error');
     } finally {
+        refundInFlight = false;
         btn.disabled = false;
+        if (cancelBtn) cancelBtn.disabled = false;
         btn.textContent = originalLabel;
     }
 }

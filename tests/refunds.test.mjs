@@ -175,6 +175,34 @@ describe('rpc_record_refund', () => {
     assert.equal(data.refund_reference, 're_first');
   });
 
+  test('rpc_record_refund is atomic: only one of two concurrent partial refunds wins', async () => {
+    const id = `${PREFIX}-0006B`;
+    // Both amounts individually fit within stallCost (100), which is exactly
+    // the dangerous case a plain SELECT-then-UPDATE check misses: for a FULL
+    // refund, Stripe's own ledger would reject the second one regardless -
+    // but two partial refunds that both fit can genuinely both succeed at
+    // Stripe, so this RPC's own claim has to be the thing that stops a
+    // second one being recorded, not an assumption about the caller.
+    await seedPaidBooking(id, { stallCost: 100 });
+
+    const [r1, r2] = await Promise.all([
+      authed.rpc('rpc_record_refund', { p_booking_id: id, p_refund_amount: 40, p_refund_reference: 're_race_1', p_notes: null }),
+      authed.rpc('rpc_record_refund', { p_booking_id: id, p_refund_amount: 40, p_refund_reference: 're_race_2', p_notes: null }),
+    ]);
+
+    const winners = [r1, r2].filter((r) => r.error === null);
+    const losers = [r1, r2].filter((r) => r.error !== null);
+    assert.equal(winners.length, 1,
+      `exactly one concurrent refund should be recorded, got ${winners.length} - ` +
+      `two winners would mean a booking refunded twice at Stripe shows only one (or an inconsistent) refund here`);
+    assert.equal(losers.length, 1);
+    assert.match(losers[0].error.message, /already been refunded/i);
+
+    const { data } = await service.from('payments').select('refund_amount, refund_reference').eq('booking_id', id).single();
+    assert.equal(Number(data.refund_amount), 40, 'the single recorded refund must be internally consistent');
+    assert.ok(['re_race_1', 're_race_2'].includes(data.refund_reference));
+  });
+
   test('refuses to refund a booking with no recorded payment', async () => {
     const id = `${PREFIX}-0007`;
     await seedPaidBooking(id, { paid: false });
