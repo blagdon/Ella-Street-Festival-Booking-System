@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 
 <head>
   <meta charset="UTF-8">
@@ -62,36 +62,36 @@
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
-            <label class="block text-sm font-bold text-gray-700 mb-1">Trading Name *</label>
-            <input type="text" name="business_name" required maxlength="128"
+            <label for="business_name" class="block text-sm font-bold text-gray-700 mb-1">Trading Name *</label>
+            <input type="text" id="business_name" name="business_name" required maxlength="128"
               class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500"
               placeholder="Trading Name">
           </div>
           <div>
-            <label class="block text-sm font-bold text-gray-700 mb-1">Owner Name *</label>
-            <input type="text" name="owner_name" required maxlength="64"
+            <label for="owner_name" class="block text-sm font-bold text-gray-700 mb-1">Owner Name *</label>
+            <input type="text" id="owner_name" name="owner_name" required maxlength="64"
               class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500"
               placeholder="Full Name">
           </div>
         </div>
 
         <div>
-          <label class="block text-sm font-bold text-gray-700 mb-1">Registered business name <span
+          <label for="registered_business_name" class="block text-sm font-bold text-gray-700 mb-1">Registered business name <span
               class="font-normal text-gray-500">(if different to Trading Name)</span></label>
-          <input type="text" name="registered_business_name" maxlength="128"
+          <input type="text" id="registered_business_name" name="registered_business_name" maxlength="128"
             class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500"
             placeholder="Registered Name">
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
-            <label class="block text-sm font-bold text-gray-700 mb-1">Email Address *</label>
-            <input type="email" name="email" required
+            <label for="email" class="block text-sm font-bold text-gray-700 mb-1">Email Address *</label>
+            <input type="email" id="email" name="email" required
               class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500">
           </div>
           <div>
-            <label class="block text-sm font-bold text-gray-700 mb-1">Phone Number (UK) *</label>
-            <input type="tel" name="phone" required
+            <label for="phone" class="block text-sm font-bold text-gray-700 mb-1">Phone Number (UK) *</label>
+            <input type="tel" id="phone" name="phone" required
               pattern="^(\+44\s?7\d{3}|\(?07\d{3}\)?)\s?\d{3}\s?\d{3}$|^(\+44\s?[12]\d{3}|\(?0[12]\d{3}\)?)\s?\d{3,6}$"
               class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500"
               placeholder="e.g. 07700 900000">
@@ -99,25 +99,25 @@
         </div>
 
         <div>
-          <label class="block text-sm font-bold text-gray-700 mb-1">Address *</label>
-          <input type="text" name="address" required maxlength="256"
+          <label for="address" class="block text-sm font-bold text-gray-700 mb-1">Address *</label>
+          <input type="text" id="address" name="address" required maxlength="256"
             class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500"
             placeholder="Business or Home Address">
         </div>
 
         <div>
-          <label class="block text-sm font-bold text-gray-700 mb-1">Website / Social Media</label>
-          <input type="url" name="website" maxlength="256"
+          <label for="website" class="block text-sm font-bold text-gray-700 mb-1">Website / Social Media</label>
+          <input type="url" id="website" name="website" maxlength="256"
             class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500"
             placeholder="https://...">
         </div>
 
         <div>
-          <label class="block text-sm font-bold text-gray-700 mb-1">Description of Stall *</label>
-          <textarea name="description" rows="3" required maxlength="200"
+          <label for="description" class="block text-sm font-bold text-gray-700 mb-1">Description of Stall *</label>
+          <textarea id="description" name="description" rows="3" required maxlength="200"
             class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500"
             placeholder="Briefly describe your food/drink offering..."></textarea>
-          <div class="text-right text-xs text-gray-400" id="descCount">0/200</div>
+          <div class="text-right text-xs text-gray-600" id="descCount">0/200</div>
         </div>
 
         <fieldset class="bg-gray-50 p-5 rounded-lg border border-gray-200">
@@ -142,7 +142,7 @@
             <div class="flex items-center mt-2 p-2">
               <input type="checkbox" name="category_check" value="Other" id="catOtherCheck"
                 class="mr-3 text-red-600 rounded">
-              <span class="mr-2">Other:</span>
+              <label for="catOtherCheck" class="mr-2">Other:</label>
               <!-- text-base (16px) not text-sm: iOS Safari auto-zooms the whole
                    page when focusing any input under 16px, and this is the one
                    free-typing field in the category grid. -->
@@ -155,8 +155,8 @@
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div class="bg-gray-50 p-4 rounded-lg border border-gray-200">
-            <label class="block text-sm font-bold text-gray-700 mb-2">Charity Status *</label>
-            <select name="charity_status" required
+            <label for="charity_status" class="block text-sm font-bold text-gray-700 mb-2">Charity Status *</label>
+            <select id="charity_status" name="charity_status" required
               class="w-full p-2 border border-gray-300 rounded bg-white focus:ring-2 focus:ring-red-500">
               <option value="" disabled selected>Please select...</option>
               <option value="Charity">Charity</option>
@@ -175,8 +175,8 @@
         </div>
 
         <div class="bg-gray-50 p-4 rounded-lg border border-gray-200">
-          <label class="block text-sm font-bold text-gray-700 mb-2">Power Requirements *</label>
-          <select name="power_required" required
+          <label for="power_required" class="block text-sm font-bold text-gray-700 mb-2">Power Requirements *</label>
+          <select id="power_required" name="power_required" required
             class="w-full p-2 border border-gray-300 rounded bg-white focus:ring-2 focus:ring-red-500">
             <option value="" disabled selected>Please select...</option>
             <option value="No power">No power</option>
@@ -187,16 +187,16 @@
         </div>
 
         <div class="bg-blue-50 p-5 rounded-lg border border-blue-200">
-          <label class="block text-sm font-bold text-blue-900 mb-2">Upload Documents *</label>
+          <label for="fileUpload" class="block text-sm font-bold text-blue-900 mb-2">Upload Documents *</label>
           <p class="text-xs text-blue-700 mb-2">Upload your insurance document and any promotion material/menus we can
             use. (PDF, JPG, PNG). Max 5 files.</p>
           <input type="file" id="fileUpload" name="file" required accept=".pdf,.jpg,.jpeg,.png" multiple
-            class="block w-full text-sm text-gray-500 file:mr-4 file:py-2.5 file:px-4 file:rounded-full file:border-0 file:bg-blue-600 file:text-white hover:file:bg-blue-700 file:cursor-pointer cursor-pointer">
+            class="block w-full text-sm text-gray-700 file:mr-4 file:py-2.5 file:px-4 file:rounded-full file:border-0 file:bg-blue-600 file:text-white hover:file:bg-blue-700 file:cursor-pointer cursor-pointer">
           <p class="text-xs text-blue-600 mt-2">Accepted formats: PDF, JPG, PNG (Max 5MB per file, up to 5 files)</p>
         </div>
 
         <div>
-          <label class="block text-sm font-bold text-gray-700 mb-1">Anything else?</label>
+          <label for="otherReqs" class="block text-sm font-bold text-gray-700 mb-1">Anything else?</label>
           <textarea name="other_requirements" id="otherReqs" rows="2"
             class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500"
             placeholder="Any other details..."></textarea>
