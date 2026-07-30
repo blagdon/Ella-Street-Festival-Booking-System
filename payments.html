@@ -114,13 +114,20 @@
                     <div class="text-xs md:text-sm text-gray-500 text-center sm:text-right">
                         Showing <span id="count-display">0</span> records
                     </div>
+                    <select id="export-preset" title="What to export"
+                        class="border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 text-xs">
+                        <option value="current">Export: Current View</option>
+                        <option value="all">Export: All Records</option>
+                        <option value="refunded">Export: Refunded Only</option>
+                        <option value="summary">Export: Net Billed Summary</option>
+                    </select>
                     <button id="btn-export-csv"
                         class="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-300 rounded-md text-xs text-gray-700 font-medium shadow-sm hover:bg-gray-50 hover:border-gray-400 transition-colors whitespace-nowrap">
                         <svg class="w-3.5 h-3.5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                 d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
                         </svg>
-                        Export CSV
+                        Export
                     </button>
                 </div>
             </div>

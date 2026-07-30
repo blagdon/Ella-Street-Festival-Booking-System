@@ -122,6 +122,31 @@ function matchesFilters(r, statusFilter, searchTerm) {
     return matchesStatus && matchesSearch;
 }
 
+/**
+ * Reconciliation totals for a set of payment records — shared by the header
+ * stat tiles (over whatever's currently filtered) and exportNetBilledSummary
+ * (over every record for the loaded instance, regardless of filter), so the
+ * two can never drift apart into reporting different numbers for the same
+ * underlying data.
+ *
+ * `paid` deliberately stays true after a refund - the payment really did
+ * happen, and the refund is separate state layered on top of it (see the
+ * refund migration's header for why). The consequence is that Paid must net
+ * refunds out HERE, explicitly: without this, a fully refunded booking goes
+ * on inflating the headline figure forever, so the dashboard reports money
+ * the festival no longer holds. rpc_record_refund caps a refund at the
+ * booking cost, so a row can never contribute a negative amount.
+ */
+function computeTotals(records) {
+    const totalPaid = records.reduce((sum, r) =>
+        sum + (r.paid ? (parseFloat(r.stall_cost) || 0) - (parseFloat(r.refund_amount) || 0) : 0), 0);
+    const totalRefunded = records.reduce((sum, r) => sum + (parseFloat(r.refund_amount) || 0), 0);
+    // A refunded booking keeps paid = true, so it is already excluded from
+    // Outstanding - correct, since a refunded cancellation is not money owed.
+    const totalOutstanding = records.reduce((sum, r) => sum + (!r.paid && r.status === 'Confirmed' ? (parseFloat(r.stall_cost) || 0) : 0), 0);
+    return { totalPaid, totalRefunded, totalOutstanding };
+}
+
 function renderTable() {
     const statusFilter = document.getElementById('filter-status').value;
     const searchTerm = document.getElementById('search-input').value.toLowerCase();
@@ -131,21 +156,7 @@ function renderTable() {
     // Filter Data
     const filtered = allRecords.filter(r => matchesFilters(r, statusFilter, searchTerm));
 
-    // Calculate Totals
-    //
-    // `paid` deliberately stays true after a refund - the payment really did
-    // happen, and the refund is separate state layered on top of it (see the
-    // refund migration's header for why). The consequence is that Paid must
-    // net refunds out HERE, explicitly: without this, a fully refunded booking
-    // goes on inflating the headline figure forever, so the dashboard reports
-    // money the festival no longer holds. rpc_record_refund caps a refund at
-    // the booking cost, so a row can never contribute a negative amount.
-    const totalPaid = filtered.reduce((sum, r) =>
-        sum + (r.paid ? (parseFloat(r.stall_cost) || 0) - (parseFloat(r.refund_amount) || 0) : 0), 0);
-    const totalRefunded = filtered.reduce((sum, r) => sum + (parseFloat(r.refund_amount) || 0), 0);
-    // A refunded booking keeps paid = true, so it is already excluded from
-    // Outstanding - correct, since a refunded cancellation is not money owed.
-    const totalOutstanding = filtered.reduce((sum, r) => sum + (!r.paid && r.status === 'Confirmed' ? (parseFloat(r.stall_cost) || 0) : 0), 0);
+    const { totalPaid, totalRefunded, totalOutstanding } = computeTotals(filtered);
 
     // Update Totals Display
     const elPaid = document.getElementById('total-paid');
@@ -703,26 +714,65 @@ async function saveResendPayment() {
     }
 }
 
+function csvEscape(val) {
+    if (val === null || val === undefined) return '';
+    const str = String(val);
+    return str.includes(',') || str.includes('"') || str.includes('\n')
+        ? `"${str.replace(/"/g, '""')}"` : str;
+}
+
 /**
- * Exports the currently filtered payments as a CSV file.
+ * Triggers a browser download of a CSV built from headers + pre-escaped row
+ * strings. Shared by the per-booking export and the summary export, so the
+ * filename convention and download mechanics can't drift between them.
+ * @param {string} filenameSuffix e.g. 'Refunded', 'Summary' - inserted into
+ *   the same ESF26_Payments_<instance>_<suffix>_<date>.csv shape.
+ */
+function downloadCsv(headers, rows, filenameSuffix) {
+    const csv = [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const instance = localStorage.getItem('ESF_INSTANCE') || 'DEV';
+    const suffix = filenameSuffix ? `_${filenameSuffix}` : '';
+    a.href = url;
+    a.download = `ESF26_Payments_${instance}${suffix}_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+/**
+ * Exports payments as a CSV file. #export-preset controls which records:
+ *   - 'current' (default): whatever filter-status/search-input currently
+ *     show — the original, only behaviour this used to have.
+ *   - 'all' / 'refunded': every record for the loaded instance regardless of
+ *     the status filter/search currently on screen, so "Export Refunded
+ *     Only" means every refund ever recorded, not just whichever ones a
+ *     leftover search term happens to still be narrowing.
  */
 function exportCSV() {
-    const statusFilter = document.getElementById('filter-status')?.value || 'all';
-    const searchTerm = (document.getElementById('search-input')?.value || '').toLowerCase();
+    const preset = document.getElementById('export-preset')?.value || 'current';
 
-    const filtered = allRecords.filter(r => matchesFilters(r, statusFilter, searchTerm));
+    if (preset === 'summary') {
+        exportNetBilledSummary();
+        return;
+    }
+
+    let filtered;
+    if (preset === 'all') {
+        filtered = allRecords;
+    } else if (preset === 'refunded') {
+        filtered = allRecords.filter(r => r.refunded);
+    } else {
+        const statusFilter = document.getElementById('filter-status')?.value || 'all';
+        const searchTerm = (document.getElementById('search-input')?.value || '').toLowerCase();
+        filtered = allRecords.filter(r => matchesFilters(r, statusFilter, searchTerm));
+    }
 
     if (filtered.length === 0) {
         showToast('No data to export.', 'info');
         return;
     }
-
-    const escape = (val) => {
-        if (val === null || val === undefined) return '';
-        const str = String(val);
-        return str.includes(',') || str.includes('"') || str.includes('\n')
-            ? `"${str.replace(/"/g, '""')}"` : str;
-    };
 
     // "Paid" stays a truthful record of whether a payment was ever taken, so
     // a refunded booking still reads Yes - but on its own that made the export
@@ -748,17 +798,47 @@ function exportCSV() {
             (r.paid ? cost - refund : 0).toFixed(2),
             r.bank_ref || '',
             r.editor || ''
-        ].map(escape).join(',');
+        ].map(csvEscape).join(',');
     });
 
-    const csv = [headers.join(','), ...rows].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    const instance = localStorage.getItem('ESF_INSTANCE') || 'DEV';
-    a.href = url;
-    a.download = `ESF26_Payments_${instance}_${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    const suffix = preset === 'all' ? 'All' : preset === 'refunded' ? 'Refunded' : '';
+    downloadCsv(headers, rows, suffix);
     showToast(`Exported ${filtered.length} records.`);
+}
+
+/**
+ * A single-row reconciliation summary — the same totals already shown in
+ * the header stat tiles (computeTotals()), not a fresh aggregation, so this
+ * can never report a different number than what's on screen. Deliberately
+ * over the WHOLE loaded instance (allRecords), ignoring whatever
+ * filter-status/search-input currently show: a preset meant for festival
+ * close-out reconciliation should give the same answer regardless of
+ * whatever the admin happened to have filtered moments before clicking it.
+ */
+function exportNetBilledSummary() {
+    if (allRecords.length === 0) {
+        showToast('No data to export.', 'info');
+        return;
+    }
+
+    const { totalPaid, totalRefunded, totalOutstanding } = computeTotals(allRecords);
+    // totalPaid is already net of refunds; adding totalRefunded back gives
+    // the gross amount actually collected before any refund, and +
+    // totalOutstanding adds what's still owed - together, every pound this
+    // instance's Confirmed bookings were ever billed for.
+    const totalBilled = totalPaid + totalRefunded + totalOutstanding;
+
+    const instance = localStorage.getItem('ESF_INSTANCE') || 'DEV';
+    const headers = ['Instance', 'Total Billed (Gross)', 'Total Collected (Net of Refunds)', 'Total Refunded', 'Total Outstanding', 'Export Date'];
+    const row = [
+        instance,
+        totalBilled.toFixed(2),
+        totalPaid.toFixed(2),
+        totalRefunded.toFixed(2),
+        totalOutstanding.toFixed(2),
+        new Date().toLocaleDateString('en-GB')
+    ].map(csvEscape).join(',');
+
+    downloadCsv(headers, [row], 'Summary');
+    showToast('Exported net billed summary.');
 }
