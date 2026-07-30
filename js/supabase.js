@@ -121,7 +121,7 @@ export async function signOut() {
     try {
         const { data: { session } } = await sb.auth.getSession();
         if (session) {
-            const { auditLog } = await import('./api.js');
+            const { auditLog } = await import('./audit.js');
             await auditLog('admin_logout', 'system', { email: session.user.email });
         }
     } catch (e) {

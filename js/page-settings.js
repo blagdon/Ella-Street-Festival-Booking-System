@@ -1,6 +1,6 @@
 import { initAdminPage, getSupabaseClient } from './supabase.js';
 import { showToast } from './ui.js';
-import { auditLog } from './api.js';
+import { auditLog } from './audit.js';
 import { CONFIG } from './config.js';
 import { ESF_PUBLIC_CONFIG } from '../supabase-public.js';
 import { parseEdgeFunctionError, escapeHtml } from './utils.js';

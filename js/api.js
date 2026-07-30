@@ -1,6 +1,7 @@
 import { getSupabaseClient } from './supabase.js';
 import { CONFIG } from './config.js';
 import { validateString, validateEmail, validateBookingId, validateStatus, parseEdgeFunctionError, MAX_FIELD_LENGTHS } from './utils.js';
+import { auditLog } from './audit.js';
 
 const TBL_BOOKINGS = 'bookings';
 const TBL_PAYMENTS = 'payments';
@@ -8,9 +9,11 @@ const TBL_LOCATIONS = 'locations';
 const TBL_BOOKING_LOCATIONS = 'booking_locations';
 const TBL_EMAIL_QUEUE = 'email_queue';
 const TBL_SMS_QUEUE = 'sms_queue';
-const TBL_AUDIT_LOGS = 'audit_logs';
 const VIEW_PUBLIC_BOOKINGS_INFO = 'public_bookings_info';
 
+// ===================================================================
+// === SHARED — internal helpers & constants ===
+// ===================================================================
 /**
  * locations.id may be a numeric Postgres column, while booking_locations.location_id
  * (and every ID assigned/compared client-side) is always a string. Normalize to
@@ -67,9 +70,12 @@ async function fetchCapped(queryBuilder, cap) {
 
 
 
+// ===================================================================
+// === BOOKINGS ===
+// ===================================================================
 /**
  * Fetches Kanban board data.
- * @param {string} currentInstance 
+ * @param {string} currentInstance
  * @returns {Promise<Array>}
  */
 export async function fetchKanbanData(currentInstance) {
@@ -171,14 +177,17 @@ export async function addNote(id, note) {
     return { status: 'success' };
 }
 
+// ===================================================================
+// === COMMUNICATIONS — send primitives ===
+// ===================================================================
 /**
  * Directly sends an email via the Supabase send-email Edge Function.
  * Bypasses CORS by running Zoho OAuth2/REST calls on the server.
- * 
- * @param {string} recipient 
- * @param {string} subject 
- * @param {string} body 
- * @param {string|null} bcc 
+ *
+ * @param {string} recipient
+ * @param {string} subject
+ * @param {string} body
+ * @param {string|null} bcc
  */
 export async function sendEmailViaZoho(recipient, subject, body, bcc = null) {
     const sb = getSupabaseClient();
@@ -313,6 +322,9 @@ export async function sendBookingSms(id, body) {
     return data;
 }
 
+// ===================================================================
+// === PAYMENTS & CONFIRMATION ===
+// ===================================================================
 /**
  * Finalizes a free confirmation. Only ever called for a free confirmation
  * (js/shared.js's sharedUpdateStatus) — a chargeable confirm never reaches
@@ -610,9 +622,12 @@ export async function refundStripePayment(payload) {
     return data;
 }
 
+// ===================================================================
+// === LOCATIONS ===
+// ===================================================================
 /**
  * Fetches location data including bookings, locations, and global occupancy.
- * @param {string} currentInstance 
+ * @param {string} currentInstance
  */
 export async function fetchLocationData(currentInstance) {
     const sb = getSupabaseClient();
@@ -687,6 +702,9 @@ export async function updateLocation(id, locationIds) {
 }
 
 
+// ===================================================================
+// === STATS & DASHBOARD ===
+// ===================================================================
 /**
  * Fetches all bookings for statistics, with each booking's refund amount
  * (if any) embedded from its payments row.
@@ -737,9 +755,12 @@ export async function fetchHubSummary(todaySinceIso) {
     };
 }
 
+// ===================================================================
+// === MAP ===
+// ===================================================================
 /**
  * Fetches map data with joined booking info.
- * @param {string} currentInstance 
+ * @param {string} currentInstance
  * @returns {Promise<Array>}
  */
 export async function fetchMapData(currentInstance) {
@@ -788,9 +809,12 @@ export async function fetchMapData(currentInstance) {
     }).filter(item => item !== null);
 }
 
+// ===================================================================
+// === BOOKINGS (cont.) ===
+// ===================================================================
 /**
  * Updates booking details.
- * @param {object} payload 
+ * @param {object} payload
  */
 export async function updateBookingDetails(payload) {
     validateBookingId(payload.id);
@@ -817,33 +841,9 @@ export async function updateBookingDetails(payload) {
     return { status: 'success' };
 }
 
-/**
- * Writes to the audit log.
- * @param {string} action 
- * @param {string} targetId 
- * @param {object} details 
- */
-export async function auditLog(action, targetId, details = {}) {
-    try {
-        const sb = getSupabaseClient();
-        const { data: { session } } = await sb.auth.getSession();
-        const userEmail = session?.user?.email || 'anonymous';
-
-        // Get current instance from local storage if possible, or default
-        const currentInstance = (typeof localStorage !== 'undefined' && localStorage.getItem('ESF_INSTANCE')) || 'UNKNOWN';
-
-        await sb.from(TBL_AUDIT_LOGS).insert({
-            action: action,
-            target_id: targetId || null,
-            user_email: userEmail,
-            details: details,
-            instance: currentInstance
-        });
-    } catch (e) {
-        console.warn('Audit log failed:', e.message);
-    }
-}
-
+// ===================================================================
+// === COMMUNICATIONS — bulk & retry ===
+// ===================================================================
 /**
  * Queues a bulk HTML email to a set of confirmed bookings via the
  * queue-bulk-email Edge Function. The function inserts every recipient
@@ -1011,6 +1011,9 @@ export async function checkSmsDelivery(id) {
     return data;
 }
 
+// ===================================================================
+// === BOOKINGS (cont.) ===
+// ===================================================================
 /**
  * Resolves a booking's stored document storage paths to time-limited
  * signed URLs via the get-booking-documents Edge Function (esf-documents

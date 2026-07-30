@@ -1,6 +1,6 @@
 import { getSupabaseClient, initAdminPage } from './supabase.js';
 import { safeError, validateBookingId, escapeHtml } from './utils.js';
-import { auditLog } from './api.js';
+import { auditLog } from './audit.js';
 import { registerModalClose } from './ui.js';
 
 // --- 1. CONFIGURATION (uses modules) ---

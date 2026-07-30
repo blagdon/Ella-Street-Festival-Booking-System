@@ -2,7 +2,8 @@ import { initAdminPage, getSupabaseClient } from './supabase.js';
 import { CONFIG } from './config.js';
 import { showToast, showConfirm } from './ui.js';
 import { safeError, escapeHtml } from './utils.js';
-import { auditLog, sendEmailDirect } from './api.js';
+import { sendEmailDirect } from './api.js';
+import { auditLog } from './audit.js';
 
 const sb = getSupabaseClient();
 let currentData = [];

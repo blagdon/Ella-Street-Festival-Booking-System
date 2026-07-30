@@ -1,6 +1,6 @@
 import { getSupabaseClient, initSentryBrowser } from './supabase.js';
 import { safeError, escapeHtml } from './utils.js';
-import { auditLog } from './api.js';
+import { auditLog } from './audit.js';
 import { ESF_PUBLIC_CONFIG, initPublicPage, fetchSentryBrowserLoaderUrl } from '../supabase-public.js';
 
 // --- UTILITIES ---

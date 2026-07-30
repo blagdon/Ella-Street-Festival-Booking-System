@@ -1,5 +1,6 @@
 import { getSupabaseClient } from './supabase.js';
-import { updateBookingStatus, finalizeConfirmation, sendEmail, sendBookingSms, auditLog, getSignedBookingDocuments } from './api.js';
+import { updateBookingStatus, finalizeConfirmation, sendEmail, sendBookingSms, getSignedBookingDocuments } from './api.js';
+import { auditLog } from './audit.js';
 import { showToast } from './ui.js';
 import { escapeHtml, sanitizeUrl, countSmsSegments } from './utils.js';
 import { getStallCost, CONFIG } from './config.js';
