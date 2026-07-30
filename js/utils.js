@@ -149,3 +149,37 @@ export function countSmsSegments(text) {
     else parts = len <= 160 ? 1 : Math.ceil(len / 153);
     return { len, parts, encoding: unicode ? 'Unicode (70/part)' : 'GSM-7 (160/part)' };
 }
+
+// ===================================================================
+// === SHARED: Unsaved-form navigation guard (public booking forms) ===
+// ===================================================================
+/**
+ * Warns before an accidental tab close, back-navigation, or nav-link click
+ * loses an un-submitted form's input, via beforeunload — the browser's own
+ * generic prompt, since returnValue's text is never actually shown by modern
+ * browsers regardless of what it's set to.
+ *
+ * The booking forms this is for don't navigate away on success (they swap
+ * in an inline success view and stay on the page), so nothing else would
+ * ever clear the dirty flag — call the returned markSubmitted() right after
+ * a successful submit, or a legitimate post-success reload (the "Start a
+ * new booking" button) would trigger a false warning.
+ * @param {HTMLFormElement} form
+ * @returns {{ markSubmitted: () => void }}
+ */
+export function guardUnsavedForm(form) {
+    let dirty = false;
+    let submitted = false;
+
+    form.addEventListener('input', () => { dirty = true; });
+
+    window.addEventListener('beforeunload', (e) => {
+        if (!dirty || submitted) return;
+        e.preventDefault();
+        e.returnValue = '';
+    });
+
+    return {
+        markSubmitted() { submitted = true; }
+    };
+}

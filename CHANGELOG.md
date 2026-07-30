@@ -17,6 +17,7 @@ A short fix batch on top of v7.16.0, plus new repo tooling. `package.json` still
 
 ### Added
 
+- **An unsaved-changes warning on the public booking forms** (Food Stall and Non-Food/General) — a `beforeunload` guard (`guardUnsavedForm()` in `js/utils.js`) now prompts before an accidental tab close, back-navigation, or nav-link click loses an in-progress application, which asks for business details, specs, and file attachments with no draft-save anywhere. Suppressed on a successful submit (and the subsequent "Start a new booking" reload), since neither of these forms navigate away on success — they swap in an inline success view and stay on the page.
 - **A short first-party payment link** (`pay.html` + the new `get-payment-link` function) so the `payment_requested` SMS can carry a real link without a ~475-character Stripe Checkout URL eating 6-8 billed parts on its own — mirrors the `cancel_link` trick already used elsewhere. Shortened again shortly after, from the ~110-character Stripe session id to an 8-character `payment_link_code`.
 - **A correctness-only ESLint setup** (`eslint.config.mjs`) — the lint net this 12.7k-line vanilla-JS frontend never had (`no-undef`, `no-unused-vars`, etc., no style/formatting rules). Its first run surfaced 29 pre-existing issues — dead code, silent empty catch blocks, a couple of direct `hasOwnProperty` calls, an unnecessary regex escape — all cleaned up in the same pass, verified against the full test suite and a manual smoke test.
 

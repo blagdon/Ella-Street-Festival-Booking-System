@@ -1,5 +1,5 @@
 import { getPublicSupabaseClient, initPublicPage, ESF_PUBLIC_CONFIG } from '../supabase-public.js';
-import { escapeHtml, parseEdgeFunctionError } from './utils.js';
+import { escapeHtml, parseEdgeFunctionError, guardUnsavedForm } from './utils.js';
 
 // initPublicPage has already awaited loadPublicSettings() (cache-first,
 // DB on cold cache) before this callback runs.
@@ -79,6 +79,8 @@ initPublicPage(async function () {
     const form = document.getElementById('foodForm');
 
     if (form) {
+        const unsavedGuard = guardUnsavedForm(form);
+
         form.addEventListener('submit', async function (e) {
             e.preventDefault();
 
@@ -260,6 +262,8 @@ initPublicPage(async function () {
               
               <div class="sm:col-span-2"><dt class="text-sm font-medium text-gray-500">Files</dt><dd class="mt-1 text-sm text-gray-900">${(returnedBooking && returnedBooking.documents) ? 'Insurance Certification Uploaded' : 'None'}</dd></div>
           `;
+
+                unsavedGuard.markSubmitted();
 
                 document.getElementById('success-ref').innerText = finalBookingId;
                 document.getElementById('success-details').innerHTML = detailsHtml;
