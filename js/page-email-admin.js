@@ -1,5 +1,5 @@
 import { getSupabaseClient } from './supabase.js';
-import { showToast } from './ui.js';
+import { showToast, registerModalClose } from './ui.js';
 import { escapeHtml } from './utils.js';
 
 // Formerly a standalone page (email_admin.html), now one pane of
@@ -13,6 +13,7 @@ import { escapeHtml } from './utils.js';
 const sb = getSupabaseClient();
 let allTemplates = [];
 let currentTemplateId = null;
+let unregisterPreviewModalEsc = null;
 
 export function initEmailAdmin() {
     loadTemplates();
@@ -226,8 +227,10 @@ function previewEmail() {
     document.getElementById('email-previewSubject').textContent = previewSubject;
     document.getElementById('email-previewBody').innerHTML = previewBody;
     document.getElementById('email-previewModal').classList.remove('hidden');
+    unregisterPreviewModalEsc = registerModalClose(closePreview);
 }
 
 function closePreview() {
     document.getElementById('email-previewModal').classList.add('hidden');
+    if (unregisterPreviewModalEsc) { unregisterPreviewModalEsc(); unregisterPreviewModalEsc = null; }
 }

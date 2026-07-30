@@ -1,5 +1,5 @@
 import { getSupabaseClient } from './supabase.js';
-import { showToast } from './ui.js';
+import { showToast, registerModalClose } from './ui.js';
 import { escapeHtml, countSmsSegments } from './utils.js';
 
 // SMS twin of page-email-admin.js. Same sidebar/editor/mobile-toggle/preview
@@ -18,6 +18,7 @@ import { escapeHtml, countSmsSegments } from './utils.js';
 const sb = getSupabaseClient();
 let allTemplates = [];
 let currentTemplateId = null;
+let unregisterPreviewModalEsc = null;
 
 export function initSmsAdmin() {
     loadTemplates();
@@ -209,8 +210,10 @@ function previewSms() {
         `${len} character${len !== 1 ? 's' : ''} · ${parts} SMS part${parts !== 1 ? 's' : ''} · ${encoding}`;
 
     document.getElementById('sms-previewModal').classList.remove('hidden');
+    unregisterPreviewModalEsc = registerModalClose(closePreview);
 }
 
 function closePreview() {
     document.getElementById('sms-previewModal').classList.add('hidden');
+    if (unregisterPreviewModalEsc) { unregisterPreviewModalEsc(); unregisterPreviewModalEsc = null; }
 }

@@ -1,6 +1,6 @@
 import { fetchLocationData, updateLocation, LIST_CAP } from './api.js';
 import { queueLocationEmail, queueLocationSms } from './shared.js';
-import { showToast, notifyIfTruncated } from './ui.js';
+import { showToast, notifyIfTruncated, registerModalClose } from './ui.js';
 import { escapeHtml, sortBookings } from './utils.js';
 
 let allBookings = [];
@@ -200,10 +200,13 @@ function ensureLocationEmailModalWired() {
     document.getElementById('btn-confirm-location-email')?.addEventListener('click', confirmLocationEmailSend);
 }
 
+let unregisterLocationEmailModalEsc = null;
+
 function closeLocationEmailModal() {
     document.getElementById('locationEmailModal')?.classList.add('opacity-0', 'pointer-events-none');
     pendingSendMode = null;
     pendingSendTarget = null;
+    if (unregisterLocationEmailModalEsc) { unregisterLocationEmailModalEsc(); unregisterLocationEmailModalEsc = null; }
 }
 
 function openLocationEmailModal(mode, target, title, message) {
@@ -222,6 +225,7 @@ function openLocationEmailModal(mode, target, title, message) {
     if (smsCb) smsCb.checked = false;
 
     document.getElementById('locationEmailModal')?.classList.remove('opacity-0', 'pointer-events-none');
+    if (!unregisterLocationEmailModalEsc) unregisterLocationEmailModalEsc = registerModalClose(closeLocationEmailModal);
 }
 
 async function confirmLocationEmailSend() {
@@ -571,6 +575,8 @@ function renderMobileCards() {
     });
 }
 
+let unregisterLocationSheetEsc = null;
+
 export function openLocationSheet(bookingId) {
     const booking = allBookings.find(b => b.id === bookingId);
     if (!booking) return;
@@ -642,6 +648,11 @@ export function openLocationSheet(bookingId) {
     const sheet = document.getElementById('locationSheet');
     if (backdrop) backdrop.classList.add('open');
     if (sheet) sheet.classList.add('open');
+    // Guarded: this function re-invokes itself (above, on a location option
+    // click) to refresh the list WHILE staying open - without the guard,
+    // each re-open would push another registration for a modal that never
+    // actually closed in between.
+    if (!unregisterLocationSheetEsc) unregisterLocationSheetEsc = registerModalClose(closeLocationSheet);
 }
 
 export function closeLocationSheet() {
@@ -650,6 +661,7 @@ export function closeLocationSheet() {
     if (backdrop) backdrop.classList.remove('open');
     if (sheet) sheet.classList.remove('open');
     currentMobileBookingId = null;
+    if (unregisterLocationSheetEsc) { unregisterLocationSheetEsc(); unregisterLocationSheetEsc = null; }
 }
 
 export async function assignMobileLocation(locationId) {

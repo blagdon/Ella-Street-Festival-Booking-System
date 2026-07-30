@@ -2,7 +2,7 @@ import { fetchKanbanData, addNote, sendEmail, sendBookingSms, queueBulkEmail, qu
 import { CONFIG, getStallCost } from './config.js';
 import { safeError, escapeHtml, sortBookings } from './utils.js';
 import { sharedUpdateStatus, populateDetailPane, initComposeSmsToggle, initBulkSmsToggle, readOptionalSmsBody, resetSmsToggle, readStatusSmsChecked, resetStatusSmsCheckbox } from './shared.js';
-import { showToast, showConfirm, notifyIfTruncated } from './ui.js';
+import { showToast, showConfirm, notifyIfTruncated, registerModalClose } from './ui.js';
 
 // Single source of truth for which columns exist, per instance — HCC Checks
 // is Food-instance-only; the new payment-flow statuses apply everywhere.
@@ -325,6 +325,22 @@ export async function loadBoard() {
 }
 
 // Modals
+//
+// Every one of this page's modals funnels its close through this single
+// by-id function (unlike payments.js's per-modal close functions), so the
+// Escape-key registration/unregistration is centralized here too, once,
+// rather than at every openXModal/closeModal(id) call site.
+const modalEscUnregisterById = {};
+
+function registerModalEsc(id) {
+    // Idempotent per id: openDetails() in particular re-invokes itself (e.g.
+    // after a board refresh) to repopulate an already-open detailModal
+    // without closing it first - without this guard, each re-open would
+    // push another registration for a modal that never actually closed.
+    if (modalEscUnregisterById[id]) return;
+    modalEscUnregisterById[id] = registerModalClose(() => closeModal(id));
+}
+
 export function closeModal(id) {
     if (id === 'detailModal') {
         document.getElementById('detailPanel').classList.add('translate-x-full');
@@ -334,6 +350,10 @@ export function closeModal(id) {
         }, 200);
     } else {
         document.getElementById(id).classList.add('opacity-0', 'pointer-events-none');
+    }
+    if (modalEscUnregisterById[id]) {
+        modalEscUnregisterById[id]();
+        modalEscUnregisterById[id] = null;
     }
 }
 
@@ -350,6 +370,7 @@ function openDetails(id) {
     document.body.classList.add('modal-active');
     m.classList.remove('opacity-0', 'pointer-events-none');
     p.classList.remove('translate-x-full');
+    registerModalEsc('detailModal');
 }
 
 export async function saveNote() {
@@ -437,6 +458,7 @@ export function emailAllConfirmed() {
     resetSmsToggle('bulk');
 
     document.getElementById('bulkEmailModal').classList.remove('opacity-0', 'pointer-events-none');
+    registerModalEsc('bulkEmailModal');
 };
 
 // Bulk Email - Send admin-written HTML email to all confirmed bookings
@@ -546,6 +568,7 @@ export function openEmailModal(id) {
     resetSmsToggle('compose');
 
     document.getElementById('emailComposeModal').classList.remove('opacity-0', 'pointer-events-none');
+    registerModalEsc('emailComposeModal');
 }
 
 export async function sendSystemEmail(btn) {
@@ -604,6 +627,7 @@ export function openRejectModal(id) {
     document.getElementById('rejectReason').value = "";
     resetStatusSmsCheckbox('rejectSendSms');
     document.getElementById('rejectReasonModal').classList.remove('opacity-0', 'pointer-events-none');
+    registerModalEsc('rejectReasonModal');
 }
 
 export function confirmRejection() {
@@ -621,6 +645,7 @@ export function openCancelModal(id) {
     document.getElementById('cancelBookingId').value = id;
     resetStatusSmsCheckbox('cancelSendSms');
     document.getElementById('cancelBookingModal').classList.remove('opacity-0', 'pointer-events-none');
+    registerModalEsc('cancelBookingModal');
 }
 
 export function confirmCancellation() {
@@ -670,6 +695,7 @@ function showConfirmModalLocal(id) {
     // next booking confirmed in the same session.
     resetStatusSmsCheckbox('confirmSendSms');
     document.getElementById('confirmTypeModal').classList.remove('opacity-0', 'pointer-events-none');
+    registerModalEsc('confirmTypeModal');
 }
 
 export function finalizeConfirm(isChargeable) {

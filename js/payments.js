@@ -1,6 +1,6 @@
 import { fetchPayments, updatePayment, resendPaymentRequest, recordBankTransferPayment, recordRefund, refundStripePayment, sendEmail, sendBookingSms, LIST_CAP } from './api.js';
 import { manualSendPaymentReminder, getEmailFromTemplate, getSmsFromTemplate } from './shared.js';
-import { showToast, showConfirm, notifyIfTruncated } from './ui.js';
+import { showToast, showConfirm, notifyIfTruncated, registerModalClose } from './ui.js';
 import { escapeHtml } from './utils.js';
 import { CONFIG } from './config.js';
 
@@ -10,6 +10,15 @@ let allRecords = [];
 // re-enabled in performRefund's `finally`, which runs AFTER a successful
 // close already needs to have happened.
 let refundInFlight = false;
+
+// One registerModalClose() unregister function per modal on this page - set
+// when opened, called (and cleared) only on the path where the modal
+// actually closes. See ui.js's registerModalClose for why Escape must call
+// each modal's real close function rather than a raw classList toggle.
+let unregisterEditModalEsc = null;
+let unregisterBankTransferModalEsc = null;
+let unregisterRefundModalEsc = null;
+let unregisterResendPaymentModalEsc = null;
 
 export async function initPayments() {
     setupEventListeners();
@@ -350,10 +359,12 @@ function openEditModal(id) {
     document.getElementById('modal-editor').value = r.editor || '';
 
     document.getElementById('edit-modal').classList.remove('hidden');
+    unregisterEditModalEsc = registerModalClose(closeModal);
 }
 
 function closeModal() {
     document.getElementById('edit-modal').classList.add('hidden');
+    if (unregisterEditModalEsc) { unregisterEditModalEsc(); unregisterEditModalEsc = null; }
 }
 
 function openBankTransferModal(id) {
@@ -373,10 +384,12 @@ function openBankTransferModal(id) {
     if (smsCb) smsCb.checked = false;
 
     document.getElementById('bank-transfer-modal').classList.remove('hidden');
+    unregisterBankTransferModalEsc = registerModalClose(closeBankTransferModal);
 }
 
 function closeBankTransferModal() {
     document.getElementById('bank-transfer-modal').classList.add('hidden');
+    if (unregisterBankTransferModalEsc) { unregisterBankTransferModalEsc(); unregisterBankTransferModalEsc = null; }
 }
 
 async function saveBankTransferPayment() {
@@ -495,18 +508,22 @@ function openRefundModal(id) {
     document.getElementById('refund-modal-notes').value = '';
 
     document.getElementById('refund-modal').classList.remove('hidden');
+    unregisterRefundModalEsc = registerModalClose(closeRefundModal);
 }
 
 function closeRefundModal() {
-    // Refuse to close while a refund request is in flight. Cancel and the
-    // overlay click both route here, and used to just hide the modal —
-    // letting an admin close it, reopen it against stale (not-yet-refreshed)
-    // local data, and fire a second concurrent refund request before the
-    // first had even resolved. rpc_record_refund's atomic claim (see its
-    // 2026-07-31 migration) closes that race server-side; this closes the
-    // other way into it.
+    // Refuse to close while a refund request is in flight. Cancel, the
+    // overlay click, and now Escape all route here, and used to just hide
+    // the modal — letting an admin close it, reopen it against stale
+    // (not-yet-refreshed) local data, and fire a second concurrent refund
+    // request before the first had even resolved. rpc_record_refund's
+    // atomic claim (see its 2026-07-31 migration) closes that race
+    // server-side; this guard closes the other way into it — and since
+    // Escape calls this SAME function rather than toggling the modal
+    // directly, it's covered by the guard for free.
     if (refundInFlight) return;
     document.getElementById('refund-modal').classList.add('hidden');
+    if (unregisterRefundModalEsc) { unregisterRefundModalEsc(); unregisterRefundModalEsc = null; }
 }
 
 async function saveRefund() {
@@ -655,10 +672,12 @@ function openResendPaymentModal(id) {
     if (smsCb) smsCb.checked = false;
 
     document.getElementById('resend-payment-modal').classList.remove('hidden');
+    unregisterResendPaymentModalEsc = registerModalClose(closeResendPaymentModal);
 }
 
 function closeResendPaymentModal() {
     document.getElementById('resend-payment-modal').classList.add('hidden');
+    if (unregisterResendPaymentModalEsc) { unregisterResendPaymentModalEsc(); unregisterResendPaymentModalEsc = null; }
 }
 
 async function saveResendPayment() {

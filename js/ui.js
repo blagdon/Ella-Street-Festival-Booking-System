@@ -71,7 +71,51 @@ export function showToast(message, type = 'success') {
     }, 3000);
 }
 
+// ===================================================================
+// === SHARED: Escape-key modal registry ===
+// ===================================================================
+/**
+ * A single, page-wide Escape listener that closes whichever admin modal
+ * registered itself most recently. registerModalClose()'s argument must be
+ * the modal's OWN close function (closeRefundModal, closeBankTransferModal,
+ * etc.) — never a raw classList toggle applied directly here — so each
+ * modal's own guards (e.g. payments.js's refundInFlight check, which must
+ * stay able to refuse to close mid-request) and side effects (resetting
+ * fields, clearing a ticked checkbox) still run exactly as they would from
+ * a real button click or overlay click.
+ *
+ * A LIFO stack, not a single "current modal" variable: showConfirm() can be
+ * (and is, e.g. payments.js's Stripe-refund confirmation) opened ON TOP of
+ * an already-open modal rather than replacing it, so Escape must close
+ * whichever one is actually topmost first, then require a second press for
+ * the one underneath — the same behaviour nested dialogs give you for free
+ * elsewhere.
+ *
+ * Call at open time, right before showing the modal; call the RETURNED
+ * function from the close function itself, but only on the path where the
+ * modal actually closes (after any early-return guard), or a blocked close
+ * would wrongly pop a still-open modal off the stack.
+ * @param {Function} closeFn
+ * @returns {Function} unregister - call this once the modal has actually closed
+ */
+const modalCloseStack = [];
+
+export function registerModalClose(closeFn) {
+    modalCloseStack.push(closeFn);
+    return function unregister() {
+        const idx = modalCloseStack.lastIndexOf(closeFn);
+        if (idx !== -1) modalCloseStack.splice(idx, 1);
+    };
+}
+
+document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    const closeFn = modalCloseStack[modalCloseStack.length - 1];
+    if (closeFn) closeFn();
+});
+
 let activeConfirmCallback = null;
+let unregisterConfirmModalEsc = null;
 
 /**
  * Shows a styled confirmation modal, dynamically injecting it if missing.
@@ -121,6 +165,7 @@ export function showConfirm(title, message, onConfirm) {
 
     // Show modal
     modal.classList.remove('opacity-0', 'pointer-events-none');
+    unregisterConfirmModalEsc = registerModalClose(closeConfirmModal);
 }
 
 export function closeConfirmModal() {
@@ -129,6 +174,10 @@ export function closeConfirmModal() {
         modal.classList.add('opacity-0', 'pointer-events-none');
     }
     activeConfirmCallback = null;
+    if (unregisterConfirmModalEsc) {
+        unregisterConfirmModalEsc();
+        unregisterConfirmModalEsc = null;
+    }
 }
 
 function executeConfirmAction() {

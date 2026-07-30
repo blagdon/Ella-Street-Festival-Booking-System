@@ -1,6 +1,7 @@
 import { getSupabaseClient, initAdminPage } from './supabase.js';
 import { safeError, validateBookingId, escapeHtml } from './utils.js';
 import { auditLog } from './api.js';
+import { registerModalClose } from './ui.js';
 
 // --- 1. CONFIGURATION (uses modules) ---
 const sb = getSupabaseClient();
@@ -160,6 +161,8 @@ function renderList(query) {
 
 // --- 5. EDIT LOGIC ---
 
+let unregisterEditModalEsc = null;
+
 function openEdit(id) {
     const b = localData.find(x => x.id === id);
     if (!b) return;
@@ -203,10 +206,12 @@ function openEdit(id) {
     }
 
     document.getElementById('editModal').classList.remove('hidden');
+    unregisterEditModalEsc = registerModalClose(closeModal);
 }
 
 function closeModal() {
     document.getElementById('editModal').classList.add('hidden');
+    if (unregisterEditModalEsc) { unregisterEditModalEsc(); unregisterEditModalEsc = null; }
     currentEditId = null;
 }
 
