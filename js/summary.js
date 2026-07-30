@@ -1,6 +1,6 @@
 import { fetchKanbanData, addNote, sendEmail, sendBookingSms, queueBulkEmail, queueBulkSms, requestPayment, resendPaymentRequest, LIST_CAP } from './api.js';
 import { sharedUpdateStatus, populateDetailPane, initComposeSmsToggle, initBulkSmsToggle, readOptionalSmsBody, resetSmsToggle, readStatusSmsChecked, resetStatusSmsCheckbox } from './shared.js';
-import { showToast, showConfirm, notifyIfTruncated } from './ui.js';
+import { showToast, showConfirm, notifyIfTruncated, trapFocus } from './ui.js';
 import { escapeHtml, sortBookings } from './utils.js';
 import { CONFIG, getStallCost } from './config.js';
 
@@ -328,6 +328,7 @@ function openDetails(id) {
     document.body.classList.add('modal-active');
     m.classList.remove('opacity-0', 'pointer-events-none');
     p.classList.remove('translate-x-full');
+    trapModalFocus('detailModal');
 
     const globalInstance = localStorage.getItem('ESF_INSTANCE') || 'DEV';
     const bookingInstance = item.instance_prefix || '';
@@ -348,6 +349,16 @@ function openDetails(id) {
     }
 }
 
+// Focus trap release per modal id - same convention as kanban.js's
+// modalEscUnregisterById, but this page's modals were never wired into the
+// shared Escape-key registry, so this map exists only for focus trapping.
+const modalFocusReleaseById = {};
+
+function trapModalFocus(id) {
+    if (modalFocusReleaseById[id]) return;
+    modalFocusReleaseById[id] = trapFocus(document.getElementById(id));
+}
+
 window.closeModal = function (id) {
     if (id === 'detailModal') {
         document.getElementById('detailPanel').classList.add('translate-x-full');
@@ -357,6 +368,10 @@ window.closeModal = function (id) {
         }, 200);
     } else {
         document.getElementById(id).classList.add('opacity-0', 'pointer-events-none');
+    }
+    if (modalFocusReleaseById[id]) {
+        modalFocusReleaseById[id]();
+        modalFocusReleaseById[id] = null;
     }
 }
 
@@ -448,6 +463,7 @@ function showConfirmModalLocal(id) {
     // Reset the opt-in SMS tickbox so a ticked state never carries over.
     resetStatusSmsCheckbox('confirmSendSms');
     document.getElementById('confirmTypeModal').classList.remove('opacity-0', 'pointer-events-none');
+    trapModalFocus('confirmTypeModal');
 }
 
 window.finalizeConfirm = function (isChargeable) {
@@ -536,6 +552,7 @@ window.openRejectModal = function (id) {
     document.getElementById('rejectReason').value = "";
     resetStatusSmsCheckbox('rejectSendSms');
     document.getElementById('rejectReasonModal').classList.remove('opacity-0', 'pointer-events-none');
+    trapModalFocus('rejectReasonModal');
 }
 
 window.confirmRejection = function () {
@@ -553,6 +570,7 @@ window.openCancelModal = function (id) {
     document.getElementById('cancelBookingId').value = id;
     resetStatusSmsCheckbox('cancelSendSms');
     document.getElementById('cancelBookingModal').classList.remove('opacity-0', 'pointer-events-none');
+    trapModalFocus('cancelBookingModal');
 }
 
 window.confirmCancellation = function () {
@@ -597,6 +615,7 @@ window.openEmailModal = function (id) {
     resetSmsToggle('compose');
 
     document.getElementById('emailComposeModal').classList.remove('opacity-0', 'pointer-events-none');
+    trapModalFocus('emailComposeModal');
 }
 
 window.sendSystemEmail = async function (btn) {
@@ -688,6 +707,7 @@ window.emailAllConfirmed = function () {
     resetSmsToggle('bulk');
 
     document.getElementById('bulkEmailModal').classList.remove('opacity-0', 'pointer-events-none');
+    trapModalFocus('bulkEmailModal');
 };
 
 // Bulk Email - Send admin-written HTML email to all confirmed bookings

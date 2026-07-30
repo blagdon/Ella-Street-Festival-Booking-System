@@ -126,8 +126,78 @@ document.addEventListener('keydown', (e) => {
     if (closeFn) closeFn();
 });
 
+// ===================================================================
+// === SHARED: Focus trap for modals ===
+// ===================================================================
+const FOCUSABLE_SELECTOR = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+/**
+ * Moves focus into `modalEl` and keeps Tab/Shift+Tab cycling within it for
+ * as long as the dialog is open, so a keyboard user can't tab out to the
+ * (visually hidden, but not actually inert) page behind it.
+ *
+ * Call at open time, once the modal is already visible (removed its
+ * opacity-0/hidden class) — `getFocusable()` filters by `offsetParent`, so
+ * elements are only found once they're really rendered. Call the RETURNED
+ * function from the close function itself, same convention as
+ * registerModalClose() above: it restores focus to whatever had it before
+ * the dialog opened (the button that triggered it, typically), since
+ * leaving focus on a now-hidden element strands a keyboard/screen-reader
+ * user with no sense of where they are.
+ * @param {HTMLElement} modalEl
+ * @returns {Function} release - call this once the modal has actually closed
+ */
+export function trapFocus(modalEl) {
+    const previouslyFocused = document.activeElement;
+
+    function getFocusable() {
+        return Array.from(modalEl.querySelectorAll(FOCUSABLE_SELECTOR))
+            .filter(el => el.offsetParent !== null);
+    }
+
+    const initial = getFocusable()[0];
+    (initial || modalEl).focus();
+
+    function onKeydown(e) {
+        if (e.key !== 'Tab') return;
+        const items = getFocusable();
+        if (items.length === 0) {
+            e.preventDefault();
+            return;
+        }
+        const first = items[0];
+        const last = items[items.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+            e.preventDefault();
+            last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+            e.preventDefault();
+            first.focus();
+        }
+    }
+
+    modalEl.addEventListener('keydown', onKeydown);
+
+    return function release() {
+        modalEl.removeEventListener('keydown', onKeydown);
+        if (previouslyFocused && typeof previouslyFocused.focus === 'function') {
+            previouslyFocused.focus();
+        }
+        // Several of this app's modals hide via opacity-0/pointer-events-none
+        // rather than `hidden`/display:none, so the browser doesn't
+        // auto-blur them - and the trigger (often a plain clickable card
+        // div, not a real button) was never focusable to begin with, so the
+        // .focus() call above silently did nothing. Without this, focus is
+        // left stranded on a control that's now invisible and inert.
+        if (modalEl.contains(document.activeElement)) {
+            document.activeElement.blur();
+        }
+    };
+}
+
 let activeConfirmCallback = null;
 let unregisterConfirmModalEsc = null;
+let releaseConfirmModalFocus = null;
 
 /**
  * Shows a styled confirmation modal, dynamically injecting it if missing.
@@ -182,6 +252,7 @@ export function showConfirm(title, message, onConfirm) {
     // Show modal
     modal.classList.remove('opacity-0', 'pointer-events-none');
     unregisterConfirmModalEsc = registerModalClose(closeConfirmModal);
+    releaseConfirmModalFocus = trapFocus(modal);
 }
 
 export function closeConfirmModal() {
@@ -193,6 +264,10 @@ export function closeConfirmModal() {
     if (unregisterConfirmModalEsc) {
         unregisterConfirmModalEsc();
         unregisterConfirmModalEsc = null;
+    }
+    if (releaseConfirmModalFocus) {
+        releaseConfirmModalFocus();
+        releaseConfirmModalFocus = null;
     }
 }
 

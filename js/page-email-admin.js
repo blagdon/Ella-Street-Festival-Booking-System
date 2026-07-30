@@ -1,5 +1,5 @@
 import { getSupabaseClient } from './supabase.js';
-import { showToast, registerModalClose } from './ui.js';
+import { showToast, registerModalClose, trapFocus } from './ui.js';
 import { escapeHtml } from './utils.js';
 
 // Formerly a standalone page (email_admin.html), now one pane of
@@ -14,6 +14,7 @@ const sb = getSupabaseClient();
 let allTemplates = [];
 let currentTemplateId = null;
 let unregisterPreviewModalEsc = null;
+let releasePreviewModalFocus = null;
 
 export function initEmailAdmin() {
     loadTemplates();
@@ -228,9 +229,11 @@ function previewEmail() {
     document.getElementById('email-previewBody').innerHTML = previewBody;
     document.getElementById('email-previewModal').classList.remove('hidden');
     unregisterPreviewModalEsc = registerModalClose(closePreview);
+    releasePreviewModalFocus = trapFocus(document.getElementById('email-previewModal'));
 }
 
 function closePreview() {
     document.getElementById('email-previewModal').classList.add('hidden');
     if (unregisterPreviewModalEsc) { unregisterPreviewModalEsc(); unregisterPreviewModalEsc = null; }
+    if (releasePreviewModalFocus) { releasePreviewModalFocus(); releasePreviewModalFocus = null; }
 }

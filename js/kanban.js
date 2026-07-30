@@ -2,7 +2,7 @@ import { fetchKanbanData, addNote, sendEmail, sendBookingSms, queueBulkEmail, qu
 import { CONFIG, getStallCost } from './config.js';
 import { safeError, escapeHtml, sortBookings } from './utils.js';
 import { sharedUpdateStatus, populateDetailPane, initComposeSmsToggle, initBulkSmsToggle, readOptionalSmsBody, resetSmsToggle, readStatusSmsChecked, resetStatusSmsCheckbox } from './shared.js';
-import { showToast, showConfirm, notifyIfTruncated, registerModalClose } from './ui.js';
+import { showToast, showConfirm, notifyIfTruncated, registerModalClose, trapFocus } from './ui.js';
 
 // Single source of truth for which columns exist, per instance — HCC Checks
 // is Food-instance-only; the new payment-flow statuses apply everywhere.
@@ -331,6 +331,7 @@ export async function loadBoard() {
 // Escape-key registration/unregistration is centralized here too, once,
 // rather than at every openXModal/closeModal(id) call site.
 const modalEscUnregisterById = {};
+const modalFocusReleaseById = {};
 
 function registerModalEsc(id) {
     // Idempotent per id: openDetails() in particular re-invokes itself (e.g.
@@ -339,6 +340,7 @@ function registerModalEsc(id) {
     // push another registration for a modal that never actually closed.
     if (modalEscUnregisterById[id]) return;
     modalEscUnregisterById[id] = registerModalClose(() => closeModal(id));
+    modalFocusReleaseById[id] = trapFocus(document.getElementById(id));
 }
 
 export function closeModal(id) {
@@ -354,6 +356,10 @@ export function closeModal(id) {
     if (modalEscUnregisterById[id]) {
         modalEscUnregisterById[id]();
         modalEscUnregisterById[id] = null;
+    }
+    if (modalFocusReleaseById[id]) {
+        modalFocusReleaseById[id]();
+        modalFocusReleaseById[id] = null;
     }
 }
 

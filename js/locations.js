@@ -1,6 +1,6 @@
 import { fetchLocationData, updateLocation, LIST_CAP } from './api.js';
 import { queueLocationEmail, queueLocationSms } from './shared.js';
-import { showToast, notifyIfTruncated, registerModalClose } from './ui.js';
+import { showToast, notifyIfTruncated, registerModalClose, trapFocus } from './ui.js';
 import { escapeHtml, sortBookings } from './utils.js';
 
 let allBookings = [];
@@ -201,12 +201,14 @@ function ensureLocationEmailModalWired() {
 }
 
 let unregisterLocationEmailModalEsc = null;
+let releaseLocationEmailModalFocus = null;
 
 function closeLocationEmailModal() {
     document.getElementById('locationEmailModal')?.classList.add('opacity-0', 'pointer-events-none');
     pendingSendMode = null;
     pendingSendTarget = null;
     if (unregisterLocationEmailModalEsc) { unregisterLocationEmailModalEsc(); unregisterLocationEmailModalEsc = null; }
+    if (releaseLocationEmailModalFocus) { releaseLocationEmailModalFocus(); releaseLocationEmailModalFocus = null; }
 }
 
 function openLocationEmailModal(mode, target, title, message) {
@@ -226,6 +228,7 @@ function openLocationEmailModal(mode, target, title, message) {
 
     document.getElementById('locationEmailModal')?.classList.remove('opacity-0', 'pointer-events-none');
     if (!unregisterLocationEmailModalEsc) unregisterLocationEmailModalEsc = registerModalClose(closeLocationEmailModal);
+    if (!releaseLocationEmailModalFocus) releaseLocationEmailModalFocus = trapFocus(document.getElementById('locationEmailModal'));
 }
 
 async function confirmLocationEmailSend() {
@@ -576,6 +579,7 @@ function renderMobileCards() {
 }
 
 let unregisterLocationSheetEsc = null;
+let releaseLocationSheetFocus = null;
 
 export function openLocationSheet(bookingId) {
     const booking = allBookings.find(b => b.id === bookingId);
@@ -653,6 +657,7 @@ export function openLocationSheet(bookingId) {
     // each re-open would push another registration for a modal that never
     // actually closed in between.
     if (!unregisterLocationSheetEsc) unregisterLocationSheetEsc = registerModalClose(closeLocationSheet);
+    if (!releaseLocationSheetFocus && sheet) releaseLocationSheetFocus = trapFocus(sheet);
 }
 
 export function closeLocationSheet() {
@@ -662,6 +667,7 @@ export function closeLocationSheet() {
     if (sheet) sheet.classList.remove('open');
     currentMobileBookingId = null;
     if (unregisterLocationSheetEsc) { unregisterLocationSheetEsc(); unregisterLocationSheetEsc = null; }
+    if (releaseLocationSheetFocus) { releaseLocationSheetFocus(); releaseLocationSheetFocus = null; }
 }
 
 export async function assignMobileLocation(locationId) {

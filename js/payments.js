@@ -1,7 +1,7 @@
 import { fetchPayments, updatePayment, resendPaymentRequest, recordBankTransferPayment, recordRefund, refundStripePayment, sendEmail, sendBookingSms, LIST_CAP } from './api.js';
 import { manualSendPaymentReminder } from './shared.js';
 import { getEmailFromTemplate, getSmsFromTemplate } from './message-templates.js';
-import { showToast, showConfirm, notifyIfTruncated, registerModalClose } from './ui.js';
+import { showToast, showConfirm, notifyIfTruncated, registerModalClose, trapFocus } from './ui.js';
 import { escapeHtml } from './utils.js';
 import { CONFIG } from './config.js';
 
@@ -20,6 +20,10 @@ let unregisterEditModalEsc = null;
 let unregisterBankTransferModalEsc = null;
 let unregisterRefundModalEsc = null;
 let unregisterResendPaymentModalEsc = null;
+let releaseEditModalFocus = null;
+let releaseBankTransferModalFocus = null;
+let releaseRefundModalFocus = null;
+let releaseResendPaymentModalFocus = null;
 
 export async function initPayments() {
     setupEventListeners();
@@ -372,11 +376,13 @@ function openEditModal(id) {
 
     document.getElementById('edit-modal').classList.remove('hidden');
     unregisterEditModalEsc = registerModalClose(closeModal);
+    releaseEditModalFocus = trapFocus(document.getElementById('edit-modal'));
 }
 
 function closeModal() {
     document.getElementById('edit-modal').classList.add('hidden');
     if (unregisterEditModalEsc) { unregisterEditModalEsc(); unregisterEditModalEsc = null; }
+    if (releaseEditModalFocus) { releaseEditModalFocus(); releaseEditModalFocus = null; }
 }
 
 function openBankTransferModal(id) {
@@ -397,11 +403,13 @@ function openBankTransferModal(id) {
 
     document.getElementById('bank-transfer-modal').classList.remove('hidden');
     unregisterBankTransferModalEsc = registerModalClose(closeBankTransferModal);
+    releaseBankTransferModalFocus = trapFocus(document.getElementById('bank-transfer-modal'));
 }
 
 function closeBankTransferModal() {
     document.getElementById('bank-transfer-modal').classList.add('hidden');
     if (unregisterBankTransferModalEsc) { unregisterBankTransferModalEsc(); unregisterBankTransferModalEsc = null; }
+    if (releaseBankTransferModalFocus) { releaseBankTransferModalFocus(); releaseBankTransferModalFocus = null; }
 }
 
 async function saveBankTransferPayment() {
@@ -521,6 +529,7 @@ function openRefundModal(id) {
 
     document.getElementById('refund-modal').classList.remove('hidden');
     unregisterRefundModalEsc = registerModalClose(closeRefundModal);
+    releaseRefundModalFocus = trapFocus(document.getElementById('refund-modal'));
 }
 
 function closeRefundModal() {
@@ -536,6 +545,7 @@ function closeRefundModal() {
     if (refundInFlight) return;
     document.getElementById('refund-modal').classList.add('hidden');
     if (unregisterRefundModalEsc) { unregisterRefundModalEsc(); unregisterRefundModalEsc = null; }
+    if (releaseRefundModalFocus) { releaseRefundModalFocus(); releaseRefundModalFocus = null; }
 }
 
 async function saveRefund() {
@@ -685,11 +695,13 @@ function openResendPaymentModal(id) {
 
     document.getElementById('resend-payment-modal').classList.remove('hidden');
     unregisterResendPaymentModalEsc = registerModalClose(closeResendPaymentModal);
+    releaseResendPaymentModalFocus = trapFocus(document.getElementById('resend-payment-modal'));
 }
 
 function closeResendPaymentModal() {
     document.getElementById('resend-payment-modal').classList.add('hidden');
     if (unregisterResendPaymentModalEsc) { unregisterResendPaymentModalEsc(); unregisterResendPaymentModalEsc = null; }
+    if (releaseResendPaymentModalFocus) { releaseResendPaymentModalFocus(); releaseResendPaymentModalFocus = null; }
 }
 
 async function saveResendPayment() {
