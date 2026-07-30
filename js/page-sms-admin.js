@@ -151,9 +151,9 @@ function formatName(str) {
     return str.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
 }
 
-// Sample values for the placeholder set getSmsFromTemplate (js/shared.js) knows
-// how to substitute — kept in sync with that list, which is the SMS subset of
-// the email placeholders.
+// Sample values for the placeholder set getSmsFromTemplate (js/message-templates.js)
+// knows how to substitute — kept in sync with that list, which is the SMS
+// subset of the email placeholders.
 //
 // {{payment_link}} is deliberately absent from that list: only
 // create-checkout-session has the Stripe context to build the real URL, so

@@ -1,5 +1,6 @@
 import { fetchPayments, updatePayment, resendPaymentRequest, recordBankTransferPayment, recordRefund, refundStripePayment, sendEmail, sendBookingSms, LIST_CAP } from './api.js';
-import { manualSendPaymentReminder, getEmailFromTemplate, getSmsFromTemplate } from './shared.js';
+import { manualSendPaymentReminder } from './shared.js';
+import { getEmailFromTemplate, getSmsFromTemplate } from './message-templates.js';
 import { showToast, showConfirm, notifyIfTruncated, registerModalClose } from './ui.js';
 import { escapeHtml } from './utils.js';
 import { CONFIG } from './config.js';
