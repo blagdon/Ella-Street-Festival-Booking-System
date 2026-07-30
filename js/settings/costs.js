@@ -82,7 +82,7 @@ export function initStallTypes() {
                     <button data-type="${escapeHtml(type)}" class="remove-stall-type-btn text-blue-500 hover:text-blue-700 font-bold ml-0.5 text-sm leading-none focus:outline-none" title="Remove Type">×</button>
                 </span>
             `).join('')
-            : '<span class="text-xs text-gray-400 italic">No stall types configured.</span>';
+            : '<span class="text-xs text-gray-600 italic">No stall types configured.</span>';
     }
 
     async function saveTypes(newList) {

@@ -73,7 +73,7 @@
                     class="w-full pl-9 pr-3 py-2 min-h-11 text-sm border border-gray-300 rounded-md focus:ring-1 focus:ring-blue-500 focus:outline-none">
             </div>
 
-            <select id="email-statusFilter"
+            <select id="email-statusFilter" aria-label="Filter by status"
                 class="px-3 py-2 min-h-11 text-xs font-bold bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer">
                 <option value="All">All Statuses</option>
                 <option value="Error">Error</option>
@@ -120,7 +120,7 @@
                     </table>
                 </div>
                 <div class="border-t border-gray-100 px-4 py-3 flex items-center justify-between shrink-0">
-                    <span id="email-recordCount" class="text-xs text-gray-400">0 records</span>
+                    <span id="email-recordCount" class="text-xs text-gray-600">0 records</span>
                     <button id="email-btn-load-more"
                         class="hidden px-3 py-2 min-h-11 text-xs font-bold rounded-md bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors">
                         Load older entries

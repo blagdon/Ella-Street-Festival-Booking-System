@@ -51,14 +51,14 @@ export async function initToggles() {
         if (isOpen) {
             btn.className = "relative inline-flex h-6 w-11 items-center rounded-full bg-green-500 transition-colors focus:outline-none cursor-pointer";
             dot.className = "inline-block h-4 w-4 transform rounded-full bg-white transition-transform translate-x-6";
-            lbl.className = "text-xs font-semibold text-green-600";
+            lbl.className = "text-xs font-semibold text-green-700";
             lbl.textContent = "Open & Accepting Forms";
             if (formKey === 'general') generalOpen = true;
             else foodOpen = true;
         } else {
             btn.className = "relative inline-flex h-6 w-11 items-center rounded-full bg-red-400 transition-colors focus:outline-none cursor-pointer";
             dot.className = "inline-block h-4 w-4 transform rounded-full bg-white transition-transform translate-x-1";
-            lbl.className = "text-xs font-semibold text-red-600";
+            lbl.className = "text-xs font-semibold text-red-700";
             lbl.textContent = "Closed (Visitors Blocked)";
             if (formKey === 'general') generalOpen = false;
             else foodOpen = false;
@@ -71,7 +71,7 @@ export async function initToggles() {
 
         // Pessimistic UI: show saving status
         const lbl = formKey === 'general' ? lblGeneral : lblFood;
-        lbl.className = "text-xs text-gray-400 italic";
+        lbl.className = "text-xs text-gray-600 italic";
         lbl.textContent = "Saving...";
 
         try {

@@ -440,7 +440,7 @@ function renderPanel(containerId, data, title, headerClass, borderClass) {
             </div>
             <div class="p-6 space-y-8" id="${containerId}-body">
                 <div>
-                    <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Booking Status Breakdown</h3>
+                    <h3 class="text-xs font-bold text-gray-600 uppercase tracking-wider mb-3">Booking Status Breakdown</h3>
                     <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
                         ${statBox('Confirmed', statusCounts.Confirmed, 'text-green-800 bg-green-50 border-green-100')}
                         ${statBox('Pending', statusCounts.Pending, 'text-yellow-800 bg-yellow-50 border-yellow-100')}
@@ -454,7 +454,7 @@ function renderPanel(containerId, data, title, headerClass, borderClass) {
                 <div>
                     <div class="flex items-center mb-3">
                         <span class="w-2 h-2 rounded-full bg-green-600 mr-2"></span>
-                        <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider">Confirmed Stalls Analysis</h3>
+                        <h3 class="text-xs font-bold text-gray-600 uppercase tracking-wider">Confirmed Stalls Analysis</h3>
                     </div>
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                         ${metricCard('Power Required', conf.power, '\u26A1', 'border-yellow-100 bg-yellow-50 text-yellow-900')}
@@ -465,22 +465,22 @@ function renderPanel(containerId, data, title, headerClass, borderClass) {
                 <div>
                      <div class="flex items-center mb-3">
                         <span class="w-2 h-2 rounded-full bg-yellow-500 mr-2"></span>
-                        <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider">Pending Stalls Analysis</h3>
+                        <h3 class="text-xs font-bold text-gray-600 uppercase tracking-wider">Pending Stalls Analysis</h3>
                     </div>
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        ${metricCard('Power Requested', pend.power, '\u26A1', 'border-gray-100 bg-gray-50 text-gray-600 opacity-90')}
-                        ${metricCard('Charity Apps', pend.charity, '\u2764', 'border-gray-100 bg-gray-50 text-gray-600 opacity-90')}
-                        ${metricCard('Resident Apps', pend.resident, '\uD83C\uDFE0', 'border-gray-100 bg-gray-50 text-gray-600 opacity-90')}
+                        ${metricCard('Power Requested', pend.power, '\u26A1', 'border-gray-100 bg-gray-50 text-gray-700')}
+                        ${metricCard('Charity Apps', pend.charity, '\u2764', 'border-gray-100 bg-gray-50 text-gray-700')}
+                        ${metricCard('Resident Apps', pend.resident, '\uD83C\uDFE0', 'border-gray-100 bg-gray-50 text-gray-700')}
                     </div>
                 </div>
                 <hr class="border-gray-100">
                 <div>
-                    <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Category Breakdown</h3>
+                    <h3 class="text-xs font-bold text-gray-600 uppercase tracking-wider mb-3">Category Breakdown</h3>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div class="bg-yellow-50 rounded-lg p-4 border border-yellow-100">
                             <h4 class="font-bold text-yellow-900 text-sm mb-3 flex justify-between">
                                 <span>Pending Categories</span>
-                                <span class="text-xs opacity-75">${pend.rows.length} Stalls</span>
+                                <span class="text-xs">${pend.rows.length} Stalls</span>
                             </h4>
                             <div class="space-y-2">
                                 ${renderCategoryList(pend.cats, pend.rows.length, 'bg-yellow-200')}
@@ -489,7 +489,7 @@ function renderPanel(containerId, data, title, headerClass, borderClass) {
                         <div class="bg-green-50 rounded-lg p-4 border border-green-100">
                             <h4 class="font-bold text-green-900 text-sm mb-3 flex justify-between">
                                 <span>Confirmed Categories</span>
-                                <span class="text-xs opacity-75">${conf.rows.length} Stalls</span>
+                                <span class="text-xs">${conf.rows.length} Stalls</span>
                             </h4>
                             <div class="space-y-2">
                                 ${renderCategoryList(conf.cats, conf.rows.length, 'bg-green-200')}
@@ -561,7 +561,7 @@ function statBox(label, count, colorClasses) {
     return `
         <div class="p-3 rounded-lg border text-center stat-card ${colorClasses}">
             <div class="text-2xl font-bold">${count}</div>
-            <div class="text-[10px] uppercase font-bold opacity-70 mt-1">${label}</div>
+            <div class="text-[10px] uppercase font-bold mt-1">${label}</div>
         </div>
     `;
 }
@@ -578,7 +578,7 @@ function metricCard(label, count, icon, classes) {
 }
 
 function renderCategoryList(catMap, total, barColorClass) {
-    if (total === 0) return '<div class="text-xs text-gray-400 italic">No data</div>';
+    if (total === 0) return '<div class="text-xs text-gray-600 italic">No data</div>';
 
     const sorted = Object.entries(catMap).sort((a, b) => b[1] - a[1]);
 

@@ -30,12 +30,12 @@ export async function initSmsSettings() {
         if (isOn) {
             btnTestMode.className = "relative inline-flex h-6 w-11 items-center rounded-full bg-amber-500 transition-colors focus:outline-none cursor-pointer";
             dotTestMode.className = "inline-block h-4 w-4 transform rounded-full bg-white transition-transform translate-x-6";
-            lblTestMode.className = "text-xs font-semibold text-amber-600";
+            lblTestMode.className = "text-xs font-semibold text-amber-700";
             lblTestMode.textContent = "Test Mode ON — no real texts are sent";
         } else {
             btnTestMode.className = "relative inline-flex h-6 w-11 items-center rounded-full bg-green-500 transition-colors focus:outline-none cursor-pointer";
             dotTestMode.className = "inline-block h-4 w-4 transform rounded-full bg-white transition-transform translate-x-1";
-            lblTestMode.className = "text-xs font-semibold text-green-600";
+            lblTestMode.className = "text-xs font-semibold text-green-700";
             lblTestMode.textContent = "Live — real texts are sent and billed";
         }
         testModeOn = isOn;
@@ -102,14 +102,14 @@ export async function initSmsSettings() {
                 lblApiKeyStatus.className = 'text-xs mt-1 text-green-700';
             } else {
                 lblApiKeyStatus.textContent = 'Not set';
-                lblApiKeyStatus.className = 'text-xs mt-1 text-gray-400';
+                lblApiKeyStatus.className = 'text-xs mt-1 text-gray-600';
             }
         } catch (err) {
             // Non-fatal and deliberately does not block saving — see Stripe's
             // identical rationale: the field is always blank regardless of
             // this check's outcome, so a failed check cannot cause a wipe.
             lblApiKeyStatus.textContent = 'Could not check';
-            lblApiKeyStatus.className = 'text-xs mt-1 text-amber-600';
+            lblApiKeyStatus.className = 'text-xs mt-1 text-amber-700';
         }
     }
 

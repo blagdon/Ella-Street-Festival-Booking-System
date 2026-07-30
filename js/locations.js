@@ -91,14 +91,14 @@ function renderTable() {
         const availableLocs = sortedLocs.filter(l => !occupiedSet.has(l.id));
 
         const addSelectHtml = `
-        <select data-action="add-allocated-location" data-booking-id="${b.id}" class="hidden inline-block text-xs border-gray-300 rounded bg-white py-0.5 px-1 focus:ring-1 focus:ring-blue-500">
+        <select data-action="add-allocated-location" data-booking-id="${b.id}" aria-label="Assign location for booking ${escapeHtml(b.id)}" class="hidden inline-block text-xs border-gray-300 rounded bg-white py-0.5 px-1 focus:ring-1 focus:ring-blue-500">
             <option value="">-- Select location --</option>
             ${availableLocs.map(l => `<option value="${escapeHtml(l.id)}">${escapeHtml(l.id)}</option>`).join('')}
             <option value="__cancel__">-- Cancel --</option>
         </select>`;
 
         row.innerHTML = `
-        <td class="px-6 py-4 text-xs font-mono text-gray-400">${escapeHtml(b.id)}</td>
+        <td class="px-6 py-4 text-xs font-mono text-gray-600">${escapeHtml(b.id)}</td>
         <td class="px-6 py-4">
             <p class="text-sm md:text-sm text-xs font-bold text-gray-800">${escapeHtml(b.business || b.business_name)}</p>
             <p class="text-xs text-gray-500">${escapeHtml(b.owner || b.owner_name)}</p>

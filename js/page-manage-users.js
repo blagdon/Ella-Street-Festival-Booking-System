@@ -33,7 +33,7 @@ initAdminPage(initManageUsers);
 // ---- LOAD EXISTING USERS ----
 async function loadUsers() {
     const listEl = document.getElementById('userList');
-    listEl.innerHTML = '<div class="text-center py-6 text-gray-400 text-sm animate-pulse">Loading...</div>';
+    listEl.innerHTML = '<div class="text-center py-6 text-gray-600 text-sm animate-pulse">Loading...</div>';
 
     try {
         const { data, error } = await adminSb
@@ -44,7 +44,7 @@ async function loadUsers() {
         if (error) throw error;
 
         if (!data || data.length === 0) {
-            listEl.innerHTML = '<div class="text-center py-6 text-gray-400 text-sm">No users found.</div>';
+            listEl.innerHTML = '<div class="text-center py-6 text-gray-600 text-sm">No users found.</div>';
             return;
         }
 
@@ -52,7 +52,7 @@ async function loadUsers() {
             <div class="flex items-center justify-between p-3 rounded-lg bg-gray-50 border border-gray-100 fade-in">
                 <div class="min-w-0 flex-1 pr-2">
                     <div class="text-sm font-medium text-gray-700 truncate">${escapeHtml(u.email || '(no email)')}</div>
-                    <div class="text-xs text-gray-400 mt-0.5">${new Date(u.created_at).toLocaleDateString('en-GB')}</div>
+                    <div class="text-xs text-gray-600 mt-0.5">${new Date(u.created_at).toLocaleDateString('en-GB')}</div>
                 </div>
                 <div class="flex items-center gap-2 flex-shrink-0">
                     <span class="text-xs font-bold px-2 py-1 rounded-full role-badge-${escapeHtml(u.role)}">

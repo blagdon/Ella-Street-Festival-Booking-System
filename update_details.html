@@ -93,7 +93,7 @@
             <div class="p-3 md:p-4 border-b border-gray-200 bg-gray-50">
                 <input type="text" id="searchInput" placeholder="Search Name, ID, or Email..."
                     class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm bg-white shadow-sm">
-                <div id="countDisplay" class="text-xs text-gray-400 mt-2 text-right">Loading bookings...</div>
+                <div id="countDisplay" class="text-xs text-gray-600 mt-2 text-right">Loading bookings...</div>
             </div>
             <div id="bookingList" class="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1 min-h-0">
             </div>
@@ -115,7 +115,7 @@
             </div>
 
             <div id="emptyState"
-                class="absolute inset-0 flex flex-col items-center justify-center text-gray-400 bg-gray-50 z-20">
+                class="absolute inset-0 flex flex-col items-center justify-center text-gray-600 bg-gray-50 z-20">
                 <svg class="w-12 h-12 md:w-16 md:h-16 mb-3 md:mb-4 text-gray-300" fill="none" stroke="currentColor"
                     viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
@@ -142,24 +142,24 @@
                             Details</h3>
 
                         <div>
-                            <label class="block text-xs font-bold text-gray-500 mb-1">Business Name</label>
+                            <label for="editBusiness" class="block text-xs font-bold text-gray-500 mb-1">Business Name</label>
                             <input id="editBusiness"
                                 class="w-full p-2 border border-gray-300 rounded text-sm font-bold text-gray-800">
                         </div>
 
                         <div>
-                            <label class="block text-xs font-bold text-gray-500 mb-1">Owner Name</label>
+                            <label for="editOwner" class="block text-xs font-bold text-gray-500 mb-1">Owner Name</label>
                             <input id="editOwner" class="w-full p-2 border border-gray-300 rounded text-sm">
                         </div>
 
                         <div>
-                            <label class="block text-xs font-bold text-gray-500 mb-1">Category</label>
+                            <label for="editCategory" class="block text-xs font-bold text-gray-500 mb-1">Category</label>
                             <input id="editCategory"
                                 class="w-full p-2 border border-gray-300 rounded text-sm bg-gray-50 text-gray-600">
                         </div>
 
                         <div>
-                            <label class="block text-xs font-bold text-gray-500 mb-1">Stall Type</label>
+                            <label for="editType" class="block text-xs font-bold text-gray-500 mb-1">Stall Type</label>
                             <select id="editType" class="w-full p-2 border border-gray-300 rounded text-sm bg-white">
                             </select>
                         </div>
@@ -170,17 +170,17 @@
                             Logistics</h3>
 
                         <div>
-                            <label class="block text-xs font-bold text-gray-500 mb-1">Email Address</label>
+                            <label for="editEmail" class="block text-xs font-bold text-gray-500 mb-1">Email Address</label>
                             <input id="editEmail" class="w-full p-2 border border-gray-300 rounded text-sm">
                         </div>
 
                         <div>
-                            <label class="block text-xs font-bold text-gray-500 mb-1">Phone</label>
+                            <label for="editPhone" class="block text-xs font-bold text-gray-500 mb-1">Phone</label>
                             <input id="editPhone" class="w-full p-2 border border-gray-300 rounded text-sm">
                         </div>
 
                         <div>
-                            <label class="block text-xs font-bold text-gray-500 mb-1">Power Required</label>
+                            <label for="editPower" class="block text-xs font-bold text-gray-500 mb-1">Power Required</label>
                             <select id="editPower" class="w-full p-2 border border-gray-300 rounded text-sm bg-white">
                                 <option value="">Please select...</option>
                                 <option value="No power">No power</option>
@@ -193,7 +193,7 @@
                         </div>
 
                         <div>
-                            <label class="block text-xs font-bold text-gray-500 mb-1">Address / House No.</label>
+                            <label for="editHouse" class="block text-xs font-bold text-gray-500 mb-1">Address / House No.</label>
                             <input id="editHouse" class="w-full p-2 border border-gray-300 rounded text-sm">
                         </div>
 
@@ -205,7 +205,7 @@
 
                         <div class="grid grid-cols-2 gap-4">
                             <div>
-                                <label class="block text-xs font-bold text-gray-500 mb-1">Resident?</label>
+                                <label for="editResident" class="block text-xs font-bold text-gray-500 mb-1">Resident?</label>
                                 <select id="editResident"
                                     class="w-full p-2 border border-gray-300 rounded text-sm bg-white">
                                     <option value="false">No</option>
@@ -213,7 +213,7 @@
                                 </select>
                             </div>
                             <div>
-                                <label class="block text-xs font-bold text-gray-500 mb-1">Charity Status</label>
+                                <label for="editCharity" class="block text-xs font-bold text-gray-500 mb-1">Charity Status</label>
                                 <select id="editCharity"
                                     class="w-full p-2 border border-gray-300 rounded text-sm bg-white">
                                     <option value="Commercial">Commercial</option>
@@ -229,13 +229,13 @@
                         </h3>
 
                         <div>
-                            <label class="block text-xs font-bold text-gray-500 mb-1">Description</label>
+                            <label for="editDesc" class="block text-xs font-bold text-gray-500 mb-1">Description</label>
                             <textarea id="editDesc" rows="3"
                                 class="w-full p-2 border border-gray-300 rounded text-sm"></textarea>
                         </div>
 
                         <div>
-                            <label class="block text-xs font-bold text-gray-500 mb-1">Other Requirements</label>
+                            <label for="editOther" class="block text-xs font-bold text-gray-500 mb-1">Other Requirements</label>
                             <textarea id="editOther" rows="2"
                                 class="w-full p-2 border border-gray-300 rounded text-sm"></textarea>
                         </div>

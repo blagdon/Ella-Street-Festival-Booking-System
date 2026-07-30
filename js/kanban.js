@@ -93,7 +93,7 @@ function createCard(item) {
 
     div.innerHTML = `
     <div class="flex justify-between items-start mb-1">
-        <span class="text-[10px] font-mono text-gray-400 uppercase tracking-widest">${escapeHtml(item.id)}</span>
+        <span class="text-[10px] font-mono text-gray-600 uppercase tracking-widest">${escapeHtml(item.id)}</span>
         <div class="opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
             <button class="btn-card-email text-gray-400 hover:text-blue-500 p-1" title="Email"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg></button>
         </div>

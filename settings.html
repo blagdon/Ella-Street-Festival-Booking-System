@@ -66,7 +66,7 @@
                     </div>
                 </div>
                 <h3 class="text-lg font-bold text-gray-800 mb-1">Public Form Status</h3>
-                <p class="text-xs text-gray-400 mb-4">Dynamically close or open the trader registration forms.</p>
+                <p class="text-xs text-gray-600 mb-4">Dynamically close or open the trader registration forms.</p>
 
                 <div class="space-y-4 text-sm">
                     <!-- General Booking Toggle -->
@@ -105,7 +105,7 @@
                     </div>
                 </div>
                 <h3 class="text-lg font-bold text-gray-800 mb-1">Stripe Payments</h3>
-                <p class="text-xs text-gray-400 mb-4">
+                <p class="text-xs text-gray-600 mb-4">
                     Credentials used by "Request Payment" and the payment webhook. Nothing here is a hardcoded
                     server secret — all four values are stored in this settings table and can be rotated any time
                     without redeploying anything.
@@ -121,7 +121,7 @@
                             <span id="toggle-stripe-test-mode-dot" class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform translate-x-1"></span>
                         </button>
                     </div>
-                    <p class="text-xs text-gray-400">
+                    <p class="text-xs text-gray-600">
                         DEV-instance bookings always use Stripe Test Mode regardless of this setting.
                         Turn this ON to also use Test Mode for Food/General (Live) bookings — useful for a full
                         rehearsal before going live with real payments. Turn it OFF for real, live payment collection.
@@ -141,29 +141,29 @@
                     <div>
                         <label for="stripe-secret-key-test" class="block text-xs font-semibold text-gray-500 mb-1">STRIPE SECRET KEY (TEST MODE)</label>
                         <input type="password" id="stripe-secret-key-test" autocomplete="off" class="w-full p-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:outline-none" placeholder="sk_test_… (blank = unchanged)">
-                        <p id="stripe-secret-key-test-status" class="text-xs text-gray-400 mt-1">Checking…</p>
+                        <p id="stripe-secret-key-test-status" class="text-xs text-gray-600 mt-1">Checking…</p>
                     </div>
                     <div>
                         <label for="stripe-secret-key-live" class="block text-xs font-semibold text-gray-500 mb-1">STRIPE SECRET KEY (LIVE MODE)</label>
                         <input type="password" id="stripe-secret-key-live" autocomplete="off" class="w-full p-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:outline-none" placeholder="sk_live_… (blank = unchanged)">
-                        <p id="stripe-secret-key-live-status" class="text-xs text-gray-400 mt-1">Checking…</p>
+                        <p id="stripe-secret-key-live-status" class="text-xs text-gray-600 mt-1">Checking…</p>
                     </div>
                     <div>
                         <label for="stripe-webhook-secret-test" class="block text-xs font-semibold text-gray-500 mb-1">STRIPE WEBHOOK SIGNING SECRET (TEST MODE)</label>
                         <input type="password" id="stripe-webhook-secret-test" autocomplete="off" class="w-full p-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:outline-none" placeholder="whsec_… (blank = unchanged)">
-                        <p id="stripe-webhook-secret-test-status" class="text-xs text-gray-400 mt-1">Checking…</p>
+                        <p id="stripe-webhook-secret-test-status" class="text-xs text-gray-600 mt-1">Checking…</p>
                     </div>
                     <div>
                         <label for="stripe-webhook-secret-live" class="block text-xs font-semibold text-gray-500 mb-1">STRIPE WEBHOOK SIGNING SECRET (LIVE MODE)</label>
                         <input type="password" id="stripe-webhook-secret-live" autocomplete="off" class="w-full p-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:outline-none" placeholder="whsec_… (blank = unchanged)">
-                        <p id="stripe-webhook-secret-live-status" class="text-xs text-gray-400 mt-1">Checking…</p>
+                        <p id="stripe-webhook-secret-live-status" class="text-xs text-gray-600 mt-1">Checking…</p>
                     </div>
                 </div>
-                <p class="text-xs text-gray-400 mt-3">
+                <p class="text-xs text-gray-600 mt-3">
                     Webhook signing secrets come from registering this project's deployed <code>stripe-webhook</code>
                     function URL as an endpoint in the Stripe Dashboard — once under Test mode, once under Live mode.
                 </p>
-                <p class="text-xs text-gray-400 mt-2">
+                <p class="text-xs text-gray-600 mt-2">
                     Stored credentials are never displayed here, only whether each one is set. Type a new value to
                     replace one; leave a field blank to keep it as it is. To remove a credential entirely, clear it
                     directly in the <code>settings</code> table.
@@ -185,7 +185,7 @@
                     </div>
                 </div>
                 <h3 class="text-lg font-bold text-gray-800 mb-1">Bank Transfer Payment Details</h3>
-                <p class="text-xs text-gray-400 mb-4">
+                <p class="text-xs text-gray-600 mb-4">
                     Included in the payment-request email as the bank-transfer option, alongside the Stripe
                     payment link. Not a secret — these details are shown to stallholders so they can pay by
                     bank transfer instead of by card.
@@ -205,7 +205,7 @@
                         <input type="text" id="bank-transfer-account-number" class="w-full p-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:outline-none">
                     </div>
                 </div>
-                <p class="text-xs text-gray-400 mt-3">
+                <p class="text-xs text-gray-600 mt-3">
                     The payment reference (the booking ID) is added automatically — stallholders don't need to
                     be told a separate reference here.
                 </p>
@@ -226,7 +226,7 @@
                     </div>
                 </div>
                 <h3 class="text-lg font-bold text-gray-800 mb-1">Stall Costs</h3>
-                <p class="text-xs text-gray-400 mb-4">Update the default suggested cost charged to traders upon confirmation.</p>
+                <p class="text-xs text-gray-600 mb-4">Update the default suggested cost charged to traders upon confirmation.</p>
                 
                 <div class="space-y-3 text-sm">
                     <div>
@@ -259,7 +259,7 @@
                     </div>
                 </div>
                 <h3 class="text-lg font-bold text-gray-800 mb-1">Stall Types</h3>
-                <p class="text-xs text-gray-400 mb-4">Manage the list of stall/category types used on the booking details editor and the Add Misc Entry page. Changes take effect immediately.</p>
+                <p class="text-xs text-gray-600 mb-4">Manage the list of stall/category types used on the booking details editor and the Add Misc Entry page. Changes take effect immediately.</p>
 
                 <div id="stall-types-list" class="flex flex-wrap gap-2 mb-4"></div>
 
@@ -285,7 +285,7 @@
                     </div>
                 </div>
                 <h3 class="text-lg font-bold text-gray-800 mb-1">System Constants</h3>
-                <p class="text-xs text-gray-400 mb-4">Configure environment URLs, Turnstile keys, and communication parameters.</p>
+                <p class="text-xs text-gray-600 mb-4">Configure environment URLs, Turnstile keys, and communication parameters.</p>
 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                     <div>
@@ -338,7 +338,7 @@
                     </div>
                 </div>
                 <h3 class="text-lg font-bold text-gray-800 mb-1">Zoho Mail API Settings</h3>
-                <p class="text-xs text-gray-400 mb-4">Configure credentials to send emails via Zoho Mail REST API instead of Gmail/GAS.</p>
+                <p class="text-xs text-gray-600 mb-4">Configure credentials to send emails via Zoho Mail REST API instead of Gmail/GAS.</p>
 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                     <div>
@@ -408,10 +408,10 @@
                     </div>
                 </div>
                 <h3 class="text-lg font-bold text-gray-800 mb-1">SMS (The SMS Works)</h3>
-                <p class="text-xs text-gray-400 mb-4">
+                <p class="text-xs text-gray-600 mb-4">
                     Credentials used to send stallholder text messages via
                     <a href="https://thesmsworks.co.uk" target="_blank" rel="noopener"
-                        class="text-blue-600 hover:underline">The SMS Works</a>.
+                        class="text-blue-700 underline">The SMS Works</a>.
                     Stored in this settings table, same as every other integration here — nothing is a hardcoded
                     server secret.
                 </p>
@@ -429,7 +429,7 @@
                                 class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform translate-x-1"></span>
                         </button>
                     </div>
-                    <p class="text-xs text-gray-400">
+                    <p class="text-xs text-gray-600">
                         While ON, no text ever reaches The SMS Works — every send is simulated and logged as if it
                         succeeded, the same no-op behaviour this feature shipped with before any provider was
                         configured. Turn this OFF to actually send real, billed texts. This is the master switch:
@@ -450,7 +450,7 @@
                         <input type="text" id="sms-sender-id" maxlength="11"
                             class="w-full p-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:outline-none"
                             placeholder="e.g. EllaStFest">
-                        <p class="text-xs text-gray-400 mt-1">Up to 11 letters/digits. Shown as the "from" name on
+                        <p class="text-xs text-gray-600 mt-1">Up to 11 letters/digits. Shown as the "from" name on
                             the handset — this is one-way (no registered sender ID), so replies aren't possible.</p>
                     </div>
                     <div>
@@ -459,13 +459,13 @@
                         <input type="password" id="sms-api-key" autocomplete="off"
                             class="w-full p-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:outline-none"
                             placeholder="Enter to replace (blank = unchanged)">
-                        <p id="sms-api-key-status" class="text-xs text-gray-400 mt-1">Checking…</p>
+                        <p id="sms-api-key-status" class="text-xs text-gray-600 mt-1">Checking…</p>
                     </div>
                 </div>
-                <p class="text-xs text-gray-400 mt-3">
+                <p class="text-xs text-gray-600 mt-3">
                     Generate the API key from the "API Key" tab of your
                     <a href="https://thesmsworks.co.uk/user/login" target="_blank" rel="noopener"
-                        class="text-blue-600 hover:underline">The SMS Works account</a>. It's a single long-lived
+                        class="text-blue-700 underline">The SMS Works account</a>. It's a single long-lived
                     token — it doesn't expire on its own, but regenerating it in their dashboard invalidates this
                     one immediately.
                 </p>
@@ -486,9 +486,9 @@
                     </div>
                 </div>
                 <h3 class="text-lg font-bold text-gray-800 mb-1">Error Monitoring (Sentry)</h3>
-                <p class="text-xs text-gray-400 mb-4">
+                <p class="text-xs text-gray-600 mb-4">
                     Configuration for the <a href="https://sentry.io" target="_blank" rel="noopener"
-                        class="text-blue-600 hover:underline">Sentry</a> integration covering both Edge Functions and
+                        class="text-blue-700 underline">Sentry</a> integration covering both Edge Functions and
                     the admin dashboard. Stored in this settings table like every other integration here — neither
                     field is a secret the way a Stripe/SMS Works API key is (Sentry DSNs and loader URLs are
                     designed to be embedded in client-visible code), so both are shown in full, not write-only.
@@ -502,7 +502,7 @@
                         <input type="text" id="sentry-dsn" autocomplete="off"
                             class="w-full p-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:outline-none font-mono text-xs"
                             placeholder="https://<key>@<org>.ingest.<region>.sentry.io/<project id>">
-                        <p class="text-xs text-gray-400 mt-1">From a Deno/Node project's Client Keys (DSN) page in
+                        <p class="text-xs text-gray-600 mt-1">From a Deno/Node project's Client Keys (DSN) page in
                             Sentry.</p>
                     </div>
                     <div>
@@ -511,7 +511,7 @@
                         <input type="text" id="sentry-browser-loader-url" autocomplete="off"
                             class="w-full p-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:outline-none font-mono text-xs"
                             placeholder="https://js-de.sentry-cdn.com/<loader id>.min.js">
-                        <p class="text-xs text-gray-400 mt-1">From a Browser JavaScript project's "Loader Script"
+                        <p class="text-xs text-gray-600 mt-1">From a Browser JavaScript project's "Loader Script"
                             install step in Sentry — the full &lt;script&gt; tag's src attribute, not the DSN
                             itself.</p>
                     </div>
@@ -534,7 +534,7 @@
                     </div>
                 </div>
                 <h3 class="text-lg font-bold text-gray-800 mb-1">SerpApi API Settings</h3>
-                <p class="text-xs text-gray-400 mb-4">Configure your SerpApi API Key to fetch Google Maps reviews for food stalls.</p>
+                <p class="text-xs text-gray-600 mb-4">Configure your SerpApi API Key to fetch Google Maps reviews for food stalls.</p>
 
                 <div class="space-y-4 text-sm">
                     <div>
@@ -549,7 +549,7 @@
 
         </div>
 
-        <div class="mt-12 text-center text-xs text-gray-400">
+        <div class="mt-12 text-center text-xs text-gray-600">
             <p>Ella Street Festival Management System (Cloud Native)</p>
         </div>
     </div>

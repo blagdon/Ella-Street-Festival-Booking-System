@@ -36,7 +36,7 @@ export async function initStripeSettings() {
         if (isOn) {
             btn.className = "relative inline-flex h-6 w-11 items-center rounded-full bg-green-500 transition-colors focus:outline-none cursor-pointer";
             dot.className = "inline-block h-4 w-4 transform rounded-full bg-white transition-transform translate-x-6";
-            lbl.className = "text-xs font-semibold text-green-600";
+            lbl.className = "text-xs font-semibold text-green-700";
             lbl.textContent = "Test Mode ON for Food/General";
         } else {
             btn.className = "relative inline-flex h-6 w-11 items-center rounded-full bg-gray-300 transition-colors focus:outline-none cursor-pointer";
@@ -50,7 +50,7 @@ export async function initStripeSettings() {
     async function toggleSetting(newValue) {
         const strVal = newValue ? 'true' : 'false';
 
-        lbl.className = "text-xs text-gray-400 italic";
+        lbl.className = "text-xs text-gray-600 italic";
         lbl.textContent = "Saving...";
 
         try {
@@ -128,7 +128,7 @@ export async function initStripeSettings() {
                 const configured = new Set((data || []).map(row => row.key));
                 STRIPE_CREDENTIAL_KEYS.forEach(key => {
                     if (configured.has(key)) setStatus(key, '✓ Configured', 'text-green-700');
-                    else setStatus(key, 'Not set', 'text-gray-400');
+                    else setStatus(key, 'Not set', 'text-gray-600');
                 });
             } catch (err) {
                 // Non-fatal, and deliberately does NOT disable saving. Before
@@ -140,7 +140,7 @@ export async function initStripeSettings() {
                 // failed status check cannot cause a wipe. Blocking saves here
                 // would only stop an admin configuring Stripe for no safety gain.
                 STRIPE_CREDENTIAL_KEYS.forEach(key =>
-                    setStatus(key, 'Could not check', 'text-amber-600'));
+                    setStatus(key, 'Could not check', 'text-amber-700'));
                 showToast("Couldn't check which Stripe credentials are set: " + err.message, 'error');
             }
         }

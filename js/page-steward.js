@@ -150,7 +150,7 @@ function renderList(query) {
             <div class="mt-2 text-xs bg-gray-100 inline-block px-2 py-1 rounded font-mono">${escapeHtml(b.id)}</div>
         </div>
         <div class="text-right pl-4 border-l border-gray-100 min-w-[80px] cursor-pointer location-edit-btn">
-            <div class="text-[10px] text-gray-400 font-bold tracking-wider uppercase mb-1">Location</div>
+            <div class="text-[10px] text-gray-600 font-bold tracking-wider uppercase mb-1">Location</div>
             <div class="text-3xl font-black ${hasLoc ? 'text-blue-600' : 'text-gray-300'}">${safeLoc}</div>
         </div>
     `;
@@ -375,11 +375,11 @@ function updateStatus(isOnline) {
     const el = document.getElementById('statusIndicator');
     if (isOnline) {
         el.innerText = "ONLINE";
-        el.className = "text-xs font-bold bg-green-500 text-white px-2 py-1 rounded shadow";
+        el.className = "text-xs font-bold bg-green-700 text-white px-2 py-1 rounded shadow";
         document.body.classList.remove('is-offline');
     } else {
         el.innerText = "OFFLINE";
-        el.className = "text-xs font-bold bg-red-500 text-white px-2 py-1 rounded shadow animate-pulse";
+        el.className = "text-xs font-bold bg-red-700 text-white px-2 py-1 rounded shadow animate-pulse";
         document.body.classList.add('is-offline');
     }
 }

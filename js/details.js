@@ -82,7 +82,7 @@ function renderList(data) {
     listEl.innerHTML = '';
 
     if (data.length === 0) {
-        listEl.innerHTML = '<div class="text-center p-4 text-gray-400 text-xs">No bookings found.</div>';
+        listEl.innerHTML = '<div class="text-center p-4 text-gray-600 text-xs">No bookings found.</div>';
         return;
     }
 
@@ -95,10 +95,10 @@ function renderList(data) {
         div.innerHTML = `
             <div class="flex justify-between items-start mb-0.5">
                 <span class="font-bold text-sm text-gray-800 group-hover:text-blue-700 truncate">${escapeHtml(item.business_name || item.business || 'Unknown Business')}</span>
-                <span class="text-xs bg-gray-100 text-gray-500 px-1.5 rounded shrink-0 whitespace-nowrap">${escapeHtml(item.status)}</span>
+                <span class="text-xs bg-gray-100 text-gray-700 px-1.5 rounded shrink-0 whitespace-nowrap">${escapeHtml(item.status)}</span>
             </div>
             <div class="text-xs text-gray-500">${escapeHtml(item.owner_name || item.owner || 'Unknown Owner')}</div>
-            <div class="font-mono text-xs text-gray-400 mt-0.5">${item.id}</div>
+            <div class="font-mono text-xs text-gray-600 mt-0.5">${item.id}</div>
         `;
         listEl.appendChild(div);
     });

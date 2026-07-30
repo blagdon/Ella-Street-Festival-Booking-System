@@ -77,8 +77,8 @@ function renderTable(data) {
     countEl.innerText = `${data.length} records found`;
 
     if (data.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="7" class="px-6 py-10 text-center text-gray-400">No bookings found for this instance.</td></tr>`;
-        cardContainer.innerHTML = `<div class="text-center py-10 text-gray-400">No bookings found for this instance.</div>`;
+        tbody.innerHTML = `<tr><td colspan="7" class="px-6 py-10 text-center text-gray-600">No bookings found for this instance.</td></tr>`;
+        cardContainer.innerHTML = `<div class="text-center py-10 text-gray-600">No bookings found for this instance.</div>`;
         return;
     }
 
@@ -92,12 +92,12 @@ function renderTable(data) {
             || "bg-gray-100 text-gray-800";
 
         tr.innerHTML = `
-            <td class="px-6 py-4 whitespace-nowrap text-xs font-mono text-gray-400">${escapeHtml(item.id)}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-xs font-mono text-gray-600">${escapeHtml(item.id)}</td>
             <td class="px-6 py-4 whitespace-nowrap"><span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${statusClass}">${escapeHtml(item.status)}</span></td>
             <td class="px-6 py-4 whitespace-nowrap font-medium text-gray-900 text-sm">${escapeHtml(item.business_name || item.business)}</td>
             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                 <div class="font-bold text-gray-700">${escapeHtml(item.owner_name || item.owner)}</div>
-                <div class="text-xs text-gray-400">${escapeHtml(item.email)}</div>
+                <div class="text-xs text-gray-600">${escapeHtml(item.email)}</div>
             </td>
             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${escapeHtml(item.category || '-')}</td>
             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${(item.power_required || item.power) === 'No power' ? 'No' : '<span class="text-yellow-500 text-lg">\u26A1</span>'}</td>
@@ -164,9 +164,9 @@ function renderTable(data) {
                 <div class="flex items-center justify-between">
                     <div class="flex items-center">
                         <svg class="w-4 h-4 mr-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path></svg>
-                        <span class="text-xs font-mono ${item.location_display ? 'text-blue-600 font-semibold' : 'text-gray-400'}">${escapeHtml(item.location_display || 'No location')}</span>
+                        <span class="text-xs font-mono ${item.location_display ? 'text-blue-600 font-semibold' : 'text-gray-600'}">${escapeHtml(item.location_display || 'No location')}</span>
                     </div>
-                    <span class="text-xs font-mono text-gray-400">${escapeHtml(item.id)}</span>
+                    <span class="text-xs font-mono text-gray-600">${escapeHtml(item.id)}</span>
                 </div>
             </div>
         `;
