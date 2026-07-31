@@ -169,3 +169,36 @@ jobs:
         run: npm run test:setup
       - name: Run integration/workflow/security tests
         run: npm run test:integration
+
+  # Phase 2 of the accessibility regression suite (see
+  # e2e/admin-accessibility.spec.mjs's header): the 17 admin pages, reached
+  # via a real sign-in against the same disposable test project integration-
+  # tests uses above. Shares that job's concurrency group deliberately - both
+  # hit the same live test project, and even though this one only reads, the
+  # whole point of that group is to rule out any overlap on it, not just
+  # overlapping writes.
+  admin-accessibility-tests:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: integration-tests-shared-db
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - run: npm install
+      - run: npx playwright install --with-deps chromium
+      - name: Write .env.test
+        run: |
+          cat <<EOF > .env.test
+          TEST_SUPABASE_URL=${{ secrets.TEST_SUPABASE_URL }}
+          TEST_SUPABASE_ANON_KEY=${{ secrets.TEST_SUPABASE_ANON_KEY }}
+          TEST_SUPABASE_SERVICE_ROLE_KEY=${{ secrets.TEST_SUPABASE_SERVICE_ROLE_KEY }}
+          TEST_ADMIN_EMAIL=${{ secrets.TEST_ADMIN_EMAIL }}
+          TEST_ADMIN_PASSWORD=${{ secrets.TEST_ADMIN_PASSWORD }}
+          EOF
+      - name: Ensure test fixtures (idempotent)
+        run: npm run test:setup
+      - name: Run admin accessibility regression suite
+        run: npm run test:a11y:admin

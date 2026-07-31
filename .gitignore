@@ -2,6 +2,7 @@ node_modules/
 .vercel/
 playwright-report/
 test-results/
+e2e/.auth/
 .vscode/
 .vscode - Copy/
 backups/

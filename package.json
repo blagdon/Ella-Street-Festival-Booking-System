@@ -13,7 +13,8 @@
     "lint": "eslint .",
     "test:setup": "node scripts/seed-test-project.mjs",
     "test:integration": "node --test --test-concurrency=1",
-    "test:a11y": "playwright test"
+    "test:a11y": "playwright test --project=public",
+    "test:a11y:admin": "playwright test --project=setup --project=admin"
   },
   "keywords": [],
   "author": "",

@@ -5,12 +5,22 @@
 // in one directory invites node --test trying (and failing) to load a
 // Playwright spec. e2e/ is never scanned by `npm run test:integration`.
 //
-// Scope, for now: only pages that render fully with no authentication and no
-// live Supabase connection - see e2e/accessibility.spec.mjs's own header for
-// the page list and why. Testing the 17 auth-gated admin pages needs a real
-// signed-in session (same test-project + test-admin pattern tests/ already
-// uses) and is a deliberate follow-up, not done here.
+// Two phases, run separately (see each spec file's own header):
+//   - "public" (npm run test:a11y): pages needing no auth/backend at all.
+//     Safe for any contributor to run with zero secrets configured.
+//   - "setup" + "admin" (npm run test:a11y:admin): the 17 auth-gated admin
+//     pages. Needs .env.test (the same disposable test Supabase project
+//     tests/*.test.mjs uses) - admin.setup.mjs hard-fails if it's missing.
 import { defineConfig } from '@playwright/test';
+import fs from 'node:fs';
+
+// Harmless no-op if .env.test doesn't exist - only the "admin"/"setup"
+// projects actually need these vars, and they hard-fail with a clear error
+// if they're missing rather than this file crashing for every contributor
+// who just wants to run the no-auth "public" suite.
+if (fs.existsSync('.env.test')) {
+  process.loadEnvFile('.env.test');
+}
 
 export default defineConfig({
   testDir: './e2e',
@@ -32,4 +42,20 @@ export default defineConfig({
     reuseExistingServer: !process.env.CI,
     timeout: 30_000,
   },
+  projects: [
+    // Unanchored substring matches are a trap here: "admin-accessibility.spec.mjs"
+    // contains "accessibility.spec.mjs", so a loose /accessibility\.spec\.mjs/
+    // pattern silently pulls the auth-gated suite into this unauthenticated
+    // project too - every page then just redirects to login.html and "passes"
+    // against that instead of the real page, with no error to say so. Anchored
+    // to a path separator immediately before the filename to rule that out.
+    { name: 'public', testMatch: /\/accessibility\.spec\.mjs$/ },
+    { name: 'setup', testMatch: /\/admin\.setup\.mjs$/ },
+    {
+      name: 'admin',
+      testMatch: /\/admin-accessibility\.spec\.mjs$/,
+      dependencies: ['setup'],
+      use: { storageState: 'e2e/.auth/admin.json' },
+    },
+  ],
 });
