@@ -1,3 +1,4 @@
+// @ts-check
 import { fetchLocationData, updateLocation, LIST_CAP } from './api.js';
 import { queueLocationEmail, queueLocationSms } from './shared.js';
 import { showToast, notifyIfTruncated, registerModalClose, trapFocus } from './ui.js';
@@ -8,7 +9,9 @@ let allLocations = [];
 let globalOccupiedIds = [];
 let currentFilter = 'all';
 let currentSearchTerm = '';
+/** @type {'business'|'id'} */
 let currentSortField = 'id';
+/** @type {'asc'|'desc'} */
 let currentSortDir = 'asc';
 let currentMobileBookingId = null;
 
@@ -223,7 +226,7 @@ function openLocationEmailModal(mode, target, title, message) {
 
     // Reset every open so a ticked state never carries over to the next
     // booking/batch, matching every other opt-in SMS tickbox in this app.
-    const smsCb = document.getElementById('locationEmailAlsoSms');
+    const smsCb = /** @type {HTMLInputElement | null} */ (document.getElementById('locationEmailAlsoSms'));
     if (smsCb) smsCb.checked = false;
 
     document.getElementById('locationEmailModal')?.classList.remove('opacity-0', 'pointer-events-none');
@@ -232,7 +235,7 @@ function openLocationEmailModal(mode, target, title, message) {
 }
 
 async function confirmLocationEmailSend() {
-    const alsoSms = !!document.getElementById('locationEmailAlsoSms')?.checked;
+    const alsoSms = !!(/** @type {HTMLInputElement | null} */ (document.getElementById('locationEmailAlsoSms')))?.checked;
     const mode = pendingSendMode;
     const target = pendingSendTarget;
     closeLocationEmailModal();
@@ -299,7 +302,7 @@ async function doSendBulkLocationEmails(targets, alsoSms) {
     const statusEl = document.getElementById('statusMsg');
     if (statusEl) statusEl.classList.remove('hidden');
 
-    const btn = document.getElementById('btn-send-bulk-emails');
+    const btn = /** @type {HTMLButtonElement | null} */ (document.getElementById('btn-send-bulk-emails'));
     const originalContent = btn ? btn.innerHTML : '';
     if (btn) {
         btn.innerHTML = `<svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white inline-block align-text-bottom" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Sending...`;
@@ -367,7 +370,7 @@ async function doSendBulkLocationEmails(targets, alsoSms) {
  * column names are auto-detected by My Maps' import wizard.
  */
 export async function downloadLocationsForMyMaps() {
-    const btn = document.getElementById('btn-download-mymaps');
+    const btn = /** @type {HTMLButtonElement | null} */ (document.getElementById('btn-download-mymaps'));
     const originalContent = btn ? btn.innerHTML : '';
     if (btn) {
         btn.disabled = true;
@@ -458,6 +461,10 @@ export function setSearchTerm(term) {
     renderMobileCards();
 }
 
+/**
+ * @param {'id'|'business'} field
+ * @param {'asc'|'desc'} direction
+ */
 export function setSort(field, direction) {
     currentSortField = field;
     currentSortDir = direction;
@@ -496,11 +503,11 @@ function renderMobileCards() {
     const unassignedCount = totalCount - assignedCount;
 
     const elTotal = document.getElementById('mobile-total');
-    if (elTotal) elTotal.textContent = totalCount;
+    if (elTotal) elTotal.textContent = String(totalCount);
     const elAssigned = document.getElementById('mobile-assigned');
-    if (elAssigned) elAssigned.textContent = assignedCount;
+    if (elAssigned) elAssigned.textContent = String(assignedCount);
     const elUnassigned = document.getElementById('mobile-unassigned');
-    if (elUnassigned) elUnassigned.textContent = unassignedCount;
+    if (elUnassigned) elUnassigned.textContent = String(unassignedCount);
 
     // Filter bookings
     const mobileTerm = currentSearchTerm.trim().toLowerCase();

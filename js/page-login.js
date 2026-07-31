@@ -1,3 +1,4 @@
+// @ts-check
 import { getSupabaseClient, initSentryBrowser } from './supabase.js';
 import { safeError, escapeHtml } from './utils.js';
 import { auditLog } from './audit.js';
@@ -20,7 +21,7 @@ function toggleView(view) {
     if (view === 'reset') {
         loginCard.classList.add('hidden');
         resetCard.classList.remove('hidden');
-        document.getElementById('resetEmail').value = document.getElementById('loginEmail').value; // Auto-fill email
+        (/** @type {HTMLInputElement} */ (document.getElementById('resetEmail'))).value = (/** @type {HTMLInputElement} */ (document.getElementById('loginEmail'))).value; // Auto-fill email
         document.getElementById('resetEmail').focus();
     } else {
         resetCard.classList.add('hidden');
@@ -67,8 +68,8 @@ initPublicPage(async () => {
     // --- LOGIN HANDLER ---
     document.getElementById('loginForm')?.addEventListener('submit', async function (e) {
         e.preventDefault();
-        const btn = document.getElementById('loginBtn');
-        const errEl = document.getElementById('loginError');
+        const btn = /** @type {HTMLButtonElement} */ (document.getElementById('loginBtn'));
+        const errEl = /** @type {HTMLElement} */ (document.getElementById('loginError'));
 
         // Check lockout
         const now = Date.now();
@@ -86,14 +87,14 @@ initPublicPage(async () => {
         try {
             const sb = getSupabaseClient();
             const { error } = await sb.auth.signInWithPassword({
-                email: document.getElementById('loginEmail').value.trim(),
-                password: document.getElementById('loginPassword').value
+                email: (/** @type {HTMLInputElement} */ (document.getElementById('loginEmail'))).value.trim(),
+                password: (/** @type {HTMLInputElement} */ (document.getElementById('loginPassword'))).value
             });
 
             if (error) throw error;
 
             // Log the successful sign-in
-            await auditLog('admin_login', 'system', { email: document.getElementById('loginEmail').value.trim() });
+            await auditLog('admin_login', 'system', { email: (/** @type {HTMLInputElement} */ (document.getElementById('loginEmail'))).value.trim() });
 
             loginAttempts = 0; // Reset on success
             window.location.href = 'index.html';
@@ -115,9 +116,9 @@ initPublicPage(async () => {
     // --- RESET PASSWORD HANDLER ---
     document.getElementById('resetForm')?.addEventListener('submit', async function (e) {
         e.preventDefault();
-        const btn = document.getElementById('resetBtn');
-        const msgEl = document.getElementById('resetMessage');
-        const email = document.getElementById('resetEmail').value.trim();
+        const btn = /** @type {HTMLButtonElement} */ (document.getElementById('resetBtn'));
+        const msgEl = /** @type {HTMLElement} */ (document.getElementById('resetMessage'));
+        const email = (/** @type {HTMLInputElement} */ (document.getElementById('resetEmail'))).value.trim();
 
         btn.disabled = true;
         btn.innerText = 'Sending...';

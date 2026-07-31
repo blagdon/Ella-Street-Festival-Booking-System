@@ -1,3 +1,4 @@
+// @ts-check
 import { getSupabaseClient } from './supabase.js';
 import { updateBookingStatus, finalizeConfirmation, sendEmail, sendBookingSms, getSignedBookingDocuments } from './api.js';
 import { auditLog } from './audit.js';
@@ -22,6 +23,7 @@ import { populateGoogleMapsReviews } from './google-reviews.js';
 // ---------------------------------------------------------------------------
 const MAX_SMS_LEN = 1600; // matches send-sms / queue-bulk-sms's own cap
 
+/** @param {HTMLTextAreaElement} bodyEl @param {HTMLElement} countEl */
 function updateSmsCount(bodyEl, countEl) {
     const { len, parts } = countSmsSegments(bodyEl.value);
     countEl.textContent = `${len} character${len !== 1 ? 's' : ''} · ${parts} SMS part${parts !== 1 ? 's' : ''}`;
@@ -33,9 +35,9 @@ function updateSmsCount(bodyEl, countEl) {
  * Safe to call on a page without those elements (returns silently).
  */
 export function initComposeSmsToggle() {
-    const cb = document.getElementById('emailAlsoSms');
+    const cb = /** @type {HTMLInputElement | null} */ (document.getElementById('emailAlsoSms'));
     const wrap = document.getElementById('emailSmsWrap');
-    const body = document.getElementById('emailSmsBody');
+    const body = /** @type {HTMLTextAreaElement | null} */ (document.getElementById('emailSmsBody'));
     const count = document.getElementById('emailSmsCount');
     if (!cb || !wrap || !body || !count) return;
 
@@ -44,7 +46,7 @@ export function initComposeSmsToggle() {
         if (cb.checked && !body.value.trim()) {
             // Prefill from the email body, trimmed to the hard cap so the
             // field never opens already over-length.
-            const emailBody = document.getElementById('emailBody');
+            const emailBody = /** @type {HTMLTextAreaElement | null} */ (document.getElementById('emailBody'));
             body.value = (emailBody ? emailBody.value : '').slice(0, MAX_SMS_LEN);
         }
         updateSmsCount(body, count);
@@ -57,9 +59,9 @@ export function initComposeSmsToggle() {
  * @param {() => number} getRecipientCount how many bookings will be texted
  */
 export function initBulkSmsToggle(getRecipientCount) {
-    const cb = document.getElementById('bulkAlsoSms');
+    const cb = /** @type {HTMLInputElement | null} */ (document.getElementById('bulkAlsoSms'));
     const wrap = document.getElementById('bulkSmsWrap');
-    const body = document.getElementById('bulkSmsBody');
+    const body = /** @type {HTMLTextAreaElement | null} */ (document.getElementById('bulkSmsBody'));
     const cost = document.getElementById('bulkSmsCost');
     if (!cb || !wrap || !body || !cost) return;
 
@@ -93,10 +95,10 @@ export function readOptionalSmsBody(which) {
         ? { cb: 'bulkAlsoSms', body: 'bulkSmsBody' }
         : { cb: 'emailAlsoSms', body: 'emailSmsBody' };
 
-    const cb = document.getElementById(ids.cb);
+    const cb = /** @type {HTMLInputElement | null} */ (document.getElementById(ids.cb));
     if (!cb || !cb.checked) return null;
 
-    const el = document.getElementById(ids.body);
+    const el = /** @type {HTMLTextAreaElement | null} */ (document.getElementById(ids.body));
     const text = el ? el.value.trim() : '';
     if (!text) throw new Error('Text message is ticked but empty — add the message or untick it.');
     if (text.length > MAX_SMS_LEN) throw new Error(`Text message is too long (${text.length}/${MAX_SMS_LEN} characters).`);
@@ -110,13 +112,13 @@ export function readOptionalSmsBody(which) {
  * @param {string} elId
  */
 export function readStatusSmsChecked(elId) {
-    const el = document.getElementById(elId);
+    const el = /** @type {HTMLInputElement | null} */ (document.getElementById(elId));
     return !!(el && el.checked);
 }
 
 /** Unticks a status-SMS tickbox so it never carries over to the next booking. */
 export function resetStatusSmsCheckbox(elId) {
-    const el = document.getElementById(elId);
+    const el = /** @type {HTMLInputElement | null} */ (document.getElementById(elId));
     if (el) el.checked = false;
 }
 
@@ -126,9 +128,9 @@ export function resetSmsToggle(which) {
         ? { cb: 'bulkAlsoSms', wrap: 'bulkSmsWrap', body: 'bulkSmsBody' }
         : { cb: 'emailAlsoSms', wrap: 'emailSmsWrap', body: 'emailSmsBody' };
 
-    const cb = document.getElementById(ids.cb);
+    const cb = /** @type {HTMLInputElement | null} */ (document.getElementById(ids.cb));
     const wrap = document.getElementById(ids.wrap);
-    const body = document.getElementById(ids.body);
+    const body = /** @type {HTMLTextAreaElement | null} */ (document.getElementById(ids.body));
     if (cb) cb.checked = false;
     if (wrap) wrap.classList.add('hidden');
     if (body) body.value = '';
@@ -409,7 +411,7 @@ function populateBasicFields(item) {
     setTxt('d-id', item.id);
     setTxt('d-business', item.business || item.business_name);
 
-    const auditLogLink = document.getElementById('btn-open-audit-log');
+    const auditLogLink = /** @type {HTMLAnchorElement | null} */ (document.getElementById('btn-open-audit-log'));
     if (auditLogLink) {
         auditLogLink.href = `audit_log.html?target=${encodeURIComponent(item.id)}`;
     }
@@ -560,7 +562,7 @@ function populateBasicFields(item) {
         otherEl.innerText = item.other_requirements || item.other || "None";
     }
 
-    const notesEl = document.getElementById('d-notes');
+    const notesEl = /** @type {HTMLTextAreaElement | null} */ (document.getElementById('d-notes'));
     if (notesEl) {
         notesEl.value = item.admin_notes || item.notes || "";
     }

@@ -1,3 +1,4 @@
+// @ts-check
 import { initAdminPage } from './supabase.js';
 import { insertMiscBooking } from './api.js';
 import { showToast } from './ui.js';
@@ -7,7 +8,7 @@ initAdminPage(initAddMisc);
 
 function initAddMisc() {
     // Populate stall types
-    const typeSelect = document.getElementById('entryType');
+    const typeSelect = /** @type {HTMLSelectElement} */ (document.getElementById('entryType'));
     if (CONFIG && CONFIG.UI && CONFIG.UI.ALLOWED_TYPES) {
         CONFIG.UI.ALLOWED_TYPES.forEach(type => {
             const opt = document.createElement('option');
@@ -27,20 +28,20 @@ function initAddMisc() {
 }
 
 async function submitMiscEntry() {
-    const btn = document.getElementById('submitBtn');
+    const btn = /** @type {HTMLButtonElement} */ (document.getElementById('submitBtn'));
     const originalText = btn.innerText;
 
     // Collect Payload
     const payload = {
-        business: document.getElementById('entryBusiness').value.trim(),
-        owner: document.getElementById('entryOwner').value.trim(),
-        type: document.getElementById('entryType').value,
-        category: document.getElementById('entryCategory').value.trim(),
-        email: document.getElementById('entryEmail').value.trim(),
-        phone: document.getElementById('entryPhone').value.trim(),
-        house: document.getElementById('entryAddress').value.trim(),
-        website: document.getElementById('entryWebsite').value.trim(),
-        description: document.getElementById('entryDescription').value.trim()
+        business: (/** @type {HTMLInputElement} */ (document.getElementById('entryBusiness'))).value.trim(),
+        owner: (/** @type {HTMLInputElement} */ (document.getElementById('entryOwner'))).value.trim(),
+        type: (/** @type {HTMLSelectElement} */ (document.getElementById('entryType'))).value,
+        category: (/** @type {HTMLInputElement} */ (document.getElementById('entryCategory'))).value.trim(),
+        email: (/** @type {HTMLInputElement} */ (document.getElementById('entryEmail'))).value.trim(),
+        phone: (/** @type {HTMLInputElement} */ (document.getElementById('entryPhone'))).value.trim(),
+        house: (/** @type {HTMLInputElement} */ (document.getElementById('entryAddress'))).value.trim(),
+        website: (/** @type {HTMLInputElement} */ (document.getElementById('entryWebsite'))).value.trim(),
+        description: (/** @type {HTMLTextAreaElement} */ (document.getElementById('entryDescription'))).value.trim()
     };
 
     if (!payload.business || !payload.owner) {
@@ -56,7 +57,7 @@ async function submitMiscEntry() {
         showToast(`Success! Created entry: ${result.id}`, "success");
 
         // Clear the form
-        document.getElementById('miscForm').reset();
+        (/** @type {HTMLFormElement} */ (document.getElementById('miscForm'))).reset();
     } catch (err) {
         showToast(err.message || "Failed to create entry.", "error");
     } finally {

@@ -1,3 +1,4 @@
+// @ts-check
 import { getPublicSupabaseClient, initPublicPage } from '../supabase-public.js';
 import { parseEdgeFunctionError } from './utils.js';
 
@@ -10,7 +11,7 @@ const CONTACT_URL = 'https://www.ellastreet.co.uk/contact';
 initPublicPage(async () => {
     const sb = getPublicSupabaseClient(); // From supabase-public.js
 
-    const contactLink = document.getElementById('contact-link');
+    const contactLink = /** @type {HTMLAnchorElement | null} */ (document.getElementById('contact-link'));
     if (contactLink) {
         contactLink.href = CONTACT_URL;
         contactLink.target = '_blank';
@@ -47,12 +48,12 @@ initPublicPage(async () => {
         cancelForm.addEventListener('submit', async function (e) {
             e.preventDefault();
 
-            const btn = document.getElementById('submitBtn');
-            const msg = document.getElementById('statusMessage');
-            const reason = document.getElementById('inputReason').value.trim();
+            const btn = /** @type {HTMLButtonElement} */ (document.getElementById('submitBtn'));
+            const msg = /** @type {HTMLElement} */ (document.getElementById('statusMessage'));
+            const reason = (/** @type {HTMLInputElement} */ (document.getElementById('inputReason'))).value.trim();
 
             // Verify CAPTCHA
-            const captchaToken = document.querySelector('[name="cf-turnstile-response"]');
+            const captchaToken = /** @type {HTMLInputElement | null} */ (document.querySelector('[name="cf-turnstile-response"]'));
             if (!captchaToken || !captchaToken.value) {
                 msg.className = "mt-6 p-4 rounded-lg bg-yellow-50 border border-yellow-200 text-center text-sm font-bold text-yellow-800";
                 msg.innerText = "Please complete the CAPTCHA verification.";

@@ -1,3 +1,4 @@
+// @ts-check
 import { getSupabaseClient } from '../supabase.js';
 import { showToast } from '../ui.js';
 import { auditLog } from '../audit.js';
@@ -88,7 +89,7 @@ export async function initStripeSettings() {
     const txtSecretLive = document.getElementById('stripe-secret-key-live');
     const txtWebhookTest = document.getElementById('stripe-webhook-secret-test');
     const txtWebhookLive = document.getElementById('stripe-webhook-secret-live');
-    const btnSaveStripe = document.getElementById('btn-save-stripe');
+    const btnSaveStripe = /** @type {HTMLButtonElement | null} */ (document.getElementById('btn-save-stripe'));
 
     if (txtSecretTest && txtSecretLive && txtWebhookTest && txtWebhookLive && btnSaveStripe) {
         const fieldsByKey = {

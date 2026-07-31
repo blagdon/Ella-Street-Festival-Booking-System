@@ -1,3 +1,4 @@
+// @ts-check
 import { initAdminPage } from './supabase.js';
 import { initLocations, setFilter, setSearchTerm, setSort, loadData, sendBulkEmails, closeLocationSheet, assignMobileLocation, sendEmail, openLocationSheet, assignLocation, getBookingById, downloadLocationsForMyMaps } from './locations.js';
 
@@ -33,19 +34,20 @@ async function init() {
     if (btnClearAssignment) btnClearAssignment.addEventListener('click', () => assignMobileLocation(null));
 
     const searchInput = document.getElementById('searchInput');
-    if (searchInput) searchInput.addEventListener('input', (e) => setSearchTerm(e.target.value));
+    if (searchInput) searchInput.addEventListener('input', (e) => setSearchTerm((/** @type {HTMLInputElement} */ (e.target)).value));
 
     const sortSelect = document.getElementById('sortSelect');
     if (sortSelect) sortSelect.addEventListener('change', (e) => {
-        const [field, direction] = e.target.value.split('-');
-        setSort(field, direction);
+        const [field, direction] = (/** @type {HTMLSelectElement} */ (e.target)).value.split('-');
+        setSort(/** @type {'business'|'id'} */ (field), /** @type {'asc'|'desc'} */ (direction));
     });
 
 
     // Attach delegated event listeners for dynamic content
     document.body.addEventListener('change', (e) => {
-        if (e.target.matches('select[data-action="add-allocated-location"]')) {
-            const select = e.target;
+        const changeTarget = /** @type {Element} */ (e.target);
+        if (changeTarget.matches('select[data-action="add-allocated-location"]')) {
+            const select = /** @type {HTMLSelectElement} */ (changeTarget);
             const bookingId = select.dataset.bookingId;
             const newLoc = select.value;
 
@@ -69,24 +71,26 @@ async function init() {
     });
 
     document.body.addEventListener('click', (e) => {
-        const sendEmailBtn = e.target.closest('button[data-action="send-email"]');
-        if (sendEmailBtn) {
+        const target = /** @type {Element} */ (e.target);
+
+        const sendEmailBtn = target.closest('button[data-action="send-email"]');
+        if (sendEmailBtn instanceof HTMLElement) {
             sendEmail(sendEmailBtn.dataset.id);
             e.stopPropagation();
             return;
         }
 
-        const openSheetBtn = e.target.closest('button[data-action="open-location-sheet"]');
-        if (openSheetBtn) {
+        const openSheetBtn = target.closest('button[data-action="open-location-sheet"]');
+        if (openSheetBtn instanceof HTMLElement) {
             openLocationSheet(openSheetBtn.dataset.id);
             e.stopPropagation();
             return;
         }
 
-        const showAddBtn = e.target.closest('button[data-action="show-add-select"]');
-        if (showAddBtn) {
+        const showAddBtn = target.closest('button[data-action="show-add-select"]');
+        if (showAddBtn instanceof HTMLElement) {
             const container = showAddBtn.closest('div');
-            const select = container.querySelector('select[data-action="add-allocated-location"]');
+            const select = /** @type {HTMLSelectElement | null} */ (container ? container.querySelector('select[data-action="add-allocated-location"]') : null);
             if (select) {
                 showAddBtn.classList.add('hidden');
                 select.classList.remove('hidden');
@@ -96,8 +100,8 @@ async function init() {
             return;
         }
 
-        const removeBtn = e.target.closest('button[data-action="remove-allocated-location"]');
-        if (removeBtn) {
+        const removeBtn = target.closest('button[data-action="remove-allocated-location"]');
+        if (removeBtn instanceof HTMLElement) {
             const bookingId = removeBtn.dataset.bookingId;
             const locToRemove = removeBtn.dataset.locationId;
             // Read current locations from the in-memory data model, not the DOM.

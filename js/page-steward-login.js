@@ -1,3 +1,4 @@
+// @ts-check
 import { getSupabaseClient, initSentryBrowser } from './supabase.js';
 import { safeError } from './utils.js';
 import { initPublicPage, fetchSentryBrowserLoaderUrl } from '../supabase-public.js';
@@ -26,7 +27,7 @@ initPublicPage(async () => {
 
     // Auto-redirect check
     try {
-        const sb = (typeof window.sbClient !== 'undefined') ? window.sbClient : getSupabaseClient();
+        const sb = getSupabaseClient();
         const { data: { session } } = await sb.auth.getSession();
         if (session && !isUnauthorized) {
             window.location.href = 'steward.html';
@@ -44,10 +45,10 @@ initPublicPage(async () => {
 async function handleLogin(e) {
     e.preventDefault();
 
-    const email = document.getElementById('email').value.trim();
-    const password = document.getElementById('password').value; // Fix #7: No .trim() on password
-    const btn = document.getElementById('loginBtn');
-    const errorMsg = document.getElementById('errorMsg');
+    const email = (/** @type {HTMLInputElement} */ (document.getElementById('email'))).value.trim();
+    const password = (/** @type {HTMLInputElement} */ (document.getElementById('password'))).value; // Fix #7: No .trim() on password
+    const btn = /** @type {HTMLButtonElement} */ (document.getElementById('loginBtn'));
+    const errorMsg = /** @type {HTMLElement} */ (document.getElementById('errorMsg'));
 
     // Fix #6: Check lockout
     const now = Date.now();
@@ -64,8 +65,7 @@ async function handleLogin(e) {
     btn.innerHTML = `<span class="animate-pulse">Authenticating...</span>`;
 
     try {
-        // Use the sbClient from config.js (or create new if missing)
-        const sb = (typeof window.sbClient !== 'undefined') ? window.sbClient : getSupabaseClient();
+        const sb = getSupabaseClient();
 
         const { error } = await sb.auth.signInWithPassword({
             email: email,

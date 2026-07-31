@@ -14,3 +14,17 @@ interface Window {
 }
 
 declare const supabase: any;
+
+// Cloudflare Turnstile's widget API, loaded via a dynamically-injected
+// <script src="https://challenges.cloudflare.com/turnstile/v0/api.js">
+// (page-cancel.js/page-pay.js/page-food-booking.js/page-general-booking.js) -
+// never imported, so `typeof turnstile !== 'undefined'` is the only way any
+// of them can check it's actually loaded before calling .reset()/.render().
+declare const turnstile: any;
+
+// Leaflet (map.js) and Chart.js + its datalabels plugin (stats.js) - both
+// loaded via CDN <script> tags in the pages that use them, never imported as
+// modules, so tsc has no declaration for either without this.
+declare const L: any;
+declare const Chart: any;
+declare const ChartDataLabels: any;

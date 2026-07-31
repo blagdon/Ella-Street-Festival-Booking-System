@@ -1,3 +1,4 @@
+// @ts-check
 import { getSupabaseClient } from './supabase.js';
 import { showToast, registerModalClose, trapFocus } from './ui.js';
 import { escapeHtml, countSmsSegments } from './utils.js';
@@ -42,7 +43,8 @@ export function initSmsAdmin() {
 
     // Delegation for modal close.
     document.body.addEventListener('click', (e) => {
-        if (e.target.closest('[data-action="close-preview-sms"]')) {
+        const target = /** @type {Element} */ (e.target);
+        if (target.closest('[data-action="close-preview-sms"]')) {
             closePreview();
         }
     });
@@ -100,7 +102,7 @@ function selectTemplate(id) {
 
     document.getElementById('sms-editorTitle').innerText = formatName(template.id);
     document.getElementById('sms-editorDesc').innerText = template.description || "No description provided.";
-    document.getElementById('sms-inputBody').value = template.body || '';
+    (/** @type {HTMLTextAreaElement} */ (document.getElementById('sms-inputBody'))).value = template.body || '';
     updateSegCounter();
 
     document.getElementById('sms-emptyState').style.display = 'none';
@@ -113,8 +115,8 @@ function selectTemplate(id) {
 async function saveTemplate() {
     if (!currentTemplateId) return;
 
-    const btn = document.getElementById('sms-btn-save-template');
-    const newBody = document.getElementById('sms-inputBody').value.trim();
+    const btn = /** @type {HTMLButtonElement} */ (document.getElementById('sms-btn-save-template'));
+    const newBody = (/** @type {HTMLTextAreaElement} */ (document.getElementById('sms-inputBody'))).value.trim();
 
     if (!newBody) {
         showToast("Message text cannot be empty.", "error");
@@ -185,7 +187,7 @@ function fillSampleData(text) {
 }
 
 function updateSegCounter() {
-    const text = document.getElementById('sms-inputBody').value;
+    const text = (/** @type {HTMLTextAreaElement} */ (document.getElementById('sms-inputBody'))).value;
     const { len, parts, encoding } = countSmsSegments(text);
     const counterEl = document.getElementById('sms-segCounter');
     counterEl.textContent = `${len} character${len !== 1 ? 's' : ''} · ${parts} SMS part${parts !== 1 ? 's' : ''}`;
@@ -195,7 +197,7 @@ function updateSegCounter() {
 }
 
 function previewSms() {
-    const body = document.getElementById('sms-inputBody').value.trim();
+    const body = (/** @type {HTMLTextAreaElement} */ (document.getElementById('sms-inputBody'))).value.trim();
     if (!body) {
         showToast("Please write some message text before previewing.", "error");
         return;
