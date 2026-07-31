@@ -14,7 +14,7 @@
 import { test, before, after, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { createClient } from '@supabase/supabase-js';
-import { url, anonKey, adminEmail, adminPassword, service } from './helpers.mjs';
+import { url, anonKey, adminEmail, adminPassword, service, callEdgeFunction } from './helpers.mjs';
 
 const authed = createClient(url, anonKey);
 
@@ -248,13 +248,8 @@ describe('refund-payment Edge Function (guard rails only — never issues a real
   // worth having. The success path is covered by rpc_record_refund's own tests
   // (the function calls that RPC to record its result) plus manual
   // verification against Stripe Test mode.
-  async function callRefund(body, token) {
-    const res = await fetch(`${url}/functions/v1/refund-payment`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, apikey: anonKey },
-      body: JSON.stringify(body),
-    });
-    return { status: res.status, json: await res.json().catch(() => ({})) };
+  function callRefund(body, token) {
+    return callEdgeFunction('refund-payment', body, token);
   }
 
   let adminToken;

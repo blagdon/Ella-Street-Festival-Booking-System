@@ -22,7 +22,7 @@
 import { test, before, after, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { createClient } from '@supabase/supabase-js';
-import { url, anonKey, adminEmail, adminPassword, service } from './helpers.mjs';
+import { url, anonKey, adminEmail, adminPassword, service, callEdgeFunction } from './helpers.mjs';
 
 const anon = createClient(url, anonKey);
 
@@ -64,14 +64,8 @@ after(async () => {
   await service.from('sms_queue').delete().eq('recipient', SEND_TO_E164);
 });
 
-async function callSend(body) {
-  const res = await fetch(`${url}/functions/v1/send-sms`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}`, apikey: anonKey },
-    body: JSON.stringify(body),
-  });
-  const json = await res.json().catch(() => ({}));
-  return { status: res.status, json };
+function callSend(body) {
+  return callEdgeFunction('send-sms', body, adminToken);
 }
 
 async function setSettings(overrides) {

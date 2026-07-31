@@ -10,7 +10,7 @@
 import { test, before, after, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { createClient } from '@supabase/supabase-js';
-import { url, anonKey, adminEmail, adminPassword, service } from './helpers.mjs';
+import { url, anonKey, adminEmail, adminPassword, service, callEdgeFunction, fetchEdgeFunction } from './helpers.mjs';
 
 const anon = createClient(url, anonKey);
 
@@ -66,19 +66,7 @@ after(async () => {
   await service.from('audit_logs').delete().like('target_id', `${PREFIX}%`);
 });
 
-async function callFunction(name, body, token = anonKey) {
-  const res = await fetch(`${url}/functions/v1/${name}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-      apikey: anonKey,
-    },
-    body: JSON.stringify(body),
-  });
-  const json = await res.json().catch(() => ({}));
-  return { status: res.status, json };
-}
+const callFunction = callEdgeFunction;
 
 async function insertBooking(id, overrides = {}) {
   const { error } = await service.from('bookings').insert({
@@ -609,7 +597,7 @@ describe('get-payment-link', () => {
 
 describe('stripe-webhook', () => {
   test('rejects a request with no Stripe-Signature header', async () => {
-    const res = await fetch(`${url}/functions/v1/stripe-webhook`, {
+    const res = await fetchEdgeFunction('stripe-webhook', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', apikey: anonKey },
       body: JSON.stringify({ type: 'checkout.session.completed' }),
@@ -618,7 +606,7 @@ describe('stripe-webhook', () => {
   });
 
   test('rejects a request with an invalid signature', async () => {
-    const res = await fetch(`${url}/functions/v1/stripe-webhook`, {
+    const res = await fetchEdgeFunction('stripe-webhook', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', apikey: anonKey, 'stripe-signature': 't=1,v1=not_a_real_signature' },
       body: JSON.stringify({ type: 'checkout.session.completed' }),

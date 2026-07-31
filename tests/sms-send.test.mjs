@@ -17,7 +17,7 @@
 import { test, before, after, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { createClient } from '@supabase/supabase-js';
-import { url, anonKey, adminEmail, adminPassword, service } from './helpers.mjs';
+import { url, anonKey, adminEmail, adminPassword, service, callEdgeFunction } from './helpers.mjs';
 
 const anon = createClient(url, anonKey);
 
@@ -52,24 +52,12 @@ after(async () => {
   await service.from('sms_queue').delete().in('recipient', [SEND_TO_E164, SEED_RECIPIENT]);
 });
 
-async function callSend(body, token = adminToken) {
-  const res = await fetch(`${url}/functions/v1/send-sms`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, apikey: anonKey },
-    body: JSON.stringify(body),
-  });
-  const json = await res.json().catch(() => ({}));
-  return { status: res.status, json };
+function callSend(body, token = adminToken) {
+  return callEdgeFunction('send-sms', body, token);
 }
 
-async function callRetry(body, token = adminToken) {
-  const res = await fetch(`${url}/functions/v1/retry-queued-sms`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, apikey: anonKey },
-    body: JSON.stringify(body),
-  });
-  const json = await res.json().catch(() => ({}));
-  return { status: res.status, json };
+function callRetry(body, token = adminToken) {
+  return callEdgeFunction('retry-queued-sms', body, token);
 }
 
 async function seedRow(status, extra = {}) {
@@ -240,14 +228,8 @@ async function insertBooking(id, overrides = {}) {
   if (error) throw new Error(`Fixture setup failed for ${id}: ${error.message}`);
 }
 
-async function callBulk(body, token = adminToken) {
-  const res = await fetch(`${url}/functions/v1/queue-bulk-sms`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, apikey: anonKey },
-    body: JSON.stringify(body),
-  });
-  const json = await res.json().catch(() => ({}));
-  return { status: res.status, json };
+function callBulk(body, token = adminToken) {
+  return callEdgeFunction('queue-bulk-sms', body, token);
 }
 
 describe('queue-bulk-sms', () => {
