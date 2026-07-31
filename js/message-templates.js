@@ -1,9 +1,11 @@
+// @ts-check
 import { getSupabaseClient } from './supabase.js';
 import { escapeHtml } from './utils.js';
 import { getStallCost, CONFIG } from './config.js';
 
 /**
  * Fetches an email template from the database and replaces placeholders.
+ * @param {{ reason?: string }} [extraVars]
  */
 export async function getEmailFromTemplate(templateId, booking, id, extraVars = {}) {
     const sb = getSupabaseClient();
@@ -96,7 +98,7 @@ const MAX_SMS_REASON_LEN = 40;
  * escapeHtml() the values: an SMS is plain text, so escaping would render
  * "&amp;" / "&#39;" literally on the handset. Returns the resolved body string.
  *
- * @param {object} [extraVars] currently only `reason` (Rejected), mirroring
+ * @param {{ reason?: string }} [extraVars] currently only `reason` (Rejected), mirroring
  *   getEmailFromTemplate's extraVars. Same default as the email template.
  */
 export async function getSmsFromTemplate(templateId, booking, id, extraVars = {}) {

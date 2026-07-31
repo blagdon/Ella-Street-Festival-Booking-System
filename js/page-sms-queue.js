@@ -1,3 +1,4 @@
+// @ts-check
 import { getSupabaseClient } from './supabase.js';
 import { escapeHtml } from './utils.js';
 import { showToast } from './ui.js';
@@ -26,10 +27,11 @@ export function initSmsQueue() {
 
     // Delegated so rows added by "Load older entries" get the handler too.
     document.getElementById('sms-tableBody').addEventListener('click', (e) => {
-        const retryBtn = e.target.closest('[data-retry-id]');
-        if (retryBtn) { handleRetry(retryBtn); return; }
-        const checkBtn = e.target.closest('[data-check-delivery-id]');
-        if (checkBtn) { handleCheckDelivery(checkBtn); return; }
+        const target = /** @type {Element} */ (e.target);
+        const retryBtn = target.closest('[data-retry-id]');
+        if (retryBtn instanceof HTMLButtonElement) { handleRetry(retryBtn); return; }
+        const checkBtn = target.closest('[data-check-delivery-id]');
+        if (checkBtn instanceof HTMLButtonElement) { handleCheckDelivery(checkBtn); return; }
     });
 
     document.getElementById('sms-btn-refresh').addEventListener('click', () => { loadPage(true); loadCounts(); });
@@ -103,7 +105,7 @@ function sanitizeForOrFilter(term) {
 
 async function loadPage(reset) {
     const tbody = document.getElementById('sms-tableBody');
-    const loadMoreBtn = document.getElementById('sms-btn-load-more');
+    const loadMoreBtn = /** @type {HTMLButtonElement} */ (document.getElementById('sms-btn-load-more'));
 
     if (reset) {
         offset = 0;
@@ -114,9 +116,9 @@ async function loadPage(reset) {
         loadMoreBtn.textContent = 'Loading...';
     }
 
-    const rawTerm = document.getElementById('sms-searchInput').value.trim();
+    const rawTerm = (/** @type {HTMLInputElement} */ (document.getElementById('sms-searchInput'))).value.trim();
     const term = sanitizeForOrFilter(rawTerm);
-    const statusFilter = document.getElementById('sms-statusFilter').value;
+    const statusFilter = (/** @type {HTMLSelectElement} */ (document.getElementById('sms-statusFilter'))).value;
 
     try {
         let query = sb.from('sms_queue').select('*').order('id', { ascending: false });
@@ -308,6 +310,7 @@ function renderRow(row) {
         </tr>`;
 }
 
+/** @param {HTMLButtonElement} btn */
 async function handleRetry(btn) {
     const id = Number(btn.dataset.retryId);
     if (!Number.isInteger(id)) return;
@@ -348,6 +351,7 @@ async function handleRetry(btn) {
  * outcome is purely informational (see the migration's docstring for why it
  * must not affect retry eligibility).
  */
+/** @param {HTMLButtonElement} btn */
 async function handleCheckDelivery(btn) {
     const id = Number(btn.dataset.checkDeliveryId);
     if (!Number.isInteger(id)) return;

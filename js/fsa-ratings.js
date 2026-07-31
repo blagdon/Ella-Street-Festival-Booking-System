@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * fsa-ratings.js
  * FSA (Food Standards Agency) food-hygiene-rating lookup for the booking
@@ -24,7 +25,7 @@ export function isFoodStallBooking(item) {
 
 export function populateFsaSection(item) {
     const fsaContainer = document.getElementById('fsa-ratings-container');
-    const fsaSearchBtn = document.getElementById('btn-fsa-search');
+    const fsaSearchBtn = /** @type {HTMLButtonElement | null} */ (document.getElementById('btn-fsa-search'));
     const fsaStatus = document.getElementById('fsa-status');
     const fsaResults = document.getElementById('fsa-results');
 

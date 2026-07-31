@@ -1,3 +1,4 @@
+// @ts-check
 import { initAdminPage } from './supabase.js';
 import { initEmailQueue } from './page-email-queue.js';
 import { initSmsQueue } from './page-sms-queue.js';
@@ -30,8 +31,9 @@ function init() {
     initSmsQueue();
 
     document.body.addEventListener('click', (e) => {
-        const btn = e.target.closest('[data-tab]');
-        if (btn) setActiveTab(btn.dataset.tab);
+        const target = /** @type {Element} */ (e.target);
+        const btn = target.closest('[data-tab]');
+        if (btn instanceof HTMLElement) setActiveTab(btn.dataset.tab);
     });
 
     setActiveTab(activeTabFromUrl());

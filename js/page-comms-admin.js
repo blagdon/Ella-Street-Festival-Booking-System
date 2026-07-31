@@ -1,3 +1,4 @@
+// @ts-check
 import { initAdminPage } from './supabase.js';
 import { initEmailAdmin } from './page-email-admin.js';
 import { initSmsAdmin } from './page-sms-admin.js';
@@ -40,8 +41,9 @@ function init() {
     // convention used throughout this app (see HANDOVER's "No inline event
     // handlers" — CSP has no 'unsafe-inline' for script-src).
     document.body.addEventListener('click', (e) => {
-        const btn = e.target.closest('[data-tab]');
-        if (btn) setActiveTab(btn.dataset.tab);
+        const target = /** @type {Element} */ (e.target);
+        const btn = target.closest('[data-tab]');
+        if (btn instanceof HTMLElement) setActiveTab(btn.dataset.tab);
     });
 
     setActiveTab(activeTabFromUrl());

@@ -1,3 +1,5 @@
+// @ts-check
+/** @typedef {HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement} FormControl */
 import { fetchKanbanData, updateBookingDetails, LIST_CAP } from './api.js';
 import { showToast, notifyIfTruncated } from './ui.js';
 import { escapeHtml, safeError } from './utils.js';
@@ -18,7 +20,7 @@ export function initDetails() {
 }
 
 function checkDirty(e) {
-    const el = e.target;
+    const el = /** @type {FormControl} */ (e.target);
     if (trackedFields.includes(el.id) && Object.hasOwn(originalValues, el.id)) {
         el.classList.toggle('field-dirty', el.value !== originalValues[el.id]);
     }
@@ -26,7 +28,7 @@ function checkDirty(e) {
 
 function populateDropdowns() {
     // Populate Stall Type Dropdown from Config
-    const typeSelect = document.getElementById('editType');
+    const typeSelect = /** @type {HTMLSelectElement | null} */ (document.getElementById('editType'));
     if (!typeSelect) return;
 
     // Add default option if empty (it might have been cleared or not init)
@@ -106,7 +108,7 @@ function renderList(data) {
 
 // 3. FILTER
 export function filterList() {
-    const term = document.getElementById('searchInput').value.toLowerCase();
+    const term = (/** @type {HTMLInputElement} */ (document.getElementById('searchInput'))).value.toLowerCase();
     const filtered = allBookings.filter(b =>
         (b.business_name || b.business || "").toLowerCase().includes(term) ||
         (b.owner_name || b.owner || "").toLowerCase().includes(term) ||
@@ -140,7 +142,7 @@ export function selectBooking(id) {
     if (form) form.classList.remove('opacity-0');
 
     // Enable Save Button
-    const btn = document.getElementById('saveBtn');
+    const btn = /** @type {HTMLButtonElement | null} */ (document.getElementById('saveBtn'));
     if (btn) {
         btn.disabled = false;
         btn.classList.remove('opacity-50', 'cursor-not-allowed');
@@ -182,7 +184,7 @@ export function selectBooking(id) {
     // Store originals and clear dirty highlights
     originalValues = {};
     trackedFields.forEach(fid => {
-        const el = document.getElementById(fid);
+        const el = /** @type {FormControl | null} */ (document.getElementById(fid));
         if (el) {
             originalValues[fid] = el.value;
             el.classList.remove('field-dirty');
@@ -194,7 +196,7 @@ export function selectBooking(id) {
 export async function saveChanges() {
     if (!currentId) return;
 
-    const btn = document.getElementById('saveBtn');
+    const btn = /** @type {HTMLButtonElement | null} */ (document.getElementById('saveBtn'));
     if (btn) {
         btn.innerText = "Saving...";
         btn.disabled = true;
@@ -231,7 +233,7 @@ export async function saveChanges() {
 
         // Clear dirty highlights and update originals
         trackedFields.forEach(fid => {
-            const el = document.getElementById(fid);
+            const el = /** @type {FormControl | null} */ (document.getElementById(fid));
             if (el) { el.classList.remove('field-dirty'); originalValues[fid] = el.value; }
         });
 
@@ -299,17 +301,18 @@ export async function saveChanges() {
     }
 }
 
+
 // Helpers
 function setText(id, text) {
     const el = document.getElementById(id);
     if (el) el.innerText = text;
 }
 function setVal(id, val) {
-    const el = document.getElementById(id);
+    const el = /** @type {FormControl | null} */ (document.getElementById(id));
     if (el) el.value = val;
 }
 function getVal(id) {
-    const el = document.getElementById(id);
+    const el = /** @type {FormControl | null} */ (document.getElementById(id));
     return el ? el.value : '';
 }
 

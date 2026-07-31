@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * google-reviews.js
  * Google Maps reviews lookup for the booking detail pane (via the
@@ -11,7 +12,7 @@ import { isFoodStallBooking, renderRatingBubbles } from './fsa-ratings.js';
 
 export function populateGoogleMapsReviews(item) {
     const taContainer = document.getElementById('ta-reviews-container');
-    const taSearchBtn = document.getElementById('btn-ta-search');
+    const taSearchBtn = /** @type {HTMLButtonElement | null} */ (document.getElementById('btn-ta-search'));
     const taStatus = document.getElementById('ta-status');
     const taResults = document.getElementById('ta-results');
 

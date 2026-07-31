@@ -1,3 +1,4 @@
+// @ts-check
 import { initAdminPage, getSupabaseClient } from './supabase.js';
 import { getCurrentInstance } from './config.js';
 import { showToast, trapFocus } from './ui.js';
@@ -47,7 +48,7 @@ if (IS_PASSWORD_RECOVERY) {
         const navContainer = document.getElementById('nav-container');
         if (navContainer) navContainer.style.display = 'none';
 
-        const mainContent = document.querySelector('.max-w-7xl');
+        const mainContent = /** @type {HTMLElement | null} */ (document.querySelector('.max-w-7xl'));
         if (mainContent) mainContent.style.display = 'none';
 
         // Show the mandatory password-change modal. No close/Escape wiring
@@ -84,8 +85,9 @@ function initIndex() {
 
     // Event delegation for navigation cards.
     document.body.addEventListener('click', (e) => {
-        const navCard = e.target.closest('[data-action="navigate"]');
-        if (navCard) {
+        const target = /** @type {Element} */ (e.target);
+        const navCard = target.closest('[data-action="navigate"]');
+        if (navCard instanceof HTMLElement) {
             const page = navCard.dataset.page;
             if (!page) return;
             // visitor_map.html is also reachable directly by a real member of
@@ -154,8 +156,8 @@ function updateVisibility() {
 // Password update — shared by both paths (recovery modal lives in index.html)
 // ---------------------------------------------------------------------------
 async function updateUserPassword() {
-    const newPass = document.getElementById('newPassword').value;
-    const btn = document.getElementById('updatePassBtn');
+    const newPass = (/** @type {HTMLInputElement} */ (document.getElementById('newPassword'))).value;
+    const btn = /** @type {HTMLButtonElement} */ (document.getElementById('updatePassBtn'));
 
     if (newPass.length < 8) {
         showToast('Password must be at least 8 characters', 'error');

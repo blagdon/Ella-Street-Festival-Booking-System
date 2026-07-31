@@ -1,3 +1,4 @@
+// @ts-check
 import { getSupabaseClient } from './supabase.js';
 import { escapeHtml } from './utils.js';
 import { showToast } from './ui.js';
@@ -23,8 +24,9 @@ export function initEmailQueue() {
     // Delegated so rows rendered by "Load older entries" get the handler too,
     // without rebinding per row.
     document.getElementById('email-tableBody').addEventListener('click', (e) => {
-        const btn = e.target.closest('[data-retry-id]');
-        if (btn) handleRetry(btn);
+        const target = /** @type {Element} */ (e.target);
+        const btn = target.closest('[data-retry-id]');
+        if (btn instanceof HTMLButtonElement) handleRetry(btn);
     });
 
     document.getElementById('email-btn-refresh').addEventListener('click', () => loadPage(true));
@@ -47,7 +49,7 @@ function sanitizeForOrFilter(term) {
 
 async function loadPage(reset) {
     const tbody = document.getElementById('email-tableBody');
-    const loadMoreBtn = document.getElementById('email-btn-load-more');
+    const loadMoreBtn = /** @type {HTMLButtonElement} */ (document.getElementById('email-btn-load-more'));
 
     if (reset) {
         offset = 0;
@@ -58,9 +60,9 @@ async function loadPage(reset) {
         loadMoreBtn.textContent = 'Loading...';
     }
 
-    const rawTerm = document.getElementById('email-searchInput').value.trim();
+    const rawTerm = (/** @type {HTMLInputElement} */ (document.getElementById('email-searchInput'))).value.trim();
     const term = sanitizeForOrFilter(rawTerm);
-    const statusFilter = document.getElementById('email-statusFilter').value;
+    const statusFilter = (/** @type {HTMLSelectElement} */ (document.getElementById('email-statusFilter'))).value;
 
     try {
         let query = sb.from('email_queue').select('*').order('id', { ascending: false });
@@ -167,6 +169,7 @@ function renderRow(row) {
         </tr>`;
 }
 
+/** @param {HTMLButtonElement} btn */
 async function handleRetry(btn) {
     const id = Number(btn.dataset.retryId);
     if (!Number.isInteger(id)) return;
