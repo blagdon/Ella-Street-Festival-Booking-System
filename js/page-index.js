@@ -1,6 +1,6 @@
 import { initAdminPage, getSupabaseClient } from './supabase.js';
 import { getCurrentInstance } from './config.js';
-import { showToast } from './ui.js';
+import { showToast, trapFocus } from './ui.js';
 import { safeError } from './utils.js';
 import { fetchHubSummary } from './api.js';
 
@@ -50,9 +50,16 @@ if (IS_PASSWORD_RECOVERY) {
         const mainContent = document.querySelector('.max-w-7xl');
         if (mainContent) mainContent.style.display = 'none';
 
-        // Show the mandatory password-change modal.
+        // Show the mandatory password-change modal. No close/Escape wiring
+        // here deliberately - unlike every other modal in this app, this one
+        // is never dismissed, only completed (updateUserPassword() below
+        // navigates away entirely on success), and the rest of the page is
+        // already hidden above with nothing to return focus to.
         const modal = document.getElementById('passwordResetModal');
-        if (modal) modal.classList.remove('opacity-0', 'pointer-events-none');
+        if (modal) {
+            modal.classList.remove('opacity-0', 'pointer-events-none');
+            trapFocus(modal);
+        }
 
         // Wire up the button.
         const updatePassBtn = document.getElementById('updatePassBtn');

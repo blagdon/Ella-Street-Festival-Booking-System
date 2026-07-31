@@ -62,3 +62,20 @@ for (const pagePath of PAGES) {
     expect(results.violations, formatViolations(results.violations)).toEqual([]);
   });
 }
+
+test('index.html#type=recovery (mandatory password-reset gate) has no detectable accessibility violations', async ({ page }) => {
+  // No admin session needed - this is the one admin-hub state reachable with
+  // no auth at all, since Supabase's password-recovery redirect lands here
+  // before any normal sign-in. A found-by-hand gap (see CHANGELOG): this
+  // modal was never wired into either the focus-trap or Escape-key work done
+  // on every other modal, simply because nothing had enumerated every
+  // *Modal-id in the app and cross-checked it until asked "any other gaps?".
+  await page.goto('/index.html#access_token=e2e-dummy&refresh_token=e2e-dummy&type=recovery');
+  await page.waitForSelector('#passwordResetModal:not(.opacity-0)');
+
+  const results = await new AxeBuilder({ page })
+    .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+    .analyze();
+
+  expect(results.violations, formatViolations(results.violations)).toEqual([]);
+});
