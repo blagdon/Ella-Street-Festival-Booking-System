@@ -12,7 +12,7 @@ function init() {
     const sortSelect = document.getElementById('sortSelect');
     if (sortSelect) sortSelect.addEventListener('change', (e) => {
         const [field, direction] = (/** @type {HTMLSelectElement} */ (e.target)).value.split('-');
-        setSort(field, direction);
+        setSort(/** @type {'business'|'id'} */ (field), /** @type {'asc'|'desc'} */ (direction));
     });
 
     const btnRefreshBoard = document.getElementById('btn-refresh-board');

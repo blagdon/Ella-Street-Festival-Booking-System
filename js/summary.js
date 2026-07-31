@@ -1,3 +1,4 @@
+// @ts-check
 import { fetchKanbanData, addNote, sendEmail, sendBookingSms, queueBulkEmail, queueBulkSms, requestPayment, resendPaymentRequest, LIST_CAP } from './api.js';
 import { sharedUpdateStatus, populateDetailPane, initComposeSmsToggle, initBulkSmsToggle, readOptionalSmsBody, resetSmsToggle, readStatusSmsChecked, resetStatusSmsCheckbox } from './shared.js';
 import { showToast, showConfirm, notifyIfTruncated, trapFocus, registerModalClose } from './ui.js';
@@ -257,11 +258,12 @@ function setupSwipeActions(card, bookingId, leftAction, rightAction) {
 
 // Search & Filter
 let currentSortField = null;
+/** @type {'asc'|'desc'} */
 let currentSortDir = 'asc';
 
 window.filterTable = function () {
-    const term = document.getElementById('searchInput').value.toLowerCase();
-    const statusVal = document.getElementById('statusFilter').value;
+    const term = (/** @type {HTMLInputElement} */ (document.getElementById('searchInput'))).value.toLowerCase();
+    const statusVal = (/** @type {HTMLSelectElement} */ (document.getElementById('statusFilter'))).value;
     let filtered = allBookings.filter(b => {
         const matchStatus = (statusVal === 'All') || b.status === statusVal;
         const matchSearch = (b.business_name || b.business || "").toLowerCase().includes(term) ||
@@ -299,7 +301,7 @@ window.sortTable = function (field) {
 window.setSortOption = function (value) {
     const [field, direction] = value.split('-');
     currentSortField = field;
-    currentSortDir = direction;
+    currentSortDir = /** @type {'asc'|'desc'} */ (direction);
     syncSortUI();
     window.filterTable();
 }
@@ -309,7 +311,7 @@ function syncSortUI() {
         const el = document.getElementById('sort-' + f);
         if (el) el.innerText = (f === currentSortField) ? (currentSortDir === 'asc' ? '\u25B2' : '\u25BC') : '';
     });
-    const sortSelect = document.getElementById('sortSelect');
+    const sortSelect = /** @type {HTMLSelectElement | null} */ (document.getElementById('sortSelect'));
     if (sortSelect && (currentSortField === 'id' || currentSortField === 'business')) {
         sortSelect.value = `${currentSortField}-${currentSortDir}`;
     }
@@ -383,7 +385,7 @@ window.closeModal = function (id) {
 }
 
 window.saveNote = async function () {
-    const note = document.getElementById('d-notes').value;
+    const note = (/** @type {HTMLTextAreaElement} */ (document.getElementById('d-notes'))).value;
     try {
         await addNote(currentId, note);
         showToast("Note saved");
@@ -456,8 +458,8 @@ function showConfirmModalLocal(id) {
         recEl.className = "mb-4 p-3 bg-green-50 text-green-800 text-sm rounded border border-green-200";
     }
 
-    document.getElementById('confirmBookingId').value = id;
-    const costInput = document.getElementById('confirmCostInput');
+    (/** @type {HTMLInputElement} */ (document.getElementById('confirmBookingId'))).value = id;
+    const costInput = /** @type {HTMLInputElement | null} */ (document.getElementById('confirmCostInput'));
     // Simplified cost logic
     const prefix = booking.instance_prefix || CONFIG.INSTANCE_MAP['DEV'];
     const cost = (booking.stall_cost !== undefined && booking.stall_cost !== null)
@@ -474,11 +476,11 @@ function showConfirmModalLocal(id) {
 }
 
 window.finalizeConfirm = function (isChargeable) {
-    const id = document.getElementById('confirmBookingId').value;
+    const id = (/** @type {HTMLInputElement} */ (document.getElementById('confirmBookingId'))).value;
     // Deliberately NOT `parseFloat(...) || null` — that would silently turn
     // a genuine "0.00" entry into null (0 is falsy), and an explicit £0
     // override must be treated as free, not fall through to a config default.
-    const costInput = document.getElementById('confirmCostInput');
+    const costInput = /** @type {HTMLInputElement | null} */ (document.getElementById('confirmCostInput'));
     const rawCost = costInput ? costInput.value : '';
     const parsedCost = parseFloat(rawCost);
     const overrideCost = (rawCost !== '' && !isNaN(parsedCost)) ? parsedCost : null;
@@ -555,16 +557,16 @@ window.resendPaymentRequestAction = function (id) {
 }
 
 window.openRejectModal = function (id) {
-    document.getElementById('rejectBookingId').value = id;
-    document.getElementById('rejectReason').value = "";
+    (/** @type {HTMLInputElement} */ (document.getElementById('rejectBookingId'))).value = id;
+    (/** @type {HTMLTextAreaElement} */ (document.getElementById('rejectReason'))).value = "";
     resetStatusSmsCheckbox('rejectSendSms');
     document.getElementById('rejectReasonModal').classList.remove('opacity-0', 'pointer-events-none');
     trapModalFocus('rejectReasonModal');
 }
 
 window.confirmRejection = function () {
-    const id = document.getElementById('rejectBookingId').value;
-    const reason = document.getElementById('rejectReason').value;
+    const id = (/** @type {HTMLInputElement} */ (document.getElementById('rejectBookingId'))).value;
+    const reason = (/** @type {HTMLTextAreaElement} */ (document.getElementById('rejectReason'))).value;
     const sendSms = readStatusSmsChecked('rejectSendSms');
     window.closeModal('rejectReasonModal');
     updateStatus(id, 'Rejected', reason, sendSms);
@@ -574,14 +576,14 @@ window.openCancelModal = function (id) {
     const booking = allBookings.find(b => b.id === id);
     const nameEl = document.getElementById('cancelBusinessName');
     if (nameEl) nameEl.innerText = (booking && (booking.business_name || booking.business)) || id;
-    document.getElementById('cancelBookingId').value = id;
+    (/** @type {HTMLInputElement} */ (document.getElementById('cancelBookingId'))).value = id;
     resetStatusSmsCheckbox('cancelSendSms');
     document.getElementById('cancelBookingModal').classList.remove('opacity-0', 'pointer-events-none');
     trapModalFocus('cancelBookingModal');
 }
 
 window.confirmCancellation = function () {
-    const id = document.getElementById('cancelBookingId').value;
+    const id = (/** @type {HTMLInputElement} */ (document.getElementById('cancelBookingId'))).value;
     const sendSms = readStatusSmsChecked('cancelSendSms');
     window.closeModal('cancelBookingModal');
     updateStatus(id, 'Cancelled', null, sendSms);
@@ -616,9 +618,9 @@ window.openEmailModal = function (id) {
     ensureSmsControls();
 
     const ownerName = item.owner_name || item.owner || '';
-    document.getElementById('emailBookingId').value = targetId;
-    document.getElementById('emailSubject').value = `Regarding your booking (${targetId})`;
-    document.getElementById('emailBody').value = `Hi ${ownerName.split(' ')[0] || 'there'},\n\n`;
+    (/** @type {HTMLInputElement} */ (document.getElementById('emailBookingId'))).value = targetId;
+    (/** @type {HTMLInputElement} */ (document.getElementById('emailSubject'))).value = `Regarding your booking (${targetId})`;
+    (/** @type {HTMLTextAreaElement} */ (document.getElementById('emailBody'))).value = `Hi ${ownerName.split(' ')[0] || 'there'},\n\n`;
     resetSmsToggle('compose');
 
     document.getElementById('emailComposeModal').classList.remove('opacity-0', 'pointer-events-none');
@@ -627,9 +629,9 @@ window.openEmailModal = function (id) {
 
 window.sendSystemEmail = async function (btn) {
     const originalText = btn.innerText;
-    const id = document.getElementById('emailBookingId').value;
-    const subject = document.getElementById('emailSubject').value;
-    const body = document.getElementById('emailBody').value;
+    const id = (/** @type {HTMLInputElement} */ (document.getElementById('emailBookingId'))).value;
+    const subject = (/** @type {HTMLInputElement} */ (document.getElementById('emailSubject'))).value;
+    const body = (/** @type {HTMLTextAreaElement} */ (document.getElementById('emailBody'))).value;
 
     if (!subject || !body) {
         showToast("Please fill in subject and message.", 'error');
@@ -708,7 +710,7 @@ window.emailAllConfirmed = function () {
     if (countEl) countEl.innerText = `${confirmed.length} confirmed booking${confirmed.length !== 1 ? 's' : ''} will receive this email`;
 
     // Clear previous content
-    const subjectEl = document.getElementById('bulkEmailSubject');
+    const subjectEl = /** @type {HTMLInputElement | null} */ (document.getElementById('bulkEmailSubject'));
     if (subjectEl) subjectEl.value = '';
     if (bulkEmailQuill) bulkEmailQuill.setContents([]);
     resetSmsToggle('bulk');
@@ -720,7 +722,7 @@ window.emailAllConfirmed = function () {
 // Bulk Email - Send admin-written HTML email to all confirmed bookings
 window.sendBulkEmail = async function (btn) {
     const confirmed = allBookings.filter(b => b.status === 'Confirmed');
-    const subject = document.getElementById('bulkEmailSubject').value.trim();
+    const subject = (/** @type {HTMLInputElement} */ (document.getElementById('bulkEmailSubject'))).value.trim();
     const body = bulkEmailQuill ? bulkEmailQuill.root.innerHTML.trim() : '';
 
     // Quill root.innerHTML usually contains '<p><br></p>' when empty
@@ -803,8 +805,8 @@ window.sendBulkEmail = async function (btn) {
  */
 window.exportCSV = function () {
     // Re-apply the current filter to get the visible rows
-    const statusFilter = document.getElementById('statusFilter')?.value || 'All';
-    const searchTerm = (document.getElementById('searchInput')?.value || '').toLowerCase();
+    const statusFilter = (/** @type {HTMLSelectElement | null} */ (document.getElementById('statusFilter')))?.value || 'All';
+    const searchTerm = ((/** @type {HTMLInputElement | null} */ (document.getElementById('searchInput')))?.value || '').toLowerCase();
 
     const filtered = allBookings.filter(item => {
         const matchesStatus = statusFilter === 'All' || item.status === statusFilter;

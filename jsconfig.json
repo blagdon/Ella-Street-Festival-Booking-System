@@ -7,6 +7,18 @@
   // "property X does not exist on type object" everywhere - a too-generic
   // {object} type is worse than no type, since it hides real shape info.
   // Run via `npm run typecheck`.
+  //
+  // As of 2026-07-31, every file under js/ has opted in and passes clean -
+  // full current coverage. Deliberately NOT flipping checkJs to true to
+  // "lock that in": this repo's dependencies include files outside js/ (e.g.
+  // supabase-public.js, imported by several js/*.js modules) that are not
+  // opted in and do not yet typecheck cleanly. With checkJs:false + per-file
+  // opt-in, importing an unchecked file is silently fine (only the imported
+  // file's own JSDoc-declared exports are checked at the call site, never
+  // its internals) - checkJs:true would instead force-check every such
+  // dependency's full body too, breaking CI on files nobody has opted in
+  // yet. A new js/ file still starts unchecked until it adds its own
+  // "// @ts-check" - the same deliberate gate as when this file had only 3.
   "compilerOptions": {
     "target": "ES2022",
     "module": "ESNext",

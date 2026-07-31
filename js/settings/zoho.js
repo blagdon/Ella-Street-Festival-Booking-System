@@ -1,3 +1,4 @@
+// @ts-check
 import { getSupabaseClient } from '../supabase.js';
 import { showToast } from '../ui.js';
 import { auditLog } from '../audit.js';
@@ -6,15 +7,15 @@ import { parseEdgeFunctionError } from '../utils.js';
 const sb = getSupabaseClient();
 
 export async function initZohoSettings() {
-    const txtClientId = document.getElementById('zoho-client-id');
-    const txtClientSecret = document.getElementById('zoho-client-secret');
-    const txtRefreshToken = document.getElementById('zoho-refresh-token');
-    const txtAccountId = document.getElementById('zoho-account-id');
-    const txtFromAddress = document.getElementById('zoho-from-address');
-    const txtDisplayName = document.getElementById('zoho-display-name');
-    const selApiDomain = document.getElementById('zoho-api-domain');
-    const selAccountsDomain = document.getElementById('zoho-accounts-domain');
-    const btnSaveZoho = document.getElementById('btn-save-zoho');
+    const txtClientId = /** @type {HTMLInputElement | null} */ (document.getElementById('zoho-client-id'));
+    const txtClientSecret = /** @type {HTMLInputElement | null} */ (document.getElementById('zoho-client-secret'));
+    const txtRefreshToken = /** @type {HTMLInputElement | null} */ (document.getElementById('zoho-refresh-token'));
+    const txtAccountId = /** @type {HTMLInputElement | null} */ (document.getElementById('zoho-account-id'));
+    const txtFromAddress = /** @type {HTMLInputElement | null} */ (document.getElementById('zoho-from-address'));
+    const txtDisplayName = /** @type {HTMLInputElement | null} */ (document.getElementById('zoho-display-name'));
+    const selApiDomain = /** @type {HTMLSelectElement | null} */ (document.getElementById('zoho-api-domain'));
+    const selAccountsDomain = /** @type {HTMLSelectElement | null} */ (document.getElementById('zoho-accounts-domain'));
+    const btnSaveZoho = /** @type {HTMLButtonElement | null} */ (document.getElementById('btn-save-zoho'));
 
     if (!txtClientId || !txtClientSecret || !txtRefreshToken || !txtAccountId || !txtFromAddress || !txtDisplayName || !selApiDomain || !selAccountsDomain || !btnSaveZoho) return;
 
@@ -107,7 +108,7 @@ export async function initZohoSettings() {
     });
 
     // Auto-Fetch Account ID handler
-    const btnFetchAccountId = document.getElementById('btn-fetch-account-id');
+    const btnFetchAccountId = /** @type {HTMLButtonElement | null} */ (document.getElementById('btn-fetch-account-id'));
     if (btnFetchAccountId) {
         btnFetchAccountId.addEventListener('click', async () => {
             const valClientId = txtClientId.value.trim();
