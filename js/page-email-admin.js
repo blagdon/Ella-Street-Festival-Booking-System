@@ -1,3 +1,4 @@
+// @ts-check
 import { getSupabaseClient } from './supabase.js';
 import { showToast, registerModalClose, trapFocus } from './ui.js';
 import { escapeHtml } from './utils.js';
@@ -35,7 +36,8 @@ export function initEmailAdmin() {
 
     // Delegation for Modal Close
     document.body.addEventListener('click', (e) => {
-        const closePreviewBtn = e.target.closest('[data-action="close-preview-email"]');
+        const target = /** @type {Element} */ (e.target);
+        const closePreviewBtn = target.closest('[data-action="close-preview-email"]');
         if (closePreviewBtn) {
             closePreview();
             return;
@@ -96,8 +98,8 @@ function selectTemplate(id) {
     // Populate editor
     document.getElementById('email-editorTitle').innerText = formatName(template.id);
     document.getElementById('email-editorDesc').innerText = template.description || "No description provided.";
-    document.getElementById('email-inputSubject').value = template.subject;
-    document.getElementById('email-inputBody').value = template.body_html;
+    (/** @type {HTMLInputElement} */ (document.getElementById('email-inputSubject'))).value = template.subject;
+    (/** @type {HTMLTextAreaElement} */ (document.getElementById('email-inputBody'))).value = template.body_html;
 
     // Toggle Views
     document.getElementById('email-emptyState').style.display = 'none';
@@ -112,10 +114,10 @@ function selectTemplate(id) {
 async function saveTemplate() {
     if (!currentTemplateId) return;
 
-    const btn = document.getElementById('email-btn-save-template');
+    const btn = /** @type {HTMLButtonElement} */ (document.getElementById('email-btn-save-template'));
 
-    const newSubject = document.getElementById('email-inputSubject').value.trim();
-    const newBody = document.getElementById('email-inputBody').value.trim();
+    const newSubject = (/** @type {HTMLInputElement} */ (document.getElementById('email-inputSubject'))).value.trim();
+    const newBody = (/** @type {HTMLTextAreaElement} */ (document.getElementById('email-inputBody'))).value.trim();
 
     if (!newSubject || !newBody) {
         showToast("Subject and Body cannot be empty.", "error");
@@ -163,8 +165,8 @@ function formatName(str) {
 
 // Preview Email
 function previewEmail() {
-    const subject = document.getElementById('email-inputSubject').value.trim();
-    const body = document.getElementById('email-inputBody').value.trim();
+    const subject = (/** @type {HTMLInputElement} */ (document.getElementById('email-inputSubject'))).value.trim();
+    const body = (/** @type {HTMLTextAreaElement} */ (document.getElementById('email-inputBody'))).value.trim();
 
     if (!subject || !body) {
         showToast("Please fill in both subject and body before previewing.", "error");

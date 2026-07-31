@@ -1,3 +1,5 @@
+// @ts-check
+/** @typedef {Error & { terminal?: boolean }} TerminalError */
 import { getPublicSupabaseClient, initPublicPage } from '../supabase-public.js';
 import { parseEdgeFunctionError } from './utils.js';
 
@@ -12,9 +14,10 @@ initPublicPage(async () => {
     const sb = getPublicSupabaseClient();
 
     document.querySelectorAll('#contact-link, #contact-link-error').forEach(el => {
-        el.href = CONTACT_URL;
-        el.target = '_blank';
-        el.rel = 'noopener noreferrer';
+        const link = /** @type {HTMLAnchorElement} */ (el);
+        link.href = CONTACT_URL;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
     });
 
     // Bind Turnstile Key dynamically, then load the widget script - same
@@ -52,11 +55,11 @@ initPublicPage(async () => {
     }
     document.getElementById('payForm').classList.remove('hidden');
 
-    const continueBtn = document.getElementById('continueBtn');
+    const continueBtn = /** @type {HTMLButtonElement} */ (document.getElementById('continueBtn'));
     const continueBtnText = document.getElementById('continueBtnText');
 
     continueBtn.addEventListener('click', async () => {
-        const captchaToken = document.querySelector('[name="cf-turnstile-response"]');
+        const captchaToken = /** @type {HTMLInputElement | null} */ (document.querySelector('[name="cf-turnstile-response"]'));
         if (!captchaToken || !captchaToken.value) {
             showStatus('Please complete the CAPTCHA verification.');
             return;
@@ -71,6 +74,7 @@ initPublicPage(async () => {
                 body: { token: captchaToken.value, paymentToken: paymentLinkCode }
             });
             if (error) {
+                /** @type {TerminalError} */
                 const err = new Error(await parseEdgeFunctionError(error, 'Server error'));
                 // error.context is the raw fetch Response - 404 (no such
                 // token) and 409 (booking no longer awaiting payment, e.g.
@@ -92,7 +96,7 @@ initPublicPage(async () => {
             // user, or a generic browser/network error — never a raw internal
             // one, so it's safe to show verbatim.
             showStatus((err && err.message) ? err.message : 'Something went wrong. Please try again or contact us.');
-            if (err && err.terminal) {
+            if (err && /** @type {TerminalError} */ (err).terminal) {
                 // Nothing left to retry (already paid, cancelled, invalid
                 // link) - hide the CAPTCHA/button rather than leave
                 // "Continue to Payment" sitting next to a message saying

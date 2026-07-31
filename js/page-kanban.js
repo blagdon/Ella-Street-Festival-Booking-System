@@ -1,3 +1,4 @@
+// @ts-check
 import { initAdminPage } from './supabase.js';
 import { initKanban, filterCards, loadBoard, setSort, emailAllConfirmed, closeModal, openEmailModal, saveNote, changeStatus, promptStatusChange, finalizeConfirm, sendSystemEmail, confirmRejection, confirmCancellation, sendBulkEmail, cancelDrag, resendPaymentRequestAction } from './kanban.js';
 
@@ -10,7 +11,7 @@ function init() {
 
     const sortSelect = document.getElementById('sortSelect');
     if (sortSelect) sortSelect.addEventListener('change', (e) => {
-        const [field, direction] = e.target.value.split('-');
+        const [field, direction] = (/** @type {HTMLSelectElement} */ (e.target)).value.split('-');
         setSort(field, direction);
     });
 
@@ -58,9 +59,11 @@ function init() {
 
     // 2. Event Delegation for Data Attributes
     document.body.addEventListener('click', (e) => {
+        const target = /** @type {Element} */ (e.target);
+
         // Close Modal Actions
-        const closeBtn = e.target.closest('[data-action="close-modal"]');
-        if (closeBtn) {
+        const closeBtn = target.closest('[data-action="close-modal"]');
+        if (closeBtn instanceof HTMLElement) {
             closeModal(closeBtn.dataset.modal);
             // Specifically for kanban, call cancelDrag on close
             cancelDrag();
@@ -68,15 +71,15 @@ function init() {
         }
 
         // Change Status Actions
-        const changeStatusBtn = e.target.closest('[data-action="change-status"]');
-        if (changeStatusBtn) {
+        const changeStatusBtn = target.closest('[data-action="change-status"]');
+        if (changeStatusBtn instanceof HTMLElement) {
             changeStatus(changeStatusBtn.dataset.status);
             return;
         }
 
         // Prompt Status Change Actions
-        const promptChangeBtn = e.target.closest('[data-action="prompt-status-change"]');
-        if (promptChangeBtn) {
+        const promptChangeBtn = target.closest('[data-action="prompt-status-change"]');
+        if (promptChangeBtn instanceof HTMLElement) {
             promptStatusChange(promptChangeBtn.dataset.status);
             return;
         }
@@ -141,13 +144,13 @@ function initAutoScroll() {
     const observer = new MutationObserver(function (mutations) {
         for (const m of mutations) {
             for (const node of m.addedNodes) {
-                if (node.classList && node.classList.contains('gu-mirror')) {
+                if (node instanceof Element && node.classList.contains('gu-mirror')) {
                     startScrolling();
                     return;
                 }
             }
             for (const node of m.removedNodes) {
-                if (node.classList && node.classList.contains('gu-mirror')) {
+                if (node instanceof Element && node.classList.contains('gu-mirror')) {
                     stopScrolling();
                     return;
                 }

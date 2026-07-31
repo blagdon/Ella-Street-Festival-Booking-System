@@ -1,3 +1,4 @@
+// @ts-check
 import { fetchStatsData, STATS_CAP } from './api.js';
 import { getStallCost } from './config.js';
 import { showToast, notifyIfTruncated } from './ui.js';
@@ -16,17 +17,20 @@ let categoryChartInstance = null;
 // scroll through four near-identical breakdowns). Delegated since renderPanel()
 // rebuilds these headers via innerHTML on every refresh.
 document.addEventListener('click', (e) => {
-    const btn = e.target.closest('[data-action="toggle-panel"]');
-    if (btn) togglePanel(btn);
+    const target = /** @type {Element} */ (e.target);
+    const btn = target.closest('[data-action="toggle-panel"]');
+    if (btn instanceof HTMLElement) togglePanel(btn);
 });
 document.addEventListener('keydown', (e) => {
     if (e.key !== 'Enter' && e.key !== ' ') return;
-    const btn = e.target.closest('[data-action="toggle-panel"]');
-    if (!btn) return;
+    const target = /** @type {Element} */ (e.target);
+    const btn = target.closest('[data-action="toggle-panel"]');
+    if (!(btn instanceof HTMLElement)) return;
     e.preventDefault();
     togglePanel(btn);
 });
 
+/** @param {HTMLElement} btn */
 function togglePanel(btn) {
     const body = document.getElementById(btn.dataset.target);
     if (!body) return;
@@ -39,7 +43,7 @@ function togglePanel(btn) {
 // rebuilds the charts, so re-running it is safe. Disabled while in flight so
 // a double-click can't race two loads.
 document.getElementById('btn-refresh')?.addEventListener('click', async (e) => {
-    const btn = e.currentTarget;
+    const btn = /** @type {HTMLButtonElement} */ (e.currentTarget);
     btn.disabled = true;
     btn.querySelector('svg')?.classList.add('animate-spin');
     try {

@@ -1,3 +1,4 @@
+// @ts-check
 import { getSupabaseClient } from '../supabase.js';
 import { showToast } from '../ui.js';
 import { auditLog } from '../audit.js';
@@ -17,10 +18,10 @@ export async function initSmsSettings() {
     const btnTestMode = document.getElementById('toggle-sms-test-mode');
     const dotTestMode = document.getElementById('toggle-sms-test-mode-dot');
     const lblTestMode = document.getElementById('lbl-sms-test-mode-status');
-    const txtSenderId = document.getElementById('sms-sender-id');
-    const txtApiKey = document.getElementById('sms-api-key');
+    const txtSenderId = /** @type {HTMLInputElement | null} */ (document.getElementById('sms-sender-id'));
+    const txtApiKey = /** @type {HTMLInputElement | null} */ (document.getElementById('sms-api-key'));
     const lblApiKeyStatus = document.getElementById('sms-api-key-status');
-    const btnSave = document.getElementById('btn-save-sms');
+    const btnSave = /** @type {HTMLButtonElement | null} */ (document.getElementById('btn-save-sms'));
 
     if (!btnTestMode || !txtSenderId || !txtApiKey || !btnSave) return;
 

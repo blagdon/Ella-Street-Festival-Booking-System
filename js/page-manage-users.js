@@ -1,3 +1,4 @@
+// @ts-check
 import { initAdminPage, getSupabaseClient } from './supabase.js';
 import { CONFIG } from './config.js';
 import { showToast, showConfirm } from './ui.js';
@@ -20,8 +21,9 @@ function initManageUsers() {
     const userList = document.getElementById('userList');
     if (userList) {
         userList.addEventListener('click', (e) => {
-            const btn = e.target.closest('button[data-action="delete"]');
-            if (btn) {
+            const target = /** @type {Element} */ (e.target);
+            const btn = target.closest('button[data-action="delete"]');
+            if (btn instanceof HTMLElement) {
                 deleteUser(btn.dataset.id, btn.dataset.label);
             }
         });
@@ -95,10 +97,10 @@ async function deleteUser(id, label) {
 
 // ---- CREATE USER ----
 async function createUser() {
-    const email = document.getElementById('newEmail').value.trim();
-    const password = document.getElementById('newPassword').value;
-    const role = document.getElementById('newRole').value;
-    const btn = document.getElementById('createBtn');
+    const email = (/** @type {HTMLInputElement} */ (document.getElementById('newEmail'))).value.trim();
+    const password = (/** @type {HTMLInputElement} */ (document.getElementById('newPassword'))).value;
+    const role = (/** @type {HTMLSelectElement} */ (document.getElementById('newRole'))).value;
+    const btn = /** @type {HTMLButtonElement} */ (document.getElementById('createBtn'));
 
     // Validation
     if (!email || !password) {
@@ -156,8 +158,8 @@ async function createUser() {
 
         // 3. Success
         showToast(`✓ Account created for ${email} as ${role}. They will receive a verification email.`, 'success');
-        document.getElementById('newEmail').value = '';
-        document.getElementById('newPassword').value = '';
+        (/** @type {HTMLInputElement} */ (document.getElementById('newEmail'))).value = '';
+        (/** @type {HTMLInputElement} */ (document.getElementById('newPassword'))).value = '';
         loadUsers(); // Refresh list
 
     } catch (err) {

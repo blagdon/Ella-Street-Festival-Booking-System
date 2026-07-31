@@ -1,3 +1,4 @@
+// @ts-check
 import { fetchMapData } from './api.js';
 import { escapeHtml } from './utils.js';
 import { ESF_PUBLIC_CONFIG } from '../supabase-public.js';
@@ -405,7 +406,7 @@ export function applyFilter(filterType) {
 // maintaining a second label list that could drift from the dropdown's
 // actual wording.
 function getFilterLabel(filterType) {
-    const select = document.getElementById('filter-select');
+    const select = /** @type {HTMLSelectElement | null} */ (document.getElementById('filter-select'));
     if (!select) return filterType;
     const opt = [...select.options].find(o => o.value === filterType);
     return opt ? opt.textContent.trim() : filterType;
@@ -425,14 +426,14 @@ export function handleSearch(searchTerm) {
     }
 
     searchDebounceTimer = setTimeout(() => {
-        const filterSelect = document.getElementById('filter-select');
+        const filterSelect = /** @type {HTMLSelectElement | null} */ (document.getElementById('filter-select'));
         const currentFilter = filterSelect ? filterSelect.value : 'all';
         applyFilter(currentFilter);
     }, 300);
 }
 
 export function clearSearch() {
-    const searchInput = document.getElementById('search-input');
+    const searchInput = /** @type {HTMLInputElement | null} */ (document.getElementById('search-input'));
     const clearBtn = document.getElementById('clear-search');
 
     if (searchInput) searchInput.value = '';
@@ -440,7 +441,7 @@ export function clearSearch() {
 
     if (clearBtn) clearBtn.classList.add('hidden');
 
-    const filterSelect = document.getElementById('filter-select');
+    const filterSelect = /** @type {HTMLSelectElement | null} */ (document.getElementById('filter-select'));
     const currentFilter = filterSelect ? filterSelect.value : 'all';
     applyFilter(currentFilter);
 }

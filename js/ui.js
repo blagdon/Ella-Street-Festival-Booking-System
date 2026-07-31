@@ -11,7 +11,10 @@
  * showToast, which sets the message via `.innerText`, not innerHTML, so this
  * is inherently XSS-safe with no separate escaping step needed even though
  * `label` here is always a static string, never user data.
- * @param {Array<any> & {truncated?: boolean}} data - the result of a fetchCapped()-backed call
+ * @param {(Array<any> & {truncated?: boolean}) | {truncated?: boolean} | null | undefined} data -
+ *   the result of a fetchCapped()-backed call, or any other object that carries a `truncated`
+ *   flag (some callers combine several fetchCapped() results into one plain summary object
+ *   before calling this)
  * @param {number} cap - the cap that was applied (LIST_CAP or STATS_CAP)
  * @param {string} label - what the capped items are, e.g. "bookings"
  */
