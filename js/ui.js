@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * UI Utilities
  * Shared components for user feedback and interaction.
@@ -10,7 +11,7 @@
  * showToast, which sets the message via `.innerText`, not innerHTML, so this
  * is inherently XSS-safe with no separate escaping step needed even though
  * `label` here is always a static string, never user data.
- * @param {Array} data - the result of a fetchCapped()-backed call
+ * @param {Array<any> & {truncated?: boolean}} data - the result of a fetchCapped()-backed call
  * @param {number} cap - the cap that was applied (LIST_CAP or STATS_CAP)
  * @param {string} label - what the capped items are, e.g. "bookings"
  */
@@ -150,9 +151,11 @@ const FOCUSABLE_SELECTOR = 'a[href], button:not([disabled]), input:not([disabled
 export function trapFocus(modalEl) {
     const previouslyFocused = document.activeElement;
 
+    /** @returns {HTMLElement[]} */
     function getFocusable() {
-        return Array.from(modalEl.querySelectorAll(FOCUSABLE_SELECTOR))
-            .filter(el => el.offsetParent !== null);
+        /** @type {NodeListOf<HTMLElement>} */
+        const candidates = modalEl.querySelectorAll(FOCUSABLE_SELECTOR);
+        return Array.from(candidates).filter((el) => el.offsetParent !== null);
     }
 
     const initial = getFocusable()[0];
@@ -180,7 +183,7 @@ export function trapFocus(modalEl) {
 
     return function release() {
         modalEl.removeEventListener('keydown', onKeydown);
-        if (previouslyFocused && typeof previouslyFocused.focus === 'function') {
+        if (previouslyFocused instanceof HTMLElement) {
             previouslyFocused.focus();
         }
         // Several of this app's modals hide via opacity-0/pointer-events-none
@@ -189,7 +192,7 @@ export function trapFocus(modalEl) {
         // div, not a real button) was never focusable to begin with, so the
         // .focus() call above silently did nothing. Without this, focus is
         // left stranded on a control that's now invisible and inert.
-        if (modalEl.contains(document.activeElement)) {
+        if (modalEl.contains(document.activeElement) && document.activeElement instanceof HTMLElement) {
             document.activeElement.blur();
         }
     };

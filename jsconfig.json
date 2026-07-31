@@ -1,0 +1,23 @@
+{
+  // Incremental adoption, not a repo-wide requirement: checkJs is false here
+  // deliberately, so no .js file is checked unless it opts in with its own
+  // "// @ts-check" comment at the top (works regardless of this checkJs
+  // setting - that's the whole mechanism). Opt a file in only once its
+  // JSDoc @param/@returns tags are specific enough that tsc won't just flag
+  // "property X does not exist on type object" everywhere - a too-generic
+  // {object} type is worse than no type, since it hides real shape info.
+  // Run via `npm run typecheck`.
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "checkJs": false,
+    "allowJs": true,
+    "strict": false,
+    "noEmit": true,
+    "skipLibCheck": true
+  },
+  "include": ["js/**/*.js"],
+  "exclude": ["node_modules", "js/vendor/**"]
+}

@@ -1,3 +1,4 @@
+// @ts-check
 import { getSupabaseClient } from './supabase.js';
 
 const TBL_AUDIT_LOGS = 'audit_logs';
