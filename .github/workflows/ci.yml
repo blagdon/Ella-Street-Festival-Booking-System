@@ -38,6 +38,22 @@ jobs:
       - name: Sibling-call and innerHTML-escaping guards
         run: bash .githooks/pre-commit
 
+  # Incremental type-checking (jsconfig.json + tsc --noEmit, via // @ts-check
+  # opt-in per file - see jsconfig.json's own comment) - NOT yet a required
+  # status check. Every file currently opted in (js/api.js, js/audit.js,
+  # js/ui.js) is clean as of when this job was added; deliberately not
+  # required yet so a first batch of newly-opted-in files can surface real
+  # findings without immediately blocking merges while the pattern beds in.
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - run: npm install
+      - run: npm run typecheck
+
   # css/output.css is a BUILD ARTEFACT that is committed to the repo (there is
   # no build step at deploy time - Vercel serves the committed file directly).
   # Tailwind only emits classes it finds by scanning the source, so introducing
@@ -168,7 +184,23 @@ jobs:
       - name: Ensure test fixtures (idempotent)
         run: npm run test:setup
       - name: Run integration/workflow/security tests
-        run: npm run test:integration
+        # Retries the whole suite once on failure, same convention as
+        # scripts/check-rls-grants-snapshot.sh's own dump-attempt loop: this
+        # is a REQUIRED status check, and a transient 502 from the shared
+        # test Supabase project (seen live, repeatedly, on a different test
+        # each time - not a real regression) shouldn't be able to block a
+        # merge on its own. A genuine failure still fails the job - it just
+        # has to fail twice in a row first.
+        run: |
+          for attempt in 1 2; do
+            if npm run test:integration; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 2 ]; then
+              echo "::warning::Integration tests failed on attempt $attempt - retrying once in case this was a transient upstream issue."
+            fi
+          done
+          exit 1
 
   # Phase 2 of the accessibility regression suite (see
   # e2e/admin-accessibility.spec.mjs's header): the 17 admin pages, reached

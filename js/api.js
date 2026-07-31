@@ -1,3 +1,4 @@
+// @ts-check
 import { getSupabaseClient } from './supabase.js';
 import { CONFIG } from './config.js';
 import { validateString, validateEmail, validateBookingId, validateStatus, parseEdgeFunctionError, MAX_FIELD_LENGTHS } from './utils.js';
@@ -444,7 +445,7 @@ export async function fetchPayments(currentInstance) {
 
 /**
  * Updates a payment record.
- * @param {object} payload 
+ * @param {{ booking_id: string, paid?: boolean, date_paid?: string|null, bank_ref?: string|null, editor?: string, stall_cost?: number|string }} payload
  */
 export async function updatePayment(payload) {
     validateBookingId(payload.booking_id);
@@ -558,7 +559,7 @@ export async function recordRefund(payload) {
     const reference = validateString(payload.refund_reference, MAX_FIELD_LENGTHS.bank_ref);
     if (!reference.trim()) throw new Error('Refund reference is required.');
 
-    const amount = parseFloat(payload.refund_amount);
+    const amount = parseFloat(String(payload.refund_amount));
     if (!Number.isFinite(amount) || amount <= 0) {
         throw new Error('Refund amount must be a number greater than zero.');
     }
@@ -814,7 +815,7 @@ export async function fetchMapData(currentInstance) {
 // ===================================================================
 /**
  * Updates booking details.
- * @param {object} payload
+ * @param {{ id: string, business: string, owner: string, email?: string|null, phone?: string, category?: string, description?: string, type?: string, power?: string, house?: string, website?: string, other?: string, is_resident?: boolean, is_charity?: string|boolean }} payload
  */
 export async function updateBookingDetails(payload) {
     validateBookingId(payload.id);
@@ -1033,7 +1034,7 @@ export async function getSignedBookingDocuments(bookingId) {
 
 /**
  * Inserts a new Misc booking.
- * @param {object} payload 
+ * @param {{ business: string, owner: string, email?: string|null, phone?: string, category?: string, description?: string, type?: string, house?: string, website?: string }} payload
  */
 export async function insertMiscBooking(payload) {
     const sb = getSupabaseClient();
