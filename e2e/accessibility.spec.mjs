@@ -41,6 +41,20 @@ function formatViolations(violations) {
 for (const pagePath of PAGES) {
   test(`${pagePath} has no detectable accessibility violations`, async ({ page }) => {
     await page.goto(`/${pagePath}`);
+    // Not 'networkidle': pay.html/cancel_booking.html hold a live Turnstile
+    // connection open, which networkidle never considers idle - confirmed by
+    // hitting exactly that 30s timeout on both when this used networkidle
+    // for every page.
+    await page.waitForLoadState('load');
+    if (pagePath === 'visitor_map.html') {
+      // Leaflet's attribution control renders (and gets its final styling)
+      // after 'load' fires - scanning any earlier caught it in an
+      // intermediate, unstyled state with a real but transient contrast
+      // violation. Wait for the control itself rather than a blanket
+      // networkidle (which is exactly the trap above, and this page has no
+      // reason to need it otherwise).
+      await page.waitForSelector('.leaflet-control-attribution a');
+    }
     const results = await new AxeBuilder({ page })
       .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
       .analyze();

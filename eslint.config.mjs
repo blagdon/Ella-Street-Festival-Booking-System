@@ -76,11 +76,27 @@ export default [
 
   // Node-run ESM: Vercel serverless function, dev/test tooling.
   {
-    files: ['api/**/*.js', 'scripts/**/*.mjs', 'tests/**/*.mjs', 'e2e/**/*.mjs', 'playwright.config.mjs'],
+    files: ['api/**/*.js', 'scripts/**/*.mjs', 'tests/**/*.mjs', 'playwright.config.mjs'],
     languageOptions: {
       ecmaVersion: 'latest',
       sourceType: 'module',
       globals: { ...globals.node },
+    },
+    rules: {
+      'no-unused-vars': ['warn', { args: 'none', caughtErrors: 'none' }],
+    },
+  },
+
+  // Playwright specs: Node-run test files, but every one of them also has
+  // page.evaluate(() => { ... }) callback bodies that execute in the browser,
+  // not Node - hence both global sets merged, rather than the plain Node set
+  // every other tooling file above gets.
+  {
+    files: ['e2e/**/*.mjs'],
+    languageOptions: {
+      ecmaVersion: 'latest',
+      sourceType: 'module',
+      globals: { ...globals.node, ...globals.browser },
     },
     rules: {
       'no-unused-vars': ['warn', { args: 'none', caughtErrors: 'none' }],

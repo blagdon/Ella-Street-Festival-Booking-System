@@ -26,24 +26,11 @@
 // tell-tale tokens below.
 import { test, describe, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { createClient } from '@supabase/supabase-js';
-
-process.loadEnvFile('.env.test');
-
-const url = process.env.TEST_SUPABASE_URL;
-const anonKey = process.env.TEST_SUPABASE_ANON_KEY;
-
-if (!url || !url.includes('qeplpcnrkgpaawfyliap')) {
-  throw new Error(`Refusing to run integration tests against a non-test project: ${url}`);
-}
+import { url, anonKey, service } from './helpers.mjs';
 
 // Cloudflare's official always-passes Turnstile test token - see
 // integration.test.mjs for why this is sanctioned rather than a bypass.
 const TURNSTILE_TEST_TOKEN = 'XXXX.DUMMY.TOKEN.XXXX';
-
-const service = createClient(url, process.env.TEST_SUPABASE_SERVICE_ROLE_KEY, {
-  auth: { autoRefreshToken: false, persistSession: false }
-});
 
 // Substrings that should never appear in a response to an unauthenticated
 // caller. Postgres error text, PostgREST codes, and the internals of our own

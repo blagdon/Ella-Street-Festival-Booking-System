@@ -17,15 +17,7 @@
 // unnoticed.
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-
-process.loadEnvFile('.env.test');
-
-const url = process.env.TEST_SUPABASE_URL;
-const anonKey = process.env.TEST_SUPABASE_ANON_KEY;
-
-if (!url || !url.includes('qeplpcnrkgpaawfyliap')) {
-  throw new Error(`Refusing to run integration tests against a non-test project: ${url}`);
-}
+import { url, anonKey } from './helpers.mjs';
 
 const PRODUCTION_ORIGIN = 'https://app.ellastreet.co.uk';
 

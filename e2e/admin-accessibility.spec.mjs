@@ -43,6 +43,10 @@ for (const pagePath of PAGES) {
     // Nav bar injection, instance-scoped data fetches, and (on stats.html)
     // chart rendering are all async after load - networkidle is a more
     // reliable "the page has actually hydrated" signal than a fixed sleep.
+    // Confirmed no admin page holds a live connection the way
+    // pay.html/cancel_booking.html's Turnstile widget does (that failure
+    // mode is real - see accessibility.spec.mjs's own comment - just not
+    // here: grepped every admin page for cf-turnstile/turnstile first).
     await page.waitForLoadState('networkidle');
 
     const results = await new AxeBuilder({ page })

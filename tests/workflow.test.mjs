@@ -6,20 +6,7 @@
 import { test, before, after, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { createClient } from '@supabase/supabase-js';
-
-process.loadEnvFile('.env.test');
-
-const url = process.env.TEST_SUPABASE_URL;
-const anonKey = process.env.TEST_SUPABASE_ANON_KEY;
-const serviceRoleKey = process.env.TEST_SUPABASE_SERVICE_ROLE_KEY;
-const adminEmail = process.env.TEST_ADMIN_EMAIL;
-const adminPassword = process.env.TEST_ADMIN_PASSWORD;
-
-if (!url || !url.includes('qeplpcnrkgpaawfyliap')) {
-  throw new Error(`Refusing to run integration tests against a non-test project: ${url}`);
-}
-
-const service = createClient(url, serviceRoleKey, { auth: { autoRefreshToken: false, persistSession: false } });
+import { url, anonKey, adminEmail, adminPassword, service } from './helpers.mjs';
 
 // The admin client mirrors js/api.js's getSupabaseClient() — a real
 // authenticated admin session, subject to the same RLS as the live app.

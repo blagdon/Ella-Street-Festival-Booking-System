@@ -28,7 +28,6 @@ setup('authenticate as test admin', async ({ page }) => {
   }
 
   await page.goto('/login.html');
-  // eslint-disable-next-line no-undef -- runs in the browser via page.evaluate, not Node
   await page.evaluate((key) => window.esfUseTestProject(key, 'e2e'), anonKey);
   await page.reload();
 
