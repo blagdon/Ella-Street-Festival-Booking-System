@@ -47,12 +47,19 @@ for (const pagePath of PAGES) {
     // for every page.
     await page.waitForLoadState('load');
     if (pagePath === 'visitor_map.html') {
-      // Leaflet's attribution control renders (and gets its final styling)
-      // after 'load' fires - scanning any earlier caught it in an
-      // intermediate, unstyled state with a real but transient contrast
-      // violation. Wait for the control itself rather than a blanket
-      // networkidle (which is exactly the trap above, and this page has no
-      // reason to need it otherwise).
+      // Leaflet's attribution control is added to the DOM by its own JS, but
+      // its styling comes from leaflet.css - a real https://unpkg.com/...
+      // request, not bundled - so waiting for the element to exist
+      // (waitForSelector) is NOT the same guarantee as its stylesheet having
+      // actually finished applying. Confirmed on CI specifically (2026-07-31,
+      // PR #124): passed 9/9 locally every time with just the selector wait,
+      // then failed reproducibly (both the run and Playwright's own retry) in
+      // CI on this exact page - CI's network timing to unpkg.com differs
+      // enough from local to matter. This page has no Turnstile/live
+      // connection (unlike pay.html/cancel_booking.html above), so
+      // networkidle is safe here specifically and actually waits for the
+      // stylesheet request too.
+      await page.waitForLoadState('networkidle');
       await page.waitForSelector('.leaflet-control-attribution a');
     }
     const results = await new AxeBuilder({ page })
