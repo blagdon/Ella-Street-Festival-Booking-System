@@ -1335,9 +1335,37 @@ body — this was a real fixed mass-assignment vulnerability class, don't reintr
 Every admin mutation in `api.js` calls `auditLog(action, targetId, details)`. Treat a
 new mutation with no audit call as incomplete.
 
-### No TypeScript on the frontend
-Plain JS + JSDoc comments for the admin/public site. Edge Functions are TypeScript
-(Deno). No linter/formatter config is committed (no ESLint/Prettier config found).
+### When a fix touches one instance of a repeated pattern, sweep for every instance — don't wait to be asked
+When trapFocus()/Escape-key handling was added to every modal in the app (2026-07-30/31),
+`js/summary.js`'s six modals were missed — not because that round skipped them, but because
+`js/summary.js` duplicates `js/kanban.js`'s modal machinery under different function names
+(`window.closeModal` vs `closeModal`/`registerModalEsc`), so a per-file, page-by-page pass
+missed that duplication. It resurfaced as a live bug report ("Escape doesn't close the panel
+in Summary"). Fixed, then asked "any other gaps?" — grepping every `id="*Modal*"` across every
+`.html` file (not just the files already touched) found a second miss in the same class:
+`index.html`'s password-reset gate, shown via a code path in `js/page-index.js` that neither
+review had reason to look at.
+
+**The lesson generalises past modals.** Any UI pattern implemented independently in more than
+one file (this repo has several: the `data-action="..."` delegated-listener convention, the
+SMS-opt-in-tickbox pattern on every send flow, the `sr-only`-labelled icon button pattern, the
+`text-gray-400`-contrast mistake fixed identically ~15 times across two audit rounds) is a
+sweep candidate. Before calling that class of work done, grep for every occurrence across the
+**whole** codebase — not just the files already in scope — using whatever's mechanical and
+exhaustive for that pattern: an element-id grep (`grep -rhoE 'id="[A-Za-z-]*Foo[A-Za-z-]*"' *.html`),
+a function-name grep, a shared-CSS-class grep. Do this as the default closing step for this
+category of work, the same way `npm run build:css`/`npm run lint` are default closing steps for
+CSS/JS changes — not something that only happens when explicitly asked "are there any other gaps?"
+
+### TypeScript, incrementally
+`jsconfig.json` (repo root) + `npm run typecheck` (`tsc --noEmit`) — `checkJs` is off by
+default, so a `.js` file is only checked once it adds its own `// @ts-check` comment (works
+independently of that setting). Opted in so far: `js/api.js`, `js/audit.js`, `js/ui.js`. Wired
+into CI as its own `typecheck` job, not yet a required check. Extend this the same way: opt a
+file in only once its JSDoc `@param`/`@returns` tags are specific enough that tsc won't just
+flag "property X does not exist on type object" everywhere — a too-generic `{object}` type is
+worse than no type at all, since it hides the real shape rather than documenting it. Edge
+Functions are separately TypeScript (Deno) already, unaffected by any of this.
 
 ---
 
