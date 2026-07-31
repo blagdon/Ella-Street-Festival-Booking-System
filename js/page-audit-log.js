@@ -1,3 +1,4 @@
+// @ts-check
 import { initAdminPage, getSupabaseClient } from './supabase.js';
 import { escapeHtml } from './utils.js';
 import { showToast } from './ui.js';
@@ -44,7 +45,8 @@ function initAuditLog() {
     const params = new URLSearchParams(window.location.search);
     const targetParam = params.get('target');
     if (targetParam) {
-        document.getElementById('searchInput').value = targetParam;
+        const searchInput = /** @type {HTMLInputElement} */ (document.getElementById('searchInput'));
+        searchInput.value = targetParam;
     }
 
     document.getElementById('btn-refresh').addEventListener('click', () => loadPage(true));
@@ -56,9 +58,11 @@ function initAuditLog() {
     });
 
     document.getElementById('tableBody').addEventListener('click', (e) => {
-        const btn = e.target.closest('button[data-action="filter-target"]');
-        if (btn) {
-            document.getElementById('searchInput').value = btn.dataset.target;
+        const target = /** @type {Element} */ (e.target);
+        const btn = target.closest('button[data-action="filter-target"]');
+        if (btn instanceof HTMLElement) {
+            const searchInput = /** @type {HTMLInputElement} */ (document.getElementById('searchInput'));
+            searchInput.value = btn.dataset.target;
             loadPage(true);
         }
     });
@@ -92,7 +96,7 @@ function sanitizeForOrFilter(term) {
 
 async function loadPage(reset) {
     const tbody = document.getElementById('tableBody');
-    const loadMoreBtn = document.getElementById('btn-load-more');
+    const loadMoreBtn = /** @type {HTMLButtonElement} */ (document.getElementById('btn-load-more'));
 
     if (reset) {
         offset = 0;
@@ -103,9 +107,9 @@ async function loadPage(reset) {
         loadMoreBtn.textContent = 'Loading...';
     }
 
-    const rawTerm = document.getElementById('searchInput').value.trim();
+    const rawTerm = (/** @type {HTMLInputElement} */ (document.getElementById('searchInput'))).value.trim();
     const term = sanitizeForOrFilter(rawTerm);
-    const actionFilter = document.getElementById('actionFilter').value;
+    const actionFilter = (/** @type {HTMLSelectElement} */ (document.getElementById('actionFilter'))).value;
 
     try {
         let query = sb.from('audit_logs').select('*').order('id', { ascending: false });

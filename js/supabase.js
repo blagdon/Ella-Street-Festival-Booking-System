@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * supabase.js
  * Wrapper for Supabase client initialization and authentication.
@@ -134,8 +135,8 @@ export async function signOut() {
 /**
  * Shared helper to initialize admin and steward dashboard pages.
  * Handles DOM ready state, role authorization, and navigation setup.
- * @param {Function} initCallback - The page-specific initialization function.
- * @param {string} requiredRole - 'admin' or 'steward'
+ * @param {Function} [initCallback] - The page-specific initialization function.
+ * @param {string} [requiredRole] - 'admin' or 'steward'
  */
 export function initAdminPage(initCallback, requiredRole = 'admin') {
     const runInit = async () => {

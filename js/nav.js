@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * nav.js
  * Handles dynamic injection of the Admin Header and Mobile Menu.
@@ -113,16 +114,16 @@ export function initNavigation() {
         window.location.reload();
     };
 
-    const sel = document.getElementById('instanceSelect');
+    const sel = /** @type {HTMLSelectElement | null} */ (document.getElementById('instanceSelect'));
     if (sel) {
         sel.value = current;
-        sel.addEventListener('change', (e) => setInstance(e.target.value));
+        sel.addEventListener('change', (e) => setInstance((/** @type {HTMLSelectElement} */ (e.target)).value));
     }
 
-    const selMobile = document.getElementById('instanceSelectMobile');
+    const selMobile = /** @type {HTMLSelectElement | null} */ (document.getElementById('instanceSelectMobile'));
     if (selMobile) {
         selMobile.value = current;
-        selMobile.addEventListener('change', (e) => setInstance(e.target.value));
+        selMobile.addEventListener('change', (e) => setInstance((/** @type {HTMLSelectElement} */ (e.target)).value));
     }
 
     // Sign Out
@@ -133,6 +134,6 @@ export function initNavigation() {
     document.getElementById('mobileMenuBtn')?.addEventListener('click', (e) => {
         const menu = document.getElementById('mobileMenu');
         const isHidden = menu.classList.toggle('hidden');
-        e.currentTarget.setAttribute('aria-expanded', String(!isHidden));
+        (/** @type {Element} */ (e.currentTarget)).setAttribute('aria-expanded', String(!isHidden));
     });
 }

@@ -1,3 +1,4 @@
+// @ts-check
 // These are intentionally static, dependency-free pages (no Supabase calls,
 // no connect-src in their CSP). Points at the site's real contact page
 // directly rather than ESF_PUBLIC_CONFIG.PORTAL_URL - that value is
@@ -6,7 +7,7 @@
 // festival's own site, not something that changes per environment.
 const CONTACT_URL = 'https://www.ellastreet.co.uk/contact';
 
-const link = document.getElementById('contact-link');
+const link = /** @type {HTMLAnchorElement | null} */ (document.getElementById('contact-link'));
 if (link) {
     link.href = CONTACT_URL;
     link.target = '_blank';

@@ -1,3 +1,4 @@
+// @ts-check
 import { getSupabaseClient, initAdminPage } from './supabase.js';
 import { safeError, validateBookingId, escapeHtml } from './utils.js';
 import { auditLog } from './audit.js';
@@ -28,7 +29,7 @@ async function initSteward() {
     }
 
     // C. UI Setup
-    document.getElementById('searchInput').addEventListener('input', (e) => renderList(e.target.value));
+    document.getElementById('searchInput').addEventListener('input', (e) => renderList((/** @type {HTMLInputElement} */ (e.target)).value));
 
     window.addEventListener('online', async () => {
         updateStatus(true);
@@ -46,7 +47,8 @@ async function initSteward() {
 
     // Event delegation
     document.body.addEventListener('click', (e) => {
-        const closeModalBtn = e.target.closest('[data-action="close-modal"]');
+        const target = /** @type {Element} */ (e.target);
+        const closeModalBtn = target.closest('[data-action="close-modal"]');
         if (closeModalBtn) {
             closeModal();
             return;
@@ -109,7 +111,7 @@ async function syncDown() {
         masterLocations = (locationsReq.data || []).map(l => ({ ...l, id: String(l.id) }));
         localStorage.setItem(LOCS_KEY, JSON.stringify(masterLocations));
 
-        if (document.getElementById('searchInput').value === '') renderList('');
+        if ((/** @type {HTMLInputElement} */ (document.getElementById('searchInput'))).value === '') renderList('');
 
     } catch (e) {
         // Sync failed - will continue with cached data
@@ -219,7 +221,7 @@ function closeModal() {
 }
 
 async function saveLocation() {
-    const rawVal = document.getElementById('newLocationInput').value;
+    const rawVal = (/** @type {HTMLSelectElement} */ (document.getElementById('newLocationInput'))).value;
     const newLoc = rawVal === "" ? null : rawVal;
 
     if (!currentEditId) return;
@@ -235,7 +237,7 @@ async function saveLocation() {
     const newLocIds = newLoc ? [newLoc] : [];
     localData[idx].location_ids = newLocIds;
     localStorage.setItem(DB_KEY, JSON.stringify(localData));
-    renderList(document.getElementById('searchInput').value);
+    renderList((/** @type {HTMLInputElement} */ (document.getElementById('searchInput'))).value);
     closeModal();
 
     // 3. Network Sync
@@ -274,7 +276,7 @@ async function saveLocation() {
             // 4. Revert Optimistic Update
             localData[idx].location_ids = previousLocIds;
             localStorage.setItem(DB_KEY, JSON.stringify(localData));
-            renderList(document.getElementById('searchInput').value);
+            renderList((/** @type {HTMLInputElement} */ (document.getElementById('searchInput'))).value);
         }
     } else {
         addToQueue(bookingId, newLoc);
