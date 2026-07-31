@@ -1,6 +1,6 @@
 import { fetchKanbanData, addNote, sendEmail, sendBookingSms, queueBulkEmail, queueBulkSms, requestPayment, resendPaymentRequest, LIST_CAP } from './api.js';
 import { sharedUpdateStatus, populateDetailPane, initComposeSmsToggle, initBulkSmsToggle, readOptionalSmsBody, resetSmsToggle, readStatusSmsChecked, resetStatusSmsCheckbox } from './shared.js';
-import { showToast, showConfirm, notifyIfTruncated, trapFocus } from './ui.js';
+import { showToast, showConfirm, notifyIfTruncated, trapFocus, registerModalClose } from './ui.js';
 import { escapeHtml, sortBookings } from './utils.js';
 import { CONFIG, getStallCost } from './config.js';
 
@@ -349,14 +349,17 @@ function openDetails(id) {
     }
 }
 
-// Focus trap release per modal id - same convention as kanban.js's
-// modalEscUnregisterById, but this page's modals were never wired into the
-// shared Escape-key registry, so this map exists only for focus trapping.
+// Focus trap release + Escape unregister, per modal id - same convention as
+// kanban.js's modalEscUnregisterById/modalFocusReleaseById, just kept here
+// since this page's modals were never wired into the shared Escape-key
+// registry at all (unlike kanban_m.html's equivalents) until now.
 const modalFocusReleaseById = {};
+const modalEscUnregisterById = {};
 
 function trapModalFocus(id) {
     if (modalFocusReleaseById[id]) return;
     modalFocusReleaseById[id] = trapFocus(document.getElementById(id));
+    modalEscUnregisterById[id] = registerModalClose(() => window.closeModal(id));
 }
 
 window.closeModal = function (id) {
@@ -372,6 +375,10 @@ window.closeModal = function (id) {
     if (modalFocusReleaseById[id]) {
         modalFocusReleaseById[id]();
         modalFocusReleaseById[id] = null;
+    }
+    if (modalEscUnregisterById[id]) {
+        modalEscUnregisterById[id]();
+        modalEscUnregisterById[id] = null;
     }
 }
 
