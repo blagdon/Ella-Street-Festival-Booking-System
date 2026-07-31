@@ -1,3 +1,4 @@
+// @ts-check
 import { getPublicSupabaseClient, initPublicPage, ESF_PUBLIC_CONFIG } from '../supabase-public.js';
 import { escapeHtml, parseEdgeFunctionError, guardUnsavedForm } from './utils.js';
 
@@ -52,17 +53,17 @@ initPublicPage(async function () {
     const descInput = document.querySelector('textarea[name="description"]');
     if (descInput) {
         descInput.addEventListener('input', e => {
-            document.getElementById('descCount').innerText = `${e.target.value.length}/200`;
+            document.getElementById('descCount').innerText = `${(/** @type {HTMLTextAreaElement} */ (e.target)).value.length}/200`;
         });
     }
 
     // "Other" Category Logic (Checkbox based)
-    const otherInput = document.getElementById('catOtherInput');
-    const otherCheck = document.getElementById('catOtherCheck');
+    const otherInput = /** @type {HTMLInputElement | null} */ (document.getElementById('catOtherInput'));
+    const otherCheck = /** @type {HTMLInputElement | null} */ (document.getElementById('catOtherCheck'));
 
     if (otherCheck && otherInput) {
         otherCheck.addEventListener('change', e => {
-            if (e.target.checked) {
+            if ((/** @type {HTMLInputElement} */ (e.target)).checked) {
                 otherInput.disabled = false;
                 otherInput.focus();
             } else {
@@ -73,7 +74,7 @@ initPublicPage(async function () {
     }
 
     // --- SUBMIT HANDLER ---
-    const form = document.getElementById('nonFoodForm');
+    const form = /** @type {HTMLFormElement | null} */ (document.getElementById('nonFoodForm'));
 
     if (form) {
         const unsavedGuard = guardUnsavedForm(form);
@@ -82,9 +83,9 @@ initPublicPage(async function () {
             // STOP THE RELOAD
             e.preventDefault();
 
-            const btn = document.getElementById('submitBtn');
-            const msg = document.getElementById('statusMessage');
-            const catError = document.getElementById('categoryError');
+            const btn = /** @type {HTMLButtonElement} */ (document.getElementById('submitBtn'));
+            const msg = /** @type {HTMLElement} */ (document.getElementById('statusMessage'));
+            const catError = /** @type {HTMLElement} */ (document.getElementById('categoryError'));
 
             // Reset errors
             catError.classList.add('hidden');
@@ -103,7 +104,7 @@ initPublicPage(async function () {
 
             try {
                 // 0. Verify CAPTCHA
-                const captchaToken = document.querySelector('[name="cf-turnstile-response"]');
+                const captchaToken = /** @type {HTMLInputElement | null} */ (document.querySelector('[name="cf-turnstile-response"]'));
                 if (!captchaToken || !captchaToken.value) {
                     throw new Error("Please complete the CAPTCHA verification.");
                 }
@@ -115,7 +116,7 @@ initPublicPage(async function () {
 
                 // 2. Upload Files (Optional, up to 5 files)
                 const BUCKET_NAME = window.ESF_PUBLIC_CONFIG ? window.ESF_PUBLIC_CONFIG.BUCKET_NAME : 'esf-documents';
-                const fileInput = document.getElementById('fileUpload');
+                const fileInput = /** @type {HTMLInputElement} */ (document.getElementById('fileUpload'));
                 let fileNames = [];
 
                 if (fileInput.files.length > 0) {
@@ -162,9 +163,10 @@ initPublicPage(async function () {
 
                 // Handle Category (Multiple -> Single String)
                 let selectedCategories = [];
-                checkedCats.forEach(cb => {
+                checkedCats.forEach(cbEl => {
+                    const cb = /** @type {HTMLInputElement} */ (cbEl);
                     if (cb.value === 'Other') {
-                        const otherVal = document.getElementById('catOtherInput').value.trim();
+                        const otherVal = (/** @type {HTMLInputElement} */ (document.getElementById('catOtherInput'))).value.trim();
                         if (otherVal) selectedCategories.push(`Other: ${otherVal}`);
                     } else {
                         selectedCategories.push(cb.value);

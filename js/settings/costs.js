@@ -1,3 +1,4 @@
+// @ts-check
 import { getSupabaseClient } from '../supabase.js';
 import { showToast } from '../ui.js';
 import { auditLog } from '../audit.js';
@@ -7,10 +8,10 @@ import { escapeHtml } from '../utils.js';
 const sb = getSupabaseClient();
 
 export async function initStallCosts() {
-    const txtFood = document.getElementById('cost-food');
-    const txtGeneral = document.getElementById('cost-general');
-    const txtDev = document.getElementById('cost-dev');
-    const btnSave = document.getElementById('btn-save-costs');
+    const txtFood = /** @type {HTMLInputElement | null} */ (document.getElementById('cost-food'));
+    const txtGeneral = /** @type {HTMLInputElement | null} */ (document.getElementById('cost-general'));
+    const txtDev = /** @type {HTMLInputElement | null} */ (document.getElementById('cost-dev'));
+    const btnSave = /** @type {HTMLButtonElement | null} */ (document.getElementById('btn-save-costs'));
 
     if (!txtFood || !txtGeneral || !txtDev || !btnSave) return;
 
@@ -68,8 +69,8 @@ export async function initStallCosts() {
 
 export function initStallTypes() {
     const listEl = document.getElementById('stall-types-list');
-    const inputEl = document.getElementById('new-stall-type');
-    const btnAdd = document.getElementById('btn-add-stall-type');
+    const inputEl = /** @type {HTMLInputElement | null} */ (document.getElementById('new-stall-type'));
+    const btnAdd = /** @type {HTMLButtonElement | null} */ (document.getElementById('btn-add-stall-type'));
 
     if (!listEl || !inputEl || !btnAdd) return;
 
@@ -139,8 +140,9 @@ export function initStallTypes() {
     });
 
     listEl.addEventListener('click', async (e) => {
-        const btn = e.target.closest('.remove-stall-type-btn');
-        if (!btn) return;
+        const target = /** @type {Element} */ (e.target);
+        const btn = target.closest('.remove-stall-type-btn');
+        if (!(btn instanceof HTMLElement)) return;
         const type = btn.dataset.type;
         await saveTypes(CONFIG.UI.ALLOWED_TYPES.filter(t => t !== type));
         showToast(`Removed "${type}"`);

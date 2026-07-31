@@ -1,3 +1,4 @@
+// @ts-check
 import { fetchPayments, updatePayment, resendPaymentRequest, recordBankTransferPayment, recordRefund, refundStripePayment, sendEmail, sendBookingSms, LIST_CAP } from './api.js';
 import { manualSendPaymentReminder } from './shared.js';
 import { getEmailFromTemplate, getSmsFromTemplate } from './message-templates.js';
@@ -56,32 +57,34 @@ function setupEventListeners() {
 
     // Event delegation for dynamic table/card buttons
     document.body.addEventListener('click', (e) => {
-        const reminderBtn = e.target.closest('.btn-reminder');
-        if (reminderBtn) {
+        const target = /** @type {Element} */ (e.target);
+
+        const reminderBtn = target.closest('.btn-reminder');
+        if (reminderBtn instanceof HTMLElement) {
             sendReminder(reminderBtn.dataset.id);
             return;
         }
 
-        const editBtn = e.target.closest('.btn-edit');
-        if (editBtn) {
+        const editBtn = target.closest('.btn-edit');
+        if (editBtn instanceof HTMLElement) {
             openEditModal(editBtn.dataset.id);
             return;
         }
 
-        const resendBtn = e.target.closest('.btn-resend-payment');
-        if (resendBtn) {
+        const resendBtn = target.closest('.btn-resend-payment');
+        if (resendBtn instanceof HTMLElement) {
             openResendPaymentModal(resendBtn.dataset.id);
             return;
         }
 
-        const bankTransferBtn = e.target.closest('.btn-record-bank-transfer');
-        if (bankTransferBtn) {
+        const bankTransferBtn = target.closest('.btn-record-bank-transfer');
+        if (bankTransferBtn instanceof HTMLElement) {
             openBankTransferModal(bankTransferBtn.dataset.id);
             return;
         }
 
-        const refundBtn = e.target.closest('.btn-record-refund');
-        if (refundBtn) {
+        const refundBtn = target.closest('.btn-record-refund');
+        if (refundBtn instanceof HTMLElement) {
             openRefundModal(refundBtn.dataset.id);
             return;
         }
@@ -153,8 +156,8 @@ function computeTotals(records) {
 }
 
 function renderTable() {
-    const statusFilter = document.getElementById('filter-status').value;
-    const searchTerm = document.getElementById('search-input').value.toLowerCase();
+    const statusFilter = (/** @type {HTMLSelectElement} */ (document.getElementById('filter-status'))).value;
+    const searchTerm = (/** @type {HTMLInputElement} */ (document.getElementById('search-input'))).value.toLowerCase();
     const tbody = document.getElementById('payments-body');
     const mobileContainer = document.getElementById('mobile-cards');
 
@@ -179,7 +182,7 @@ function renderTable() {
 
     // Update Count
     const elCount = document.getElementById('count-display');
-    if (elCount) elCount.innerText = filtered.length;
+    if (elCount) elCount.innerText = String(filtered.length);
 
     // Build Desktop Table HTML
     if (tbody) {
@@ -358,8 +361,8 @@ function openEditModal(id) {
     const r = allRecords.find(item => item.id === id);
     if (!r) return;
 
-    document.getElementById('modal-id').value = r.id;
-    document.getElementById('modal-paid').checked = r.paid;
+    (/** @type {HTMLInputElement} */ (document.getElementById('modal-id'))).value = r.id;
+    (/** @type {HTMLInputElement} */ (document.getElementById('modal-paid'))).checked = r.paid;
 
     // Format date for input type=date (YYYY-MM-DD)
     let dateVal = '';
@@ -369,10 +372,10 @@ function openEditModal(id) {
         // Default to today if marked paid but no date set yet
         dateVal = new Date().toISOString().split('T')[0];
     }
-    document.getElementById('modal-date').value = dateVal;
+    (/** @type {HTMLInputElement} */ (document.getElementById('modal-date'))).value = dateVal;
 
-    document.getElementById('modal-ref').value = r.bank_ref || '';
-    document.getElementById('modal-editor').value = r.editor || '';
+    (/** @type {HTMLInputElement} */ (document.getElementById('modal-ref'))).value = r.bank_ref || '';
+    (/** @type {HTMLInputElement} */ (document.getElementById('modal-editor'))).value = r.editor || '';
 
     document.getElementById('edit-modal').classList.remove('hidden');
     unregisterEditModalEsc = registerModalClose(closeModal);
@@ -389,16 +392,16 @@ function openBankTransferModal(id) {
     const r = allRecords.find(item => item.id === id);
     if (!r) return;
 
-    document.getElementById('bt-modal-id').value = r.id;
+    (/** @type {HTMLInputElement} */ (document.getElementById('bt-modal-id'))).value = r.id;
     document.getElementById('bt-modal-booking-display').innerText = `${r.business || r.business_name} (${r.id})`;
     document.getElementById('bt-modal-amount-display').innerText = r.stall_cost != null ? `£${parseFloat(r.stall_cost).toFixed(2)}` : '—';
     // Payment reference defaults to the booking ID, per spec — editable if the
     // stallholder actually used a different reference on their transfer.
-    document.getElementById('bt-modal-reference').value = r.id;
-    document.getElementById('bt-modal-notes').value = '';
+    (/** @type {HTMLInputElement} */ (document.getElementById('bt-modal-reference'))).value = r.id;
+    (/** @type {HTMLTextAreaElement} */ (document.getElementById('bt-modal-notes'))).value = '';
     // Reset every open so a ticked state never carries over to the next
     // booking, matching every other opt-in SMS tickbox in this app.
-    const smsCb = document.getElementById('btAlsoSms');
+    const smsCb = /** @type {HTMLInputElement | null} */ (document.getElementById('btAlsoSms'));
     if (smsCb) smsCb.checked = false;
 
     document.getElementById('bank-transfer-modal').classList.remove('hidden');
@@ -413,19 +416,19 @@ function closeBankTransferModal() {
 }
 
 async function saveBankTransferPayment() {
-    const id = document.getElementById('bt-modal-id').value;
-    const reference = document.getElementById('bt-modal-reference').value;
-    const notes = document.getElementById('bt-modal-notes').value;
+    const id = (/** @type {HTMLInputElement} */ (document.getElementById('bt-modal-id'))).value;
+    const reference = (/** @type {HTMLInputElement} */ (document.getElementById('bt-modal-reference'))).value;
+    const notes = (/** @type {HTMLTextAreaElement} */ (document.getElementById('bt-modal-notes'))).value;
     // Read before closeBankTransferModal() below, which would otherwise be
     // the last chance to see the tickbox's state.
-    const alsoSms = !!document.getElementById('btAlsoSms')?.checked;
+    const alsoSms = !!(/** @type {HTMLInputElement | null} */ (document.getElementById('btAlsoSms')))?.checked;
 
     if (!reference.trim()) {
         showToast('Payment reference is required.', 'error');
         return;
     }
 
-    const btn = document.getElementById('btn-save-bank-transfer');
+    const btn = /** @type {HTMLButtonElement} */ (document.getElementById('btn-save-bank-transfer'));
     btn.disabled = true;
     btn.textContent = 'Recording...';
 
@@ -495,7 +498,7 @@ function openRefundModal(id) {
     // API that moves the money back.
     const isStripe = r.payment_method === 'stripe' && !!r.stripe_payment_intent_id;
 
-    document.getElementById('refund-modal-id').value = r.id;
+    (/** @type {HTMLInputElement} */ (document.getElementById('refund-modal-id'))).value = r.id;
     document.getElementById('refund-modal-booking-display').innerText = `${r.business || r.business_name} (${r.id})`;
     document.getElementById('refund-modal-paid-display').innerText = paidAmount != null ? `£${paidAmount.toFixed(2)}` : '—';
     document.getElementById('refund-modal-method-display').innerText =
@@ -503,7 +506,7 @@ function openRefundModal(id) {
             : r.payment_method === 'bank_transfer' ? 'Bank transfer'
                 : 'Unknown';
 
-    const intro = document.getElementById('refund-modal-intro');
+    const intro = /** @type {HTMLElement} */ (document.getElementById('refund-modal-intro'));
     const refWrap = document.getElementById('refund-modal-reference-wrap');
     const saveBtn = document.getElementById('btn-save-refund');
 
@@ -523,9 +526,9 @@ function openRefundModal(id) {
 
     // Default to a full refund — the common case — while leaving the field
     // editable for a partial one.
-    document.getElementById('refund-modal-amount').value = paidAmount != null ? paidAmount.toFixed(2) : '';
-    document.getElementById('refund-modal-reference').value = '';
-    document.getElementById('refund-modal-notes').value = '';
+    (/** @type {HTMLInputElement} */ (document.getElementById('refund-modal-amount'))).value = paidAmount != null ? paidAmount.toFixed(2) : '';
+    (/** @type {HTMLInputElement} */ (document.getElementById('refund-modal-reference'))).value = '';
+    (/** @type {HTMLTextAreaElement} */ (document.getElementById('refund-modal-notes'))).value = '';
 
     document.getElementById('refund-modal').classList.remove('hidden');
     unregisterRefundModalEsc = registerModalClose(closeRefundModal);
@@ -549,10 +552,10 @@ function closeRefundModal() {
 }
 
 async function saveRefund() {
-    const id = document.getElementById('refund-modal-id').value;
-    const amount = document.getElementById('refund-modal-amount').value;
-    const reference = document.getElementById('refund-modal-reference').value;
-    const notes = document.getElementById('refund-modal-notes').value;
+    const id = (/** @type {HTMLInputElement} */ (document.getElementById('refund-modal-id'))).value;
+    const amount = (/** @type {HTMLInputElement} */ (document.getElementById('refund-modal-amount'))).value;
+    const reference = (/** @type {HTMLInputElement} */ (document.getElementById('refund-modal-reference'))).value;
+    const notes = (/** @type {HTMLTextAreaElement} */ (document.getElementById('refund-modal-notes'))).value;
 
     const r = allRecords.find(item => item.id === id);
     const isStripe = r && r.payment_method === 'stripe' && !!r.stripe_payment_intent_id;
@@ -588,8 +591,8 @@ async function saveRefund() {
 }
 
 async function performRefund(id, parsedAmount, reference, notes, isStripe) {
-    const btn = document.getElementById('btn-save-refund');
-    const cancelBtn = document.getElementById('btn-cancel-refund');
+    const btn = /** @type {HTMLButtonElement} */ (document.getElementById('btn-save-refund'));
+    const cancelBtn = /** @type {HTMLButtonElement | null} */ (document.getElementById('btn-cancel-refund'));
     const originalLabel = btn.textContent;
 
     refundInFlight = true;
@@ -631,11 +634,11 @@ async function performRefund(id, parsedAmount, reference, notes, isStripe) {
 }
 
 async function savePayment() {
-    const id = document.getElementById('modal-id').value;
-    const paid = document.getElementById('modal-paid').checked;
-    const date = document.getElementById('modal-date').value;
-    const ref = document.getElementById('modal-ref').value;
-    const editor = document.getElementById('modal-editor').value;
+    const id = (/** @type {HTMLInputElement} */ (document.getElementById('modal-id'))).value;
+    const paid = (/** @type {HTMLInputElement} */ (document.getElementById('modal-paid'))).checked;
+    const date = (/** @type {HTMLInputElement} */ (document.getElementById('modal-date'))).value;
+    const ref = (/** @type {HTMLInputElement} */ (document.getElementById('modal-ref'))).value;
+    const editor = (/** @type {HTMLInputElement} */ (document.getElementById('modal-editor'))).value;
 
     // Unticking Paid on a refunded booking is refused by the database's
     // payments_refund_requires_payment CHECK, which is correct - a refund
@@ -686,11 +689,11 @@ function openResendPaymentModal(id) {
     const r = allRecords.find(item => item.id === id);
     if (!r) return;
 
-    document.getElementById('resend-modal-id').value = r.id;
+    (/** @type {HTMLInputElement} */ (document.getElementById('resend-modal-id'))).value = r.id;
     document.getElementById('resend-modal-booking-display').innerText = `${r.business || r.business_name} (${r.id})`;
     // Reset every open so a ticked state never carries over to the next
     // booking, matching every other opt-in SMS tickbox in this app.
-    const smsCb = document.getElementById('resendAlsoSms');
+    const smsCb = /** @type {HTMLInputElement | null} */ (document.getElementById('resendAlsoSms'));
     if (smsCb) smsCb.checked = false;
 
     document.getElementById('resend-payment-modal').classList.remove('hidden');
@@ -705,12 +708,12 @@ function closeResendPaymentModal() {
 }
 
 async function saveResendPayment() {
-    const id = document.getElementById('resend-modal-id').value;
+    const id = (/** @type {HTMLInputElement} */ (document.getElementById('resend-modal-id'))).value;
     // Read before closeResendPaymentModal() below, which would otherwise be
     // the last chance to see the tickbox's state.
-    const sendSms = !!document.getElementById('resendAlsoSms')?.checked;
+    const sendSms = !!(/** @type {HTMLInputElement | null} */ (document.getElementById('resendAlsoSms')))?.checked;
 
-    const btn = document.getElementById('btn-save-resend-payment');
+    const btn = /** @type {HTMLButtonElement} */ (document.getElementById('btn-save-resend-payment'));
     btn.disabled = true;
     btn.textContent = 'Resending...';
 
@@ -764,7 +767,7 @@ function downloadCsv(headers, rows, filenameSuffix) {
  *     leftover search term happens to still be narrowing.
  */
 function exportCSV() {
-    const preset = document.getElementById('export-preset')?.value || 'current';
+    const preset = (/** @type {HTMLSelectElement | null} */ (document.getElementById('export-preset')))?.value || 'current';
 
     if (preset === 'summary') {
         exportNetBilledSummary();
@@ -777,8 +780,8 @@ function exportCSV() {
     } else if (preset === 'refunded') {
         filtered = allRecords.filter(r => r.refunded);
     } else {
-        const statusFilter = document.getElementById('filter-status')?.value || 'all';
-        const searchTerm = (document.getElementById('search-input')?.value || '').toLowerCase();
+        const statusFilter = (/** @type {HTMLSelectElement | null} */ (document.getElementById('filter-status')))?.value || 'all';
+        const searchTerm = ((/** @type {HTMLInputElement | null} */ (document.getElementById('search-input')))?.value || '').toLowerCase();
         filtered = allRecords.filter(r => matchesFilters(r, statusFilter, searchTerm));
     }
 

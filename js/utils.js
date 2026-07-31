@@ -1,3 +1,4 @@
+// @ts-check
 import { ESF_PUBLIC_CONFIG } from '../supabase-public.js';
 import { CONFIG } from './config.js';
 

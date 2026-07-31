@@ -1,3 +1,4 @@
+// @ts-check
 import { getSupabaseClient } from '../supabase.js';
 import { showToast } from '../ui.js';
 import { auditLog } from '../audit.js';
@@ -99,15 +100,15 @@ export async function initToggles() {
 }
 
 export async function initSystemConstants() {
-    const txtFestivalName = document.getElementById('festival-display-name');
-    const txtTurnstile = document.getElementById('turnstile-key');
-    const txtBaseUrl = document.getElementById('base-url');
-    const txtCancelUrl = document.getElementById('cancel-url');
-    const txtPortalUrl = document.getElementById('portal-url');
-    const txtCouncilEmail = document.getElementById('council-email');
-    const txtBucket = document.getElementById('bucket-name');
-    const txtPrefix = document.getElementById('booking-prefix');
-    const btnSave = document.getElementById('btn-save-constants');
+    const txtFestivalName = /** @type {HTMLInputElement | null} */ (document.getElementById('festival-display-name'));
+    const txtTurnstile = /** @type {HTMLInputElement | null} */ (document.getElementById('turnstile-key'));
+    const txtBaseUrl = /** @type {HTMLInputElement | null} */ (document.getElementById('base-url'));
+    const txtCancelUrl = /** @type {HTMLInputElement | null} */ (document.getElementById('cancel-url'));
+    const txtPortalUrl = /** @type {HTMLInputElement | null} */ (document.getElementById('portal-url'));
+    const txtCouncilEmail = /** @type {HTMLInputElement | null} */ (document.getElementById('council-email'));
+    const txtBucket = /** @type {HTMLInputElement | null} */ (document.getElementById('bucket-name'));
+    const txtPrefix = /** @type {HTMLInputElement | null} */ (document.getElementById('booking-prefix'));
+    const btnSave = /** @type {HTMLButtonElement | null} */ (document.getElementById('btn-save-constants'));
 
     if (!txtFestivalName || !txtTurnstile || !txtBaseUrl || !txtCancelUrl || !txtPortalUrl || !txtCouncilEmail || !txtBucket || !txtPrefix || !btnSave) return;
 
@@ -204,9 +205,9 @@ export async function initSystemConstants() {
  * re-displaying the stored value.
  */
 export async function initSentrySettings() {
-    const txtDsn = document.getElementById('sentry-dsn');
-    const txtLoaderUrl = document.getElementById('sentry-browser-loader-url');
-    const btnSave = document.getElementById('btn-save-sentry');
+    const txtDsn = /** @type {HTMLInputElement | null} */ (document.getElementById('sentry-dsn'));
+    const txtLoaderUrl = /** @type {HTMLInputElement | null} */ (document.getElementById('sentry-browser-loader-url'));
+    const btnSave = /** @type {HTMLButtonElement | null} */ (document.getElementById('btn-save-sentry'));
 
     if (!txtDsn || !txtLoaderUrl || !btnSave) return;
 
@@ -263,8 +264,8 @@ export async function initSentrySettings() {
 }
 
 export async function initSerpApiSettings() {
-    const txtSerpApiKey = document.getElementById('serpapi-api-key');
-    const btnSaveSerpApi = document.getElementById('btn-save-serpapi');
+    const txtSerpApiKey = /** @type {HTMLInputElement | null} */ (document.getElementById('serpapi-api-key'));
+    const btnSaveSerpApi = /** @type {HTMLButtonElement | null} */ (document.getElementById('btn-save-serpapi'));
 
     if (!txtSerpApiKey || !btnSaveSerpApi) return;
 

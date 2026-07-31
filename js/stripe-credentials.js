@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * stripe-credentials.js
  *

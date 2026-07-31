@@ -1,3 +1,4 @@
+// @ts-check
 import { initAdminPage, getSupabaseClient } from './supabase.js';
 import { CONFIG } from './config.js';
 import { showToast, showConfirm } from './ui.js';
@@ -40,7 +41,7 @@ initAdminPage(initHcc);
 // Load Data
 async function loadData(reset = true) {
     const loadingEl = document.getElementById('loading');
-    const btnLoadMore = document.getElementById('btnLoadMore');
+    const btnLoadMore = /** @type {HTMLButtonElement | null} */ (document.getElementById('btnLoadMore'));
     const pagContainer = document.getElementById('pagination-container');
 
     if (reset) {
@@ -267,22 +268,26 @@ function renderTable(records, append = false) {
         el.addEventListener('change', toggleBulkBtn);
     });
     document.querySelectorAll('.mobile-select').forEach(el => {
-        el.addEventListener('change', (e) => toggleMobileSelect(e.target, e.target.value));
+        el.addEventListener('change', (e) => {
+            const target = /** @type {HTMLInputElement} */ (e.target);
+            toggleMobileSelect(target, target.value);
+        });
     });
     document.querySelectorAll('.hcc-status-select').forEach(el => {
-        el.addEventListener('change', (e) => updateColor(e.target));
+        el.addEventListener('change', (e) => updateColor(/** @type {HTMLSelectElement} */ (e.target)));
     });
     document.querySelectorAll('.hcc-mobile-status-select').forEach(el => {
         el.addEventListener('change', (e) => {
-            updateColor(e.target);
-            syncStatus(e.target.dataset.id, e.target.value);
+            const target = /** @type {HTMLSelectElement} */ (e.target);
+            updateColor(target);
+            syncStatus(target.dataset.id, target.value);
         });
     });
     document.querySelectorAll('.btn-save-row').forEach(el => {
-        el.addEventListener('click', (e) => saveRow(e.target.dataset.id));
+        el.addEventListener('click', (e) => saveRow((/** @type {HTMLElement} */ (e.target)).dataset.id));
     });
     document.querySelectorAll('.btn-save-row-mobile').forEach(el => {
-        el.addEventListener('click', (e) => saveRowMobile(e.target.dataset.id));
+        el.addEventListener('click', (e) => saveRowMobile((/** @type {HTMLElement} */ (e.target)).dataset.id));
     });
 
     toggleBulkBtn();
@@ -301,7 +306,7 @@ function toggleBulkBtn() {
     if (btn) {
         if (totalChecked > 0) {
             btn.classList.remove('hidden');
-            if (countSpan) countSpan.textContent = totalChecked;
+            if (countSpan) countSpan.textContent = String(totalChecked);
         } else {
             btn.classList.add('hidden');
         }
@@ -309,13 +314,14 @@ function toggleBulkBtn() {
 }
 
 function filterByStatus() {
-    const val = document.getElementById('statusFilter').value;
+    const val = (/** @type {HTMLSelectElement} */ (document.getElementById('statusFilter'))).value;
     let visibleCount = 0;
 
     // Filter desktop table rows
     const rows = document.querySelectorAll('#hccTableBody tr');
-    rows.forEach(row => {
-        const select = row.querySelector('select[id^="status-"]');
+    rows.forEach(rowEl => {
+        const row = /** @type {HTMLElement} */ (rowEl);
+        const select = /** @type {HTMLSelectElement | null} */ (row.querySelector('select[id^="status-"]'));
         if (!select) { row.style.display = ''; return; }
         const match = (val === 'All') || (select.value === val);
         row.style.display = match ? '' : 'none';
@@ -324,9 +330,10 @@ function filterByStatus() {
 
     // Filter mobile cards
     const cards = document.querySelectorAll('#mobile-cards .hcc-card');
-    cards.forEach(card => {
-        const select = card.querySelector('select[id^="status-mobile-"]');
-        if (!select) { card.parentElement.style.display = ''; return; }
+    cards.forEach(cardEl => {
+        const card = /** @type {HTMLElement} */ (cardEl);
+        const select = /** @type {HTMLSelectElement | null} */ (card.querySelector('select[id^="status-mobile-"]'));
+        if (!select) { (/** @type {HTMLElement} */ (card.parentElement)).style.display = ''; return; }
         const match = (val === 'All') || (select.value === val);
         card.style.display = match ? '' : 'none';
         if (match) visibleCount++;
@@ -338,6 +345,7 @@ function filterByStatus() {
 }
 
 
+/** @param {HTMLInputElement} checkbox @param {string} recordId */
 function toggleMobileSelect(checkbox, recordId) {
     const card = document.querySelector(`[data-record-id="${recordId}"]`);
     if (checkbox.checked) {
@@ -350,7 +358,7 @@ function toggleMobileSelect(checkbox, recordId) {
 
 function syncStatus(recordId, value) {
     // Sync desktop select if it exists
-    const desktopSelect = document.getElementById(`status-${recordId}`);
+    const desktopSelect = /** @type {HTMLSelectElement | null} */ (document.getElementById(`status-${recordId}`));
     if (desktopSelect) {
         desktopSelect.value = value;
         updateColor(desktopSelect);
@@ -359,10 +367,10 @@ function syncStatus(recordId, value) {
 
 // Mobile save function
 async function saveRowMobile(id) {
-    const status = document.getElementById(`status-mobile-${id}`).value;
-    const date = document.getElementById(`date-mobile-${id}`).value;
-    const editor = document.getElementById(`editor-mobile-${id}`).value;
-    const msg = document.getElementById('statusMsg');
+    const status = (/** @type {HTMLSelectElement} */ (document.getElementById(`status-mobile-${id}`))).value;
+    const date = (/** @type {HTMLInputElement} */ (document.getElementById(`date-mobile-${id}`))).value;
+    const editor = (/** @type {HTMLInputElement} */ (document.getElementById(`editor-mobile-${id}`))).value;
+    const msg = /** @type {HTMLElement} */ (document.getElementById('statusMsg'));
 
     if (status === 'Approved') {
         if (!date || !editor.trim()) {
@@ -390,16 +398,16 @@ async function saveRowMobile(id) {
         if (msg) msg.classList.add('hidden');
 
         // Sync desktop fields
-        const desktopStatus = document.getElementById(`status-${id}`);
-        const desktopDate = document.getElementById(`date-${id}`);
-        const desktopEditor = document.getElementById(`editor-${id}`);
+        const desktopStatus = /** @type {HTMLSelectElement | null} */ (document.getElementById(`status-${id}`));
+        const desktopDate = /** @type {HTMLInputElement | null} */ (document.getElementById(`date-${id}`));
+        const desktopEditor = /** @type {HTMLInputElement | null} */ (document.getElementById(`editor-${id}`));
         if (desktopStatus) desktopStatus.value = status;
         if (desktopDate) desktopDate.value = date;
         if (desktopEditor) desktopEditor.value = editor;
 
         // Log Audit
         const card = document.querySelector(`[data-record-id="${id}"]`);
-        const bookingId = card?.querySelector('.text-blue-600.font-bold.font-mono')?.innerText || 'Unknown';
+        const bookingId = (/** @type {HTMLElement | null} */ (card?.querySelector('.text-blue-600.font-bold.font-mono')))?.innerText || 'Unknown';
         await auditLog('hcc_mobile_status_updated', bookingId, { new_council_status: status, approval_date: date, editor: editor });
 
     } catch (err) {
@@ -420,10 +428,10 @@ async function sendBulkEmail() {
 
     if (allCheckboxes.length === 0) return;
 
-    const ids = Array.from(allCheckboxes).map(cb => cb.value);
+    const ids = Array.from(allCheckboxes).map(cb => (/** @type {HTMLInputElement} */ (cb)).value);
     const uniqueIds = [...new Set(ids)]; // Remove duplicates
     const selectedRecords = currentData.filter(r => uniqueIds.includes(r.id));
-    const btn = document.getElementById('btnBulkEmail');
+    const btn = /** @type {HTMLButtonElement} */ (document.getElementById('btnBulkEmail'));
 
     showConfirm(
         "Send Bulk Details",
@@ -519,9 +527,9 @@ async function sendBulkEmail() {
 
 // 2. Save Row
 async function saveRow(id) {
-    const status = document.getElementById(`status-${id}`).value;
-    const date = document.getElementById(`date-${id}`).value;
-    const editor = document.getElementById(`editor-${id}`).value;
+    const status = (/** @type {HTMLSelectElement} */ (document.getElementById(`status-${id}`))).value;
+    const date = (/** @type {HTMLInputElement} */ (document.getElementById(`date-${id}`))).value;
+    const editor = (/** @type {HTMLInputElement} */ (document.getElementById(`editor-${id}`))).value;
     const msg = document.getElementById('statusMsg');
 
     if (status === 'Approved') {
@@ -562,6 +570,7 @@ async function saveRow(id) {
 }
 
 // 3. Dynamic Color Change
+/** @param {HTMLSelectElement} select */
 function updateColor(select) {
     select.className = select.className.replace(/bg-\w+-100 text-\w+-800/, '');
     if (select.value === 'Approved') select.classList.add('bg-green-100', 'text-green-800');
@@ -570,7 +579,7 @@ function updateColor(select) {
     else select.classList.add('bg-yellow-100', 'text-yellow-800');
 
     const rowId = select.dataset.id;
-    const dateInput = document.getElementById(`date-${rowId}`);
+    const dateInput = /** @type {HTMLInputElement} */ (document.getElementById(`date-${rowId}`));
     if (select.value === 'Approved' && !dateInput.value) {
         dateInput.value = new Date().toISOString().split('T')[0];
     }
@@ -578,8 +587,8 @@ function updateColor(select) {
 
 // 4. Save All Changes
 async function saveAllChanges() {
-    const btn = document.getElementById('btnSaveAll');
-    const msg = document.getElementById('statusMsg');
+    const btn = /** @type {HTMLButtonElement | null} */ (document.getElementById('btnSaveAll'));
+    const msg = /** @type {HTMLElement} */ (document.getElementById('statusMsg'));
 
     showConfirm(
         "Save All Changes",
@@ -603,13 +612,13 @@ async function saveAllChanges() {
                     const id = record.id;
 
                     // Try desktop inputs first, fallback to mobile
-                    const statusDesktop = document.getElementById(`status-${id}`);
-                    const dateDesktop = document.getElementById(`date-${id}`);
-                    const editorDesktop = document.getElementById(`editor-${id}`);
+                    const statusDesktop = /** @type {HTMLSelectElement | null} */ (document.getElementById(`status-${id}`));
+                    const dateDesktop = /** @type {HTMLInputElement | null} */ (document.getElementById(`date-${id}`));
+                    const editorDesktop = /** @type {HTMLInputElement | null} */ (document.getElementById(`editor-${id}`));
 
-                    const statusMobile = document.getElementById(`status-mobile-${id}`);
-                    const dateMobile = document.getElementById(`date-mobile-${id}`);
-                    const editorMobile = document.getElementById(`editor-mobile-${id}`);
+                    const statusMobile = /** @type {HTMLSelectElement | null} */ (document.getElementById(`status-mobile-${id}`));
+                    const dateMobile = /** @type {HTMLInputElement | null} */ (document.getElementById(`date-mobile-${id}`));
+                    const editorMobile = /** @type {HTMLInputElement | null} */ (document.getElementById(`editor-mobile-${id}`));
 
                     // CRITICAL FIX: On mobile, both desktop and mobile elements exist in DOM
                     // Desktop table is just hidden with CSS, but elements are still there

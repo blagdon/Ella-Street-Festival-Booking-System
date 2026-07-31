@@ -1,3 +1,4 @@
+// @ts-check
 import { initAdminPage } from './supabase.js';
 import { initSummary } from './summary.js';
 
@@ -12,7 +13,7 @@ function init() {
     if (searchInput) searchInput.addEventListener('keyup', window.filterTable);
 
     const sortSelect = document.getElementById('sortSelect');
-    if (sortSelect) sortSelect.addEventListener('change', (e) => window.setSortOption(e.target.value));
+    if (sortSelect) sortSelect.addEventListener('change', (e) => window.setSortOption((/** @type {HTMLSelectElement} */ (e.target)).value));
 
     const btnExportCsv = document.getElementById('btn-export-csv');
     if (btnExportCsv) btnExportCsv.addEventListener('click', window.exportCSV);
@@ -49,23 +50,25 @@ function init() {
 
     // 2. Event Delegation for Data Attributes
     document.body.addEventListener('click', (e) => {
+        const target = /** @type {Element} */ (e.target);
+
         // Sort Actions
-        const sortBtn = e.target.closest('[data-action="sort"]');
-        if (sortBtn) {
+        const sortBtn = target.closest('[data-action="sort"]');
+        if (sortBtn instanceof HTMLElement) {
             window.sortTable(sortBtn.dataset.field);
             return;
         }
 
         // Close Modal Actions
-        const closeBtn = e.target.closest('[data-action="close-modal"]');
-        if (closeBtn) {
+        const closeBtn = target.closest('[data-action="close-modal"]');
+        if (closeBtn instanceof HTMLElement) {
             window.closeModal(closeBtn.dataset.modal);
             return;
         }
 
         // Change Status Actions
-        const changeStatusBtn = e.target.closest('[data-action="change-status"]');
-        if (changeStatusBtn) {
+        const changeStatusBtn = target.closest('[data-action="change-status"]');
+        if (changeStatusBtn instanceof HTMLElement) {
             window.changeStatus(changeStatusBtn.dataset.status);
             return;
         }

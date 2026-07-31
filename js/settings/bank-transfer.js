@@ -1,3 +1,4 @@
+// @ts-check
 import { getSupabaseClient } from '../supabase.js';
 import { showToast } from '../ui.js';
 import { auditLog } from '../audit.js';
@@ -12,10 +13,10 @@ const sb = getSupabaseClient();
  * text inputs rather than password fields.
  */
 export async function initBankTransferSettings() {
-    const txtAccountName = document.getElementById('bank-transfer-account-name');
-    const txtSortCode = document.getElementById('bank-transfer-sort-code');
-    const txtAccountNumber = document.getElementById('bank-transfer-account-number');
-    const btnSave = document.getElementById('btn-save-bank-transfer-details');
+    const txtAccountName = /** @type {HTMLInputElement | null} */ (document.getElementById('bank-transfer-account-name'));
+    const txtSortCode = /** @type {HTMLInputElement | null} */ (document.getElementById('bank-transfer-sort-code'));
+    const txtAccountNumber = /** @type {HTMLInputElement | null} */ (document.getElementById('bank-transfer-account-number'));
+    const btnSave = /** @type {HTMLButtonElement | null} */ (document.getElementById('btn-save-bank-transfer-details'));
 
     if (!txtAccountName || !txtSortCode || !txtAccountNumber || !btnSave) return;
 

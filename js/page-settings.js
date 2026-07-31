@@ -1,3 +1,4 @@
+// @ts-check
 import { initAdminPage } from './supabase.js';
 import { initToggles, initSystemConstants, initSentrySettings, initSerpApiSettings } from './settings/system.js';
 import { initStripeSettings } from './settings/stripe.js';

@@ -1,3 +1,4 @@
+// @ts-check
 import { initAdminPage } from './supabase.js';
 import { initDetails, filterList, saveChanges, backToList } from './details.js';
 
