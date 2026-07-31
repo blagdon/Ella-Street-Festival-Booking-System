@@ -17,7 +17,7 @@
 // unnoticed.
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { url, anonKey } from './helpers.mjs';
+import { anonKey, fetchEdgeFunction } from './helpers.mjs';
 
 const PRODUCTION_ORIGIN = 'https://app.ellastreet.co.uk';
 
@@ -34,7 +34,7 @@ const FUNCTIONS = ['submit-booking', 'cancel-booking', 'queue-bulk-email', 'crea
 describe('Edge Function CORS header', () => {
   for (const name of FUNCTIONS) {
     test(`${name} emits the production-only Access-Control-Allow-Origin, never a wildcard`, async () => {
-      const res = await fetch(`${url}/functions/v1/${name}`, {
+      const res = await fetchEdgeFunction(name, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

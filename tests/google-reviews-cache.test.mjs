@@ -12,7 +12,7 @@
 import { test, before, after, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { createClient } from '@supabase/supabase-js';
-import { url, anonKey, adminEmail, adminPassword, service } from './helpers.mjs';
+import { url, anonKey, adminEmail, adminPassword, service, callEdgeFunction } from './helpers.mjs';
 
 const anon = createClient(url, anonKey);
 
@@ -36,18 +36,8 @@ after(async () => {
   await service.from('google_reviews_cache').delete().in('business_key', SEEDED_KEYS);
 });
 
-async function callGetReviews(body, token = anonKey) {
-  const res = await fetch(`${url}/functions/v1/get-reviews`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-      apikey: anonKey,
-    },
-    body: JSON.stringify(body),
-  });
-  const json = await res.json().catch(() => ({}));
-  return { status: res.status, json };
+function callGetReviews(body, token = anonKey) {
+  return callEdgeFunction('get-reviews', body, token);
 }
 
 const FRESH_PAYLOAD = {

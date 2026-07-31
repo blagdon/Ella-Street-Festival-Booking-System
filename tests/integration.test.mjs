@@ -6,7 +6,7 @@
 import { test, before, after, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { createClient } from '@supabase/supabase-js';
-import { url, anonKey, adminEmail, adminPassword, service } from './helpers.mjs';
+import { url, anonKey, adminEmail, adminPassword, service, callEdgeFunction } from './helpers.mjs';
 
 // Cloudflare's official always-passes Turnstile test token/secret pair —
 // https://developers.cloudflare.com/turnstile/troubleshooting/testing/
@@ -53,19 +53,7 @@ after(async () => {
   await service.from('locations').delete().like('id', 'TESTLOC%');
 });
 
-async function callFunction(name, body, token = anonKey) {
-  const res = await fetch(`${url}/functions/v1/${name}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-      apikey: anonKey,
-    },
-    body: JSON.stringify(body),
-  });
-  const json = await res.json().catch(() => ({}));
-  return { status: res.status, json };
-}
+const callFunction = callEdgeFunction;
 
 function submitBookingPayload(idSuffix, bookingDataOverrides = {}) {
   return {

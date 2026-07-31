@@ -6,7 +6,7 @@
 import { test, before, after, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { createClient } from '@supabase/supabase-js';
-import { url, anonKey, adminEmail, adminPassword, service } from './helpers.mjs';
+import { url, anonKey, adminEmail, adminPassword, service, fetchEdgeFunction } from './helpers.mjs';
 
 // The admin client mirrors js/api.js's getSupabaseClient() — a real
 // authenticated admin session, subject to the same RLS as the live app.
@@ -143,7 +143,7 @@ describe('critical admin workflow: create -> confirm -> assign -> move -> pay ->
     const { data: booking } = await service.from('bookings').select('cancel_token').eq('id', bookingId).single();
     assert.ok(booking.cancel_token, 'expected a cancel_token to exist (column default)');
 
-    const res = await fetch(`${url}/functions/v1/cancel-booking`, {
+    const res = await fetchEdgeFunction('cancel-booking', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${anonKey}`, apikey: anonKey },
       body: JSON.stringify({

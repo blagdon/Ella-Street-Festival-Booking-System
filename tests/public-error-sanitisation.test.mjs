@@ -26,7 +26,7 @@
 // tell-tale tokens below.
 import { test, describe, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { url, anonKey, service } from './helpers.mjs';
+import { service, callEdgeFunction } from './helpers.mjs';
 
 // Cloudflare's official always-passes Turnstile test token - see
 // integration.test.mjs for why this is sanctioned rather than a bypass.
@@ -49,18 +49,7 @@ function assertNoLeak(body, label) {
   }
 }
 
-async function callFunction(name, body) {
-  const res = await fetch(`${url}/functions/v1/${name}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${anonKey}`,
-      apikey: anonKey,
-    },
-    body: JSON.stringify(body),
-  });
-  return { status: res.status, json: await res.json().catch(() => ({})) };
-}
+const callFunction = callEdgeFunction;
 
 function payload(overrides = {}) {
   return {

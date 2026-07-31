@@ -191,13 +191,23 @@ jobs:
         # each time - not a real regression) shouldn't be able to block a
         # merge on its own. A genuine failure still fails the job - it just
         # has to fail twice in a row first.
+        #
+        # This is now a second line of defence, not the first: every
+        # tests/*.test.mjs Edge Function call already retries 502/503/504
+        # itself with backoff (tests/helpers.mjs's fetchEdgeFunction/
+        # callEdgeFunction). This outer loop exists for whatever that
+        # per-request retry can't catch - e.g. the shared test project being
+        # unhealthy for longer than a couple of seconds. The 20s sleep before
+        # retrying (absent before) gives that kind of outage actual room to
+        # clear, instead of immediately re-hitting the same unhealthy project.
         run: |
           for attempt in 1 2; do
             if npm run test:integration; then
               exit 0
             fi
             if [ "$attempt" -lt 2 ]; then
-              echo "::warning::Integration tests failed on attempt $attempt - retrying once in case this was a transient upstream issue."
+              echo "::warning::Integration tests failed on attempt $attempt - waiting 20s then retrying once in case this was a transient upstream issue."
+              sleep 20
             fi
           done
           exit 1
