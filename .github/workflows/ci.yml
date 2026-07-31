@@ -77,6 +77,25 @@ jobs:
           fi
           echo "OK: css/output.css matches a fresh build."
 
+  # Automated regression guard for the manual axe-core accessibility audit
+  # (see CHANGELOG's "Accessibility" entries) - only the pages that need no
+  # authentication and no live Supabase connection (see
+  # e2e/accessibility.spec.mjs's own header for the list and why). Runs fully
+  # independently of the integration-tests-shared-db group below: these pages
+  # don't touch the shared test project at all, so there's no reason to queue
+  # behind it.
+  accessibility-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - run: npm install
+      - run: npx playwright install --with-deps chromium
+      - name: Run accessibility regression suite
+        run: npm run test:a11y
+
   # Read-only schema dump against the LIVE project, diffed against the
   # checked-in rls_grants_snapshot.txt. Never writes anything - same
   # operation done manually via `supabase db dump` throughout this repo's

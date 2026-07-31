@@ -12,14 +12,17 @@
     "check:innerhtml-escaping": "node scripts/check-unescaped-innerhtml.mjs",
     "lint": "eslint .",
     "test:setup": "node scripts/seed-test-project.mjs",
-    "test:integration": "node --test --test-concurrency=1"
+    "test:integration": "node --test --test-concurrency=1",
+    "test:a11y": "playwright test"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "devDependencies": {
+    "@axe-core/playwright": "^4.12.1",
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.62.1",
     "@supabase/supabase-js": "^2.110.5",
     "autoprefixer": "^10.4.24",
     "eslint": "^10.8.0",

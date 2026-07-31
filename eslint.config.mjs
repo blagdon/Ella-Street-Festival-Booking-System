@@ -76,7 +76,7 @@ export default [
 
   // Node-run ESM: Vercel serverless function, dev/test tooling.
   {
-    files: ['api/**/*.js', 'scripts/**/*.mjs', 'tests/**/*.mjs'],
+    files: ['api/**/*.js', 'scripts/**/*.mjs', 'tests/**/*.mjs', 'e2e/**/*.mjs', 'playwright.config.mjs'],
     languageOptions: {
       ecmaVersion: 'latest',
       sourceType: 'module',
