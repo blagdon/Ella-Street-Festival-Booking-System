@@ -45,10 +45,14 @@ const STRIPE_SETTINGS_KEYS = [
   'stripe_test_mode'
 ]
 
-export async function loadStripeSettings(supabaseAdmin: ReturnType<typeof createClient>): Promise<StripeSettings> {
+export async function loadStripeSettings(
+  supabaseAdmin: ReturnType<typeof createClient>,
+  orgId: string = 'org_default'
+): Promise<StripeSettings> {
   const { data, error } = await supabaseAdmin
     .from('settings')
     .select('key, value')
+    .eq('org_id', orgId)
     .in('key', STRIPE_SETTINGS_KEYS)
 
   if (error) {
