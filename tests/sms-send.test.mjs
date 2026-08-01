@@ -36,7 +36,7 @@ before(async () => {
 
   // The safety interlock described at the top of this file.
   const { data: providerRow } = await service
-    .from('settings').select('value').eq('key', 'sms_provider').maybeSingle();
+    .from('settings').select('value').eq('org_id', 'org_default').eq('key', 'sms_provider').maybeSingle();
   const provider = providerRow?.value ?? '(unset)';
   if (provider !== 'mock') {
     throw new Error(

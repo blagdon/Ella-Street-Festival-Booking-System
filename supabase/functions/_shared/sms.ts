@@ -49,11 +49,13 @@ const SETTINGS_KEYS = [
 ] as const
 
 async function loadSmsSettings(
-  supabaseAdmin: ReturnType<typeof createClient>
+  supabaseAdmin: ReturnType<typeof createClient>,
+  orgId: string = 'org_default'
 ): Promise<SmsSettings> {
   const { data, error } = await supabaseAdmin
     .from('settings')
     .select('key, value')
+    .eq('org_id', orgId)
     .in('key', SETTINGS_KEYS as unknown as string[])
 
   if (error) {
@@ -289,14 +291,15 @@ const ADAPTERS: Record<string, SmsAdapter> = {
  */
 export async function sendViaSms(
   supabaseAdmin: ReturnType<typeof createClient>,
-  params: { recipient: string; body: string }
+  params: { recipient: string; body: string },
+  orgId: string = 'org_default'
 ): Promise<SmsSendResult> {
   const { recipient, body } = params
   if (!recipient || !body) {
     throw new Error('Missing required fields: recipient, body')
   }
 
-  const settings = await loadSmsSettings(supabaseAdmin)
+  const settings = await loadSmsSettings(supabaseAdmin, orgId)
 
   // Validate the CONFIGURED provider name even in test mode, so a typo in
   // sms_provider is caught now rather than only surfacing once test mode is
