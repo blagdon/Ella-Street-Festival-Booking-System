@@ -16,7 +16,7 @@ import { openDialog } from './platform/dialogs.js';
 import { notify } from './platform/notifications.js';
 import { auditLog } from './audit.js';
 
-let activeSection = 'organisation';
+let activeSection = 'dashboard';
 let orgData = /** @type {Record<string, any>|null} */ (null);
 let eventsList = /** @type {Record<string, any>[]} */ ([]);
 
@@ -94,6 +94,9 @@ function renderActiveSection() {
     if (!contentEl) return;
 
     switch (activeSection) {
+        case 'dashboard':
+            renderDashboardSection(contentEl);
+            break;
         case 'organisation':
             renderOrganisationSection(contentEl);
             break;
@@ -113,8 +116,70 @@ function renderActiveSection() {
             renderAuditSection(contentEl);
             break;
         default:
-            renderOrganisationSection(contentEl);
+            renderDashboardSection(contentEl);
     }
+}
+
+// ===================================================================
+// 0. ORGANISATION DASHBOARD SECTION VIEW (Epic 2C)
+// ===================================================================
+function renderDashboardSection(container) {
+    const org = orgData || { name: 'Ella Street Festival', slug: 'ella-street' };
+
+    const headerHtml = renderPageHeader({
+        title: 'Platform Overview',
+        description: 'High-level summary of organisation events, members, and platform health.',
+        breadcrumb: 'Platform Administration / Workspace'
+    });
+
+    const statCardsHtml = `
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        ${renderStatCard({ label: 'Active Events', value: eventsList.filter(e => e.is_active).length, icon: '📅', badgeClass: 'bg-blue-50 text-blue-700' })}
+        ${renderStatCard({ label: 'Total Events', value: eventsList.length, icon: '🎪', badgeClass: 'bg-indigo-50 text-indigo-700' })}
+        ${renderStatCard({ label: 'Team Members', value: membersList.length || 1, icon: '👥', badgeClass: 'bg-purple-50 text-purple-700' })}
+        ${renderStatCard({ label: 'Platform Health', value: '100% OK', icon: '🟢', badgeClass: 'bg-emerald-50 text-emerald-700' })}
+    </div>`;
+
+    const summaryContentHtml = `
+    <div class="space-y-4">
+        <p class="text-sm text-gray-600">
+            Welcome to the <strong>${escapeHtml(org.name)}</strong> Platform Administration Workspace.
+            Use the sidebar navigation to configure festival editions, manage staff access, customize branding, and inspect security audit logs.
+        </p>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+            <button data-goto-section="events" class="btn-goto-section text-left p-4 bg-gray-50 hover:bg-blue-50 border border-gray-200 hover:border-blue-200 rounded-xl transition group">
+                <div class="font-bold text-sm text-gray-900 group-hover:text-blue-600">📅 Manage Events →</div>
+                <div class="text-xs text-gray-500 mt-1">Configure event dates & prefixes</div>
+            </button>
+            <button data-goto-section="members" class="btn-goto-section text-left p-4 bg-gray-50 hover:bg-blue-50 border border-gray-200 hover:border-blue-200 rounded-xl transition group">
+                <div class="font-bold text-sm text-gray-900 group-hover:text-blue-600">👥 Team Directory →</div>
+                <div class="text-xs text-gray-500 mt-1">Invite & manage staff roles</div>
+            </button>
+            <button data-goto-section="settings" class="btn-goto-section text-left p-4 bg-gray-50 hover:bg-blue-50 border border-gray-200 hover:border-blue-200 rounded-xl transition group">
+                <div class="font-bold text-sm text-gray-900 group-hover:text-blue-600">⚙️ System Settings →</div>
+                <div class="text-xs text-gray-500 mt-1">Stripe, SMS & system controls</div>
+            </button>
+        </div>
+    </div>`;
+
+    const cardHtml = renderCard({
+        title: 'Organisation Summary',
+        subtitle: `Overview for ${org.name}`,
+        contentHtml: summaryContentHtml
+    });
+
+    container.innerHTML = headerHtml + statCardsHtml + cardHtml; // innerhtml-safe: component HTML built with internal escapeHtml calls
+
+    container.querySelectorAll('.btn-goto-section').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const targetSection = (/** @type {HTMLElement} */ (e.currentTarget)).getAttribute('data-goto-section');
+            if (targetSection) {
+                activeSection = targetSection;
+                renderSidebar();
+                renderActiveSection();
+            }
+        });
+    });
 }
 
 // ===================================================================

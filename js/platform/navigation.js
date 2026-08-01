@@ -6,6 +6,7 @@
 import { escapeHtml } from '../utils.js';
 
 export const ADMIN_SECTIONS = [
+    { id: 'dashboard', label: 'Dashboard', icon: '📊' },
     { id: 'organisation', label: 'Organisation', icon: '🏢' },
     { id: 'events', label: 'Events', icon: '📅' },
     { id: 'members', label: 'Members', icon: '👥' },
