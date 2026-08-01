@@ -116,6 +116,26 @@ describe('tenant isolation & get_current_org_id', () => {
     assert.equal(evt.org_id, 'org_demo');
     assert.equal(evt.booking_prefix, 'DEMO26');
   });
+
+  it('admin can insert and update events', async () => {
+    const eventId = `event_test_${Date.now()}`;
+    const { error: insertErr } = await admin.from('events').insert({
+      id: eventId,
+      org_id: 'org_default',
+      name: 'Test Event Edition',
+      slug: `test-event-${Date.now()}`,
+      booking_prefix: 'TEST26',
+      is_active: true
+    });
+    assert.ifError(insertErr);
+
+    const { error: updateErr } = await admin.from('events').update({
+      name: 'Updated Test Event Edition'
+    }).eq('id', eventId);
+    assert.ifError(updateErr);
+
+    await service.from('events').delete().eq('id', eventId);
+  });
 });
 
 // ── 4. Platform Context Module ──────────────────────────────────────────────────
