@@ -1,7 +1,7 @@
 # Ella Street Festival — Booking System Architecture
 
 > **Audience:** Developers maintaining or extending this system.
-> **Reflects:** v7.18.0
+> **Reflects:** v7.19.0
 > **Last verified against the code:** 1 August 2026
 
 > **Where this sits among the docs**

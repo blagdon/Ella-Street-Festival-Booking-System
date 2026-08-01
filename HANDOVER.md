@@ -9,7 +9,7 @@
 > verification first, and the short list that needs an explicit instruction every
 > time. Default to acting.
 > Last updated: 2026-08-01.
-> Current release: **v7.18.0** (Epic 1 Multi-Tenant Platform Foundation; prepared 2026-08-01). Adds first-class Platform Context module (`getPlatformContext()` / `resolvePlatformContext()`), multi-tenant database groundwork (`organisations`, `events`, `organisation_members`), statistics normalisation (`booking_type`), queue partitioning (`org_id`, `event_id`), audit logging scoping, and active tenant header UI indicator.
+> Current release: **v7.19.0** (Epic 2 Platform Administration Workspace; prepared 2026-08-01). Adds single-page Platform Administration Workspace (`admin.html`), modular ESM platform UI component system (`js/platform/`), categorised settings hub (General, Bookings, Comms, Payments, Advanced), branding customization, member management, Current Event Service (`js/event-service.js`), and header event selector.
 > **It ships inert**: the seeded `sms_provider` setting is `mock`, a no-op
 > adapter that logs instead of sending, so nothing is texted or billed until
 > someone deliberately configures a real provider from the Settings page. That

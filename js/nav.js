@@ -6,6 +6,7 @@
 import { getPlatformContext, getCurrentInstance, CONFIG } from './config.js';
 import { signOut } from './supabase.js';
 import { escapeHtml } from './utils.js';
+import { getCurrentEvent, setCurrentEvent, fetchAvailableEvents } from './event-service.js';
 
 export function initNavigation() {
     const container = document.getElementById('nav-container');
@@ -13,6 +14,7 @@ export function initNavigation() {
 
     const current = getCurrentInstance();
     const ctx = getPlatformContext();
+    const activeEvent = getCurrentEvent();
 
     // Helper to get badge style
     const getBadgeStyle = (val) => {
@@ -55,14 +57,21 @@ export function initNavigation() {
                 </a>
                 <span id="instanceBadge" class="text-xs font-bold px-2 py-1 rounded ml-2 border shrink-0 ${getBadgeStyle(current)}">${current}</span>
                 <span id="tenantBadge" class="hidden lg:inline-flex items-center text-xs font-semibold px-2 py-0.5 rounded bg-blue-50 text-blue-800 border border-blue-200 ml-2" title="Organisation / Event Context">
-                    ${escapeHtml(ctx.orgId)} | ${escapeHtml(ctx.eventId)}
+                    ${escapeHtml(ctx.orgId)} | ${escapeHtml(activeEvent.booking_prefix || ctx.eventId)}
                 </span>
             </div>
             
             <!-- Desktop Controls -->
-            <div class="hidden md:flex items-center gap-4">
+            <div class="hidden md:flex items-center gap-3">
                 <div class="flex items-center bg-gray-50 rounded px-3 py-1 border border-gray-200">
-                    <span class="text-xs text-gray-500 mr-2 uppercase font-bold tracking-wider">Database:</span>
+                    <span class="text-xs text-gray-500 mr-2 uppercase font-bold tracking-wider">Event:</span>
+                    <select id="eventSelect" aria-label="Select active festival event" class="bg-transparent text-sm font-bold text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded cursor-pointer">
+                        <option value="${escapeHtml(activeEvent.id)}">${escapeHtml(activeEvent.name)}</option>
+                    </select>
+                </div>
+
+                <div class="flex items-center bg-gray-50 rounded px-3 py-1 border border-gray-200">
+                    <span class="text-xs text-gray-500 mr-2 uppercase font-bold tracking-wider">Type:</span>
                     <select id="instanceSelect" aria-label="Select database instance" class="bg-transparent text-sm font-bold text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded cursor-pointer">
                         <option value="DEV">🛠️ DEV (Test Data)</option>
                         <option value="FOOD">🍔 FOOD Stalls</option>
@@ -71,7 +80,11 @@ export function initNavigation() {
                     </select>
                 </div>
 
-                <button id="btnSignOut" class="text-sm text-gray-500 hover:text-red-600 font-medium px-4 py-2 transition">
+                <a href="admin.html" class="px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 rounded text-xs font-bold transition">
+                    Workspace
+                </a>
+
+                <button id="btnSignOut" class="text-sm text-gray-500 hover:text-red-600 font-medium px-2 py-1 transition">
                     Sign Out
                 </button>
             </div>
@@ -96,6 +109,9 @@ export function initNavigation() {
                     <option value="MISC">⚡ MISC (Facilities)</option>
                 </select>
             </div>
+            <a href="admin.html" class="block w-full text-left text-sm text-blue-700 font-bold px-3 py-2 bg-blue-50 rounded transition">
+                Platform Administration Workspace
+            </a>
             <button id="btnSignOutMobile" class="w-full text-left text-sm text-gray-500 hover:text-red-600 font-medium px-3 py-2 bg-gray-50 rounded transition">
                 Sign Out
             </button>
@@ -103,14 +119,29 @@ export function initNavigation() {
     </div>
     `;
 
-    container.innerHTML = headerHTML;
+    container.innerHTML = headerHTML; // innerhtml-safe: component HTML built with internal escapeHtml calls
+
+    // Populate Event Selector
+    fetchAvailableEvents().then(events => {
+        const selectEl = /** @type {HTMLSelectElement|null} */ (document.getElementById('eventSelect'));
+        if (!selectEl) return;
+        selectEl.innerHTML = events.map(e =>
+            `<option value="${escapeHtml(e.id)}" ${e.id === activeEvent.id ? 'selected' : ''}>${escapeHtml(e.name)}</option>`
+        ).join(''); // innerhtml-safe: component HTML built with internal escapeHtml calls
+
+        selectEl.addEventListener('change', (evt) => {
+            const target = /** @type {HTMLSelectElement} */ (evt.target);
+            const selectedEvt = events.find(x => x.id === target.value);
+            if (selectedEvt) {
+                setCurrentEvent(selectedEvt);
+            }
+        });
+    });
 
     // Dynamically update document title to use current prefix
     if (document.title.includes('ESF26')) {
         document.title = document.title.replace('ESF26', prefix);
     }
-
-    // Attach Event Listeners
 
     // Instance Selectors
     const setInstance = (val) => {
@@ -118,26 +149,40 @@ export function initNavigation() {
         window.location.reload();
     };
 
-    const sel = /** @type {HTMLSelectElement | null} */ (document.getElementById('instanceSelect'));
-    if (sel) {
-        sel.value = current;
-        sel.addEventListener('change', (e) => setInstance((/** @type {HTMLSelectElement} */ (e.target)).value));
+    const instSelect = /** @type {HTMLSelectElement} */ (document.getElementById('instanceSelect'));
+    const instSelectMobile = /** @type {HTMLSelectElement} */ (document.getElementById('instanceSelectMobile'));
+
+    if (instSelect) {
+        instSelect.value = current;
+        instSelect.addEventListener('change', (e) => setInstance(/** @type {HTMLSelectElement} */ (e.target).value));
+    }
+    if (instSelectMobile) {
+        instSelectMobile.value = current;
+        instSelectMobile.addEventListener('change', (e) => setInstance(/** @type {HTMLSelectElement} */ (e.target).value));
     }
 
-    const selMobile = /** @type {HTMLSelectElement | null} */ (document.getElementById('instanceSelectMobile'));
-    if (selMobile) {
-        selMobile.value = current;
-        selMobile.addEventListener('change', (e) => setInstance((/** @type {HTMLSelectElement} */ (e.target)).value));
-    }
+    // Sign Out Buttons
+    const handleSignOut = async () => {
+        try {
+            await signOut();
+            window.location.href = 'login.html';
+        } catch (e) {
+            console.error('Sign out error:', e);
+        }
+    };
 
-    // Sign Out
-    document.getElementById('btnSignOut')?.addEventListener('click', signOut);
-    document.getElementById('btnSignOutMobile')?.addEventListener('click', signOut);
+    document.getElementById('btnSignOut')?.addEventListener('click', handleSignOut);
+    document.getElementById('btnSignOutMobile')?.addEventListener('click', handleSignOut);
 
     // Mobile Menu Toggle
-    document.getElementById('mobileMenuBtn')?.addEventListener('click', (e) => {
-        const menu = document.getElementById('mobileMenu');
-        const isHidden = menu.classList.toggle('hidden');
-        (/** @type {Element} */ (e.currentTarget)).setAttribute('aria-expanded', String(!isHidden));
-    });
+    const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+    const mobileMenu = document.getElementById('mobileMenu');
+
+    if (mobileMenuBtn && mobileMenu) {
+        mobileMenuBtn.addEventListener('click', () => {
+            const isExpanded = mobileMenuBtn.getAttribute('aria-expanded') === 'true';
+            mobileMenuBtn.setAttribute('aria-expanded', String(!isExpanded));
+            mobileMenu.classList.toggle('hidden');
+        });
+    }
 }

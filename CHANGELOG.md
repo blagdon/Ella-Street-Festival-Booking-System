@@ -2,9 +2,17 @@
 
 All notable changes to this project are documented in this file.
 
-## [Unreleased]
+## [7.19.0] - 2026-08-01
 
-A short fix batch on top of v7.16.0, plus new repo tooling. `package.json` still reads 7.16.0 — no version bump has been cut for this batch yet.
+### Added
+
+- **Platform Administration Workspace (`admin.html` & `js/page-admin.js`)**: Single-page administrative workspace featuring sidebar section routing across Platform Dashboard, Organisation Settings, Events Administration, Member Management, Branding, Categorised Settings, and Audit Logs.
+- **Modular Platform UI Component Library (`js/platform/`)**: Reusable ESM component system providing standardized layouts (`layout.js`), stat cards (`cards.js`), form fields & save bars (`forms.js`), data tables (`tables.js`), focus-trapped dialog drawers (`dialogs.js`), section sub-navigation (`navigation.js`), toasts & banners (`notifications.js`), and loading skeletons (`loading.js`).
+- **Current Event Service (`js/event-service.js`)**: Decouples runtime active event resolution behind `getCurrentEvent()`, `setCurrentEvent()`, `fetchAvailableEvents()`, and event change listeners.
+- **Header Event Selector (`js/nav.js`)**: Added dynamic Event Selector dropdown in the admin navigation header allowing staff to switch active festival context seamlessly.
+- **Categorised Settings Hub & Branding**: Tabbed settings categories (General, Bookings, Comms, Payments, Advanced) and organisation branding configuration supporting composite PK `(org_id, key)` on `settings`.
+
+## [7.18.0] - 2026-08-01
 
 ### Added
 
