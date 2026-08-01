@@ -65,3 +65,38 @@ export async function callEdgeFunction(name, body, token = anonKey) {
   const json = await res.json().catch(() => ({}));
   return { status: res.status, json };
 }
+
+// ---------------------------------------------------------------------------
+// Phase 1 — Multi-Tenant Foundation helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Ensures the Phase 1 platform foundation rows exist in the test project.
+ * Must be called in seed-test-project.mjs (and is, as of Phase 1) and in
+ * any test suite that needs to insert bookings or settings rows, because
+ * those rows carry org_id/event_id defaults that reference these tables.
+ *
+ * All upserts are ON CONFLICT / ignoreDuplicates — safe to call multiple times.
+ *
+ * @param {import('@supabase/supabase-js').SupabaseClient} sb  A service-role client.
+ */
+export async function ensureFoundationRows(sb) {
+  const { error: orgErr } = await sb.from('organisations').upsert(
+    { id: 'org_default', name: 'Ella Street Festival', slug: 'ella-street' },
+    { onConflict: 'id', ignoreDuplicates: true }
+  );
+  if (orgErr) throw new Error(`ensureFoundationRows: organisations upsert failed: ${orgErr.message}`);
+
+  const { error: evtErr } = await sb.from('events').upsert(
+    {
+      id: 'event_default',
+      org_id: 'org_default',
+      name: 'Ella Street Festival 2026',
+      slug: 'esf-2026',
+      booking_prefix: 'ESF26',
+      is_active: true,
+    },
+    { onConflict: 'id', ignoreDuplicates: true }
+  );
+  if (evtErr) throw new Error(`ensureFoundationRows: events upsert failed: ${evtErr.message}`);
+}

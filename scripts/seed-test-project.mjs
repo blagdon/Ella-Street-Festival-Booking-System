@@ -10,6 +10,11 @@
 // settings table, not Edge Function secrets — seeded here from
 // TEST_STRIPE_SECRET_KEY/TEST_STRIPE_WEBHOOK_SECRET (.env.test / CI repo
 // secrets), Test-mode only, never a live key.
+//
+// Phase 1 (Multi-Tenant foundation): ensureFoundationRows() is called first
+// to guarantee the organisations + events seed rows exist before any other
+// fixture is created. ensureSettings() uses the composite PK (org_id, key)
+// introduced in migration 20260801005.
 import { createClient } from '@supabase/supabase-js';
 
 process.loadEnvFile('.env.test');
@@ -58,25 +63,55 @@ async function ensureAdminUser() {
   return user.id;
 }
 
+async function ensureFoundationRows() {
+  // organisations — top-level tenant entity (Phase 1: one row only)
+  const { error: orgErr } = await admin.from('organisations').upsert(
+    { id: 'org_default', name: 'Ella Street Festival', slug: 'ella-street' },
+    { onConflict: 'id', ignoreDuplicates: true }
+  );
+  if (orgErr) throw new Error(`Failed to upsert organisations: ${orgErr.message}`);
+  console.log('Ensured organisations row: org_default');
+
+  // events — one festival event per organisation (Phase 1: one row only)
+  const { error: evtErr } = await admin.from('events').upsert(
+    {
+      id: 'event_default',
+      org_id: 'org_default',
+      name: 'Ella Street Festival 2026',
+      slug: 'esf-2026',
+      booking_prefix: 'ESF26',
+      is_active: true,
+    },
+    { onConflict: 'id', ignoreDuplicates: true }
+  );
+  if (evtErr) throw new Error(`Failed to upsert events: ${evtErr.message}`);
+  console.log('Ensured events row: event_default');
+}
+
 async function ensureSettings() {
+  // All settings rows carry org_id = 'org_default' after migration
+  // 20260801005 changed the PK from (key) to (org_id, key).
+  // onConflict must reference both columns so the upsert resolves correctly.
   const rows = [
-    { key: 'cancel_url', value: 'https://example.test/cancel_booking.html' },
-    { key: 'bucket_name', value: 'esf-documents' },
-    { key: 'booking_prefix', value: 'ESF26' },
-    { key: 'bank_account_name', value: 'Ella Street Festival' },
-    { key: 'bank_sort_code', value: '12-34-56' },
-    { key: 'bank_account_number', value: '12345678' },
+    { org_id: 'org_default', key: 'cancel_url', value: 'https://example.test/cancel_booking.html' },
+    { org_id: 'org_default', key: 'bucket_name', value: 'esf-documents' },
+    { org_id: 'org_default', key: 'booking_prefix', value: 'ESF26' },
+    { org_id: 'org_default', key: 'bank_account_name', value: 'Ella Street Festival' },
+    { org_id: 'org_default', key: 'bank_sort_code', value: '12-34-56' },
+    { org_id: 'org_default', key: 'bank_account_number', value: '12345678' },
   ];
 
   const testStripeKey = process.env.TEST_STRIPE_SECRET_KEY;
   const testWebhookSecret = process.env.TEST_STRIPE_WEBHOOK_SECRET;
-  if (testStripeKey) rows.push({ key: 'stripe_secret_key_test', value: testStripeKey });
-  if (testWebhookSecret) rows.push({ key: 'stripe_webhook_secret_test', value: testWebhookSecret });
+  if (testStripeKey) rows.push({ org_id: 'org_default', key: 'stripe_secret_key_test', value: testStripeKey });
+  if (testWebhookSecret) rows.push({ org_id: 'org_default', key: 'stripe_webhook_secret_test', value: testWebhookSecret });
   if (!testStripeKey || !testWebhookSecret) {
     console.warn('TEST_STRIPE_SECRET_KEY/TEST_STRIPE_WEBHOOK_SECRET not set — stripe-payment.test.mjs\'s create-checkout-session success-path tests will fail until these are added to .env.test.');
   }
 
-  const { error } = await admin.from('settings').upsert(rows, { onConflict: 'key' });
+  // onConflict: 'org_id,key' matches the composite PK added in migration
+  // 20260801005. Using just 'key' here would cause an error on the updated schema.
+  const { error } = await admin.from('settings').upsert(rows, { onConflict: 'org_id,key' });
   if (error) throw new Error(`Failed to upsert settings: ${error.message}`);
   console.log('Ensured settings rows:', rows.map((r) => r.key).join(', '));
 }
@@ -109,6 +144,10 @@ async function ensureEmailTemplates() {
   console.log('Ensured email_templates rows:', rows.map((r) => r.id).join(', '));
 }
 
+// Phase 1: foundation rows must exist before user/settings/template fixtures,
+// because user_roles insert triggers sync_organisation_members_from_user_roles
+// which inserts into organisation_members (which FK-references organisations).
+await ensureFoundationRows();
 const adminUserId = await ensureAdminUser();
 await ensureSettings();
 await ensureEmailTemplates();
