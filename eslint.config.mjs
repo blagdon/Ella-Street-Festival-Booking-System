@@ -103,12 +103,12 @@ export default [
     },
   },
 
-  // Node CommonJS config files.
+  // Node ESM config files.
   {
     files: ['postcss.config.js', 'tailwind.config.js'],
     languageOptions: {
       ecmaVersion: 'latest',
-      sourceType: 'commonjs',
+      sourceType: 'module',
       globals: { ...globals.node },
     },
   },

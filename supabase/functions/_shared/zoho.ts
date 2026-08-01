@@ -13,7 +13,8 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
  */
 export async function sendViaZoho(
   supabaseAdmin: ReturnType<typeof createClient>,
-  params: { recipient: string; subject: string; body: string; bcc?: string | null }
+  params: { recipient: string; subject: string; body: string; bcc?: string | null },
+  orgId: string = 'org_default'
 ): Promise<{ success: true; data: any }> {
   const { recipient, subject, body, bcc } = params
   if (!recipient || !subject || !body) {
@@ -23,6 +24,7 @@ export async function sendViaZoho(
   const { data: settingsData, error: settingsError } = await supabaseAdmin
     .from('settings')
     .select('key, value')
+    .eq('org_id', orgId)
     .in('key', [
       'zoho_client_id',
       'zoho_client_secret',
@@ -104,9 +106,9 @@ export async function sendViaZoho(
     const { error: saveError } = await supabaseAdmin
       .from('settings')
       .upsert([
-        { key: 'zoho_access_token', value: accessToken, updated_at: nowStr, updated_by: 'system_edge_function' },
-        { key: 'zoho_access_token_expires_at', value: expiresAt, updated_at: nowStr, updated_by: 'system_edge_function' }
-      ])
+        { org_id: orgId, key: 'zoho_access_token', value: accessToken, updated_at: nowStr, updated_by: 'system_edge_function' },
+        { org_id: orgId, key: 'zoho_access_token_expires_at', value: expiresAt, updated_at: nowStr, updated_by: 'system_edge_function' }
+      ], { onConflict: 'org_id,key' })
     if (saveError) {
       console.warn('Failed to cache Zoho access token in database:', saveError.message)
     }

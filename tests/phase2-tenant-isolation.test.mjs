@@ -104,4 +104,29 @@ describe('tenant isolation & get_current_org_id', () => {
     assert.equal(data.id, 'event_default');
     assert.equal(data.booking_prefix, 'ESF26');
   });
+
+  it('ensureFoundationRows seeds secondary test tenant org_demo and event_demo', async () => {
+    const { data: org, error: orgErr } = await service.from('organisations').select('id, name').eq('id', 'org_demo').single();
+    assert.ifError(orgErr);
+    assert.equal(org.id, 'org_demo');
+
+    const { data: evt, error: evtErr } = await service.from('events').select('id, org_id, booking_prefix').eq('id', 'event_demo').single();
+    assert.ifError(evtErr);
+    assert.equal(evt.id, 'event_demo');
+    assert.equal(evt.org_id, 'org_demo');
+    assert.equal(evt.booking_prefix, 'DEMO26');
+  });
 });
+
+// ── 4. Platform Context Module ──────────────────────────────────────────────────
+describe('Platform Context Module', () => {
+  it('getPlatformContext returns valid structure with default org_id and event_id', async () => {
+    const { getPlatformContext } = await import('../js/config.js');
+    const ctx = getPlatformContext();
+    assert.equal(ctx.orgId, 'org_default');
+    assert.equal(ctx.eventId, 'event_default');
+    assert.equal(typeof ctx.instance, 'string');
+    assert.ok(ctx.urls);
+  });
+});
+

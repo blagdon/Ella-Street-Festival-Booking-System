@@ -82,20 +82,33 @@ export async function callEdgeFunction(name, body, token = anonKey) {
  */
 export async function ensureFoundationRows(sb) {
   const { error: orgErr } = await sb.from('organisations').upsert(
-    { id: 'org_default', name: 'Ella Street Festival', slug: 'ella-street' },
+    [
+      { id: 'org_default', name: 'Ella Street Festival', slug: 'ella-street' },
+      { id: 'org_demo',    name: 'Demo Festival Organisation', slug: 'demo-festival' },
+    ],
     { onConflict: 'id', ignoreDuplicates: true }
   );
   if (orgErr) throw new Error(`ensureFoundationRows: organisations upsert failed: ${orgErr.message}`);
 
   const { error: evtErr } = await sb.from('events').upsert(
-    {
-      id: 'event_default',
-      org_id: 'org_default',
-      name: 'Ella Street Festival 2026',
-      slug: 'esf-2026',
-      booking_prefix: 'ESF26',
-      is_active: true,
-    },
+    [
+      {
+        id: 'event_default',
+        org_id: 'org_default',
+        name: 'Ella Street Festival 2026',
+        slug: 'esf-2026',
+        booking_prefix: 'ESF26',
+        is_active: true,
+      },
+      {
+        id: 'event_demo',
+        org_id: 'org_demo',
+        name: 'Demo Festival 2026',
+        slug: 'demo-2026',
+        booking_prefix: 'DEMO26',
+        is_active: true,
+      },
+    ],
     { onConflict: 'id', ignoreDuplicates: true }
   );
   if (evtErr) throw new Error(`ensureFoundationRows: events upsert failed: ${evtErr.message}`);

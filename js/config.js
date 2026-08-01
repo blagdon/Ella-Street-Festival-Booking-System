@@ -117,6 +117,32 @@ export const CURRENT_ORG_ID = 'org_default';
 export const CURRENT_EVENT_ID = 'event_default';
 
 /**
+ * First-class Platform Context Module resolver.
+ * Encapsulates User, Organisation, Event, Roles, and Settings context.
+ * Invariant 1: Browser clients never decide tenant org_id directly.
+ * Invariant 7: RLS and server-side context resolution are the final authority.
+ *
+ * @param {Object} [authSession] - Optional Supabase Auth session
+ * @returns {{orgId: string, eventId: string, instance: string, userId: string|null, userRole: string|null, urls: Object}}
+ */
+export function getPlatformContext(authSession = null) {
+    const orgId = getCurrentOrgId();
+    const eventId = getCurrentEventId();
+    const instance = getCurrentInstance();
+    const userId = authSession?.user?.id || null;
+    const userRole = authSession?.user?.user_metadata?.role || null;
+
+    return {
+        orgId,
+        eventId,
+        instance,
+        userId,
+        userRole,
+        urls: CONFIG.URLS
+    };
+}
+
+/**
  * Get the current instance from localStorage or default to DEV.
  */
 export function getCurrentInstance() {
@@ -207,9 +233,10 @@ export function applySettingsToConfig(data) {
 // and the {data, timestamp} shape in sync with those.
 const SETTINGS_CACHE_TTL_MS = 5 * 60 * 1000;
 
-export async function loadStallCosts(sb) {
+export async function loadStallCosts(sb, orgId = getCurrentOrgId()) {
     if (typeof sessionStorage !== 'undefined') {
-        const cached = sessionStorage.getItem('ESF_SETTINGS_CACHE');
+        const cacheKey = `ESF_SETTINGS_CACHE_${orgId}`;
+        const cached = sessionStorage.getItem(cacheKey);
         if (cached) {
             try {
                 const { data, timestamp } = JSON.parse(cached);
@@ -225,12 +252,13 @@ export async function loadStallCosts(sb) {
     }
 
     try {
-        const { data, error } = await sb.from('settings').select('key, value');
+        const { data, error } = await sb.from('settings').select('key, value').eq('org_id', orgId);
         if (error) throw error;
         if (data) {
             applySettingsToConfig(data);
             if (typeof sessionStorage !== 'undefined') {
-                sessionStorage.setItem('ESF_SETTINGS_CACHE', JSON.stringify({ data, timestamp: Date.now() }));
+                const cacheKey = `ESF_SETTINGS_CACHE_${orgId}`;
+                sessionStorage.setItem(cacheKey, JSON.stringify({ data, timestamp: Date.now() }));
             }
         }
     } catch (e) {
