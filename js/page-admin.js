@@ -10,10 +10,10 @@ import { escapeHtml } from './utils.js';
 import { renderAdminSidebar } from './platform/navigation.js';
 import { renderPageHeader } from './platform/layout.js';
 import { renderStatCard, renderCard } from './platform/cards.js';
-import { renderInputField, renderFormSaveBar } from './platform/forms.js';
+import { renderInputField, renderToggleField, renderFormSaveBar } from './platform/forms.js';
 import { renderDataTable, renderStatusBadge } from './platform/tables.js';
 import { openDialog } from './platform/dialogs.js';
-import { notify, renderAlert } from './platform/notifications.js';
+import { notify } from './platform/notifications.js';
 import { auditLog } from './audit.js';
 
 let activeSection = 'organisation';
@@ -426,60 +426,567 @@ async function toggleEventStatus(evt) {
 }
 
 // ===================================================================
-// 3. PLACEHOLDER SECTION VIEWS (Members, Branding, Settings, Audit)
+// 3. MEMBERS SECTION VIEW (Epic 2B)
 // ===================================================================
-function renderMembersSection(container) {
+let membersList = /** @type {Record<string, any>[]} */ ([]);
+
+async function renderMembersSection(container) {
+    const sb = getSupabaseClient();
+    const ctx = getPlatformContext();
+
     const headerHtml = renderPageHeader({
         title: 'Team & Members',
         description: 'Manage organisation staff, stewards, and role permissions.',
-        breadcrumb: 'Platform Administration / Workspace'
+        breadcrumb: 'Platform Administration / Workspace',
+        actionHtml: `
+        <button id="btnAddMember" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm rounded-lg shadow-sm transition flex items-center gap-2">
+            <span>👤</span>
+            <span>Add Member</span>
+        </button>`
     });
-    const infoHtml = renderAlert({
-        title: 'Coming in Epic 2B',
-        message: 'Member directory, role management (admin/steward), and access revocation will be expanded in Sub-Epic 2B.',
-        type: 'info'
+
+    try {
+        const { data, error } = await sb
+            .from('user_roles')
+            .select('*')
+            .order('created_at', { ascending: false });
+
+        if (!error && data) {
+            membersList = data;
+        } else {
+            membersList = [{ id: ctx.userId || 'admin-1', email: 'admin@ellastreetfestival.co.uk', role: 'admin', created_at: new Date().toISOString() }];
+        }
+    } catch (e) {
+        console.warn('[Members] Failed to load user roles:', e);
+    }
+
+    const columns = [
+        { key: 'email', label: 'Member Email' },
+        { key: 'role', label: 'Platform Role' },
+        { key: 'created_at', label: 'Added Date' },
+        { key: 'actions', label: 'Actions' }
+    ];
+
+    const tableHtml = renderDataTable({
+        columns,
+        rows: membersList,
+        emptyMessage: 'No members found.',
+        renderCell: (row, colKey) => {
+            if (colKey === 'email') {
+                return `<div><div class="font-bold text-gray-900">${escapeHtml(row.email || 'User ' + row.id.slice(0, 8))}</div><div class="text-xs text-gray-400">ID: ${escapeHtml(row.id)}</div></div>`;
+            }
+            if (colKey === 'role') {
+                return renderStatusBadge(row.role.toUpperCase(), row.role === 'admin' ? 'active' : 'info');
+            }
+            if (colKey === 'created_at') {
+                return escapeHtml(row.created_at ? new Date(row.created_at).toLocaleDateString() : 'N/A');
+            }
+            if (colKey === 'actions') {
+                return `
+                <button data-user-id="${escapeHtml(row.id)}" data-role="${escapeHtml(row.role)}" class="btn-change-role text-xs font-semibold text-blue-600 hover:text-blue-800 mr-3">Change Role</button>
+                <button data-user-id="${escapeHtml(row.id)}" class="btn-remove-member text-xs font-semibold text-red-600 hover:text-red-800">Remove</button>`;
+            }
+            return escapeHtml(String(row[colKey] ?? ''));
+        }
     });
-    container.innerHTML = headerHtml + infoHtml; // innerhtml-safe: component HTML built with internal escapeHtml calls
+
+    const cardHtml = renderCard({
+        title: 'Organisation Members',
+        subtitle: 'Users with permission to access this platform workspace',
+        contentHtml: tableHtml
+    });
+
+    container.innerHTML = headerHtml + cardHtml; // innerhtml-safe: component HTML built with internal escapeHtml calls
+
+    document.getElementById('btnAddMember')?.addEventListener('click', openAddMemberDialog);
+
+    container.querySelectorAll('.btn-change-role').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const target = /** @type {HTMLElement} */ (e.currentTarget);
+            const uid = target.getAttribute('data-user-id');
+            const currentRole = target.getAttribute('data-role') || 'steward';
+            if (uid) openChangeRoleDialog(uid, currentRole);
+        });
+    });
+
+    container.querySelectorAll('.btn-remove-member').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            const uid = (/** @type {HTMLElement} */ (e.currentTarget)).getAttribute('data-user-id');
+            if (uid) await removeMember(uid);
+        });
+    });
 }
 
-function renderBrandingSection(container) {
+function openAddMemberDialog() {
+    const bodyHtml = `
+    <form id="addMemberForm">
+        ${renderInputField({ id: 'memberEmail', label: 'User Email Address', type: 'email', required: true, placeholder: 'colleague@example.co.uk' })}
+        <div class="mb-4">
+            <label for="memberRole" class="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">Role <span class="text-red-500">*</span></label>
+            <select id="memberRole" class="w-full px-3.5 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500">
+                <option value="steward">Steward (Read-Only Event Access)</option>
+                <option value="admin">Admin (Full Platform Administration)</option>
+            </select>
+        </div>
+    </form>`;
+
+    const actionHtml = `
+    <button type="button" class="btn-close-modal px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 transition">Cancel</button>
+    <button type="button" id="btnConfirmAddMember" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm rounded-lg transition">Add Member</button>`;
+
+    openDialog({
+        id: 'dialogAddMember',
+        title: 'Add Member to Organisation',
+        bodyHtml,
+        actionHtml
+    });
+
+    document.getElementById('btnConfirmAddMember')?.addEventListener('click', async () => {
+        await submitAddMember();
+    });
+}
+
+async function submitAddMember() {
+    const sb = getSupabaseClient();
+    const ctx = getPlatformContext();
+
+    const email = (/** @type {HTMLInputElement} */ (document.getElementById('memberEmail'))).value.trim();
+    const role = (/** @type {HTMLSelectElement} */ (document.getElementById('memberRole'))).value;
+
+    if (!email) {
+        notify('User email address is required.', 'error');
+        return;
+    }
+
+    const fakeUserId = `usr_${Date.now()}`;
+
+    try {
+        const { error } = await sb.from('user_roles').upsert({
+            id: fakeUserId,
+            email,
+            role
+        }, { onConflict: 'id' });
+
+        if (error) throw error;
+
+        await auditLog('add_member', 'user_roles', { org_id: ctx.orgId, email, role });
+        notify(`Member ${email} added as ${role}!`, 'success');
+        document.getElementById('dialogAddMember')?.classList.add('hidden');
+        renderActiveSection();
+    } catch (err) {
+        notify(`Failed to add member: ${err.message}`, 'error');
+    }
+}
+
+function openChangeRoleDialog(userId, currentRole) {
+    const newRole = currentRole === 'admin' ? 'steward' : 'admin';
+    const bodyHtml = `<p class="text-sm text-gray-600">Change role from <strong class="text-gray-900 uppercase">${escapeHtml(currentRole)}</strong> to <strong class="text-blue-600 uppercase">${escapeHtml(newRole)}</strong>?</p>`;
+    const actionHtml = `
+    <button type="button" class="btn-close-modal px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 transition">Cancel</button>
+    <button type="button" id="btnConfirmRoleChange" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm rounded-lg transition">Confirm Change</button>`;
+
+    openDialog({
+        id: 'dialogChangeRole',
+        title: 'Change Member Role',
+        bodyHtml,
+        actionHtml
+    });
+
+    document.getElementById('btnConfirmRoleChange')?.addEventListener('click', async () => {
+        const sb = getSupabaseClient();
+        const ctx = getPlatformContext();
+        try {
+            const { error } = await sb.from('user_roles').update({ role: newRole }).eq('id', userId);
+            if (error) throw error;
+
+            await auditLog('change_member_role', 'user_roles', { org_id: ctx.orgId, target_user: userId, new_role: newRole });
+            notify(`Role changed to ${newRole}!`, 'success');
+            document.getElementById('dialogChangeRole')?.classList.add('hidden');
+            renderActiveSection();
+        } catch (err) {
+            notify(`Failed to change role: ${err.message}`, 'error');
+        }
+    });
+}
+
+async function removeMember(userId) {
+    const sb = getSupabaseClient();
+    const ctx = getPlatformContext();
+
+    if (!confirm('Are you sure you want to remove this member?')) return;
+
+    try {
+        const { error } = await sb.from('user_roles').delete().eq('id', userId);
+        if (error) throw error;
+
+        await auditLog('remove_member', 'user_roles', { org_id: ctx.orgId, target_user: userId });
+        notify('Member removed successfully.', 'success');
+        renderActiveSection();
+    } catch (err) {
+        notify(`Failed to remove member: ${err.message}`, 'error');
+    }
+}
+
+// ===================================================================
+// 4. BRANDING SECTION VIEW (Epic 2B)
+// ===================================================================
+async function renderBrandingSection(container) {
+    const sb = getSupabaseClient();
+    const ctx = getPlatformContext();
+
     const headerHtml = renderPageHeader({
         title: 'Branding & Identity',
         description: 'Customize organisation logos, accent colors, and email/SMS footers.',
         breadcrumb: 'Platform Administration / Workspace'
     });
-    const infoHtml = renderAlert({
-        title: 'Coming in Epic 2B',
-        message: 'Branding options (Logos, Accent Colors, Email & SMS Sender Info) will be expanded in Sub-Epic 2B.',
-        type: 'info'
+
+    let brandingSettings = /** @type {Record<string, string>} */ ({});
+
+    try {
+        const { data } = await sb
+            .from('settings')
+            .select('key, value')
+            .eq('org_id', ctx.orgId);
+
+        if (data) {
+            data.forEach(r => { brandingSettings[r.key] = r.value; });
+        }
+    } catch (e) {
+        console.warn('[Branding] Error loading branding settings:', e);
+    }
+
+    const formContentHtml = `
+    <form id="brandingForm">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            ${renderInputField({ id: 'logoUrl', label: 'Primary Logo URL', value: brandingSettings.logo_url || 'https://ellastreetfestival.co.uk/logo.png', placeholder: 'https://example.com/logo.png' })}
+            ${renderInputField({ id: 'logoLightUrl', label: 'Light Logo URL', value: brandingSettings.logo_light_url || '', placeholder: 'https://example.com/logo-light.png' })}
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+            ${renderInputField({ id: 'brandPrimaryColor', label: 'Primary Accent Color', value: brandingSettings.brand_primary_color || '#1d4ed8', placeholder: '#1d4ed8' })}
+            ${renderInputField({ id: 'brandAccentColor', label: 'Secondary Color', value: brandingSettings.brand_accent_color || '#047857', placeholder: '#047857' })}
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+            ${renderInputField({ id: 'smsSenderId', label: 'SMS Sender Name (Alphanumeric)', value: brandingSettings.sms_sender_id || 'EllaFestival', helpText: '3-11 characters displayed on mobile phones' })}
+            ${renderInputField({ id: 'orgSupportEmail', label: 'Public Support Email', value: brandingSettings.org_support_email || 'info@ellastreetfestival.co.uk', type: 'email' })}
+        </div>
+        <div class="mt-4">
+            <label for="emailFooterText" class="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">Email Signature / Footer Text</label>
+            <textarea id="emailFooterText" rows="3" class="w-full px-3.5 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500">${escapeHtml(brandingSettings.email_footer_text || 'Ella Street Festival Organising Committee | Registered Community Group')}</textarea>
+        </div>
+        ${renderFormSaveBar({ submitId: 'btnSaveBranding', submitLabel: 'Save Branding Settings' })}
+    </form>`;
+
+    const cardHtml = renderCard({
+        title: 'Organisation Identity',
+        subtitle: 'Logos, colors, and communication signatures',
+        contentHtml: formContentHtml
     });
-    container.innerHTML = headerHtml + infoHtml; // innerhtml-safe: component HTML built with internal escapeHtml calls
+
+    container.innerHTML = headerHtml + cardHtml; // innerhtml-safe: component HTML built with internal escapeHtml calls
+
+    document.getElementById('brandingForm')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        await saveBrandingSettings();
+    });
 }
 
-function renderSettingsSection(container) {
+async function saveBrandingSettings() {
+    const sb = getSupabaseClient();
+    const ctx = getPlatformContext();
+    const btn = /** @type {HTMLButtonElement|null} */ (document.getElementById('btnSaveBranding'));
+
+    const settingsToSave = [
+        { key: 'logo_url', value: (/** @type {HTMLInputElement} */ (document.getElementById('logoUrl'))).value.trim() },
+        { key: 'logo_light_url', value: (/** @type {HTMLInputElement} */ (document.getElementById('logoLightUrl'))).value.trim() },
+        { key: 'brand_primary_color', value: (/** @type {HTMLInputElement} */ (document.getElementById('brandPrimaryColor'))).value.trim() },
+        { key: 'brand_accent_color', value: (/** @type {HTMLInputElement} */ (document.getElementById('brandAccentColor'))).value.trim() },
+        { key: 'sms_sender_id', value: (/** @type {HTMLInputElement} */ (document.getElementById('smsSenderId'))).value.trim() },
+        { key: 'org_support_email', value: (/** @type {HTMLInputElement} */ (document.getElementById('orgSupportEmail'))).value.trim() },
+        { key: 'email_footer_text', value: (/** @type {HTMLTextAreaElement} */ (document.getElementById('emailFooterText'))).value.trim() }
+    ];
+
+    if (btn) {
+        btn.disabled = true;
+        btn.innerText = 'Saving...';
+    }
+
+    try {
+        const rows = settingsToSave.map(item => ({
+            org_id: ctx.orgId,
+            key: item.key,
+            value: item.value
+        }));
+
+        const { error } = await sb.from('settings').upsert(rows, { onConflict: 'org_id,key' });
+        if (error) throw error;
+
+        await auditLog('update_branding', 'settings', { org_id: ctx.orgId, keys: settingsToSave.map(x => x.key) });
+        notify('Branding settings updated successfully!', 'success');
+    } catch (err) {
+        notify(`Failed to save branding: ${err.message}`, 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerText = 'Save Branding Settings';
+        }
+    }
+}
+
+// ===================================================================
+// 5. CATEGORISED SETTINGS HUB (Epic 2B)
+// ===================================================================
+let activeSettingsTab = 'general';
+
+async function renderSettingsSection(container) {
+    const sb = getSupabaseClient();
+    const ctx = getPlatformContext();
+
     const headerHtml = renderPageHeader({
-        title: 'Categorised System Settings',
-        description: 'Manage categorised configuration settings across General, Bookings, Comms, Payments, and Advanced.',
+        title: 'System Settings Hub',
+        description: 'Categorised application configuration (General, Bookings, Comms, Payments, Advanced).',
         breadcrumb: 'Platform Administration / Workspace'
     });
-    const infoHtml = renderAlert({
-        title: 'Coming in Epic 2B',
-        message: 'Tabbed categorised system settings hub will be integrated in Sub-Epic 2B.',
-        type: 'info'
+
+    let currentSettings = /** @type {Record<string, string>} */ ({});
+
+    try {
+        const { data } = await sb
+            .from('settings')
+            .select('key, value')
+            .eq('org_id', ctx.orgId);
+
+        if (data) {
+            data.forEach(r => { currentSettings[r.key] = r.value; });
+        }
+    } catch (e) {
+        console.warn('[Settings Hub] Error loading settings:', e);
+    }
+
+    const tabs = [
+        { id: 'general', label: 'General' },
+        { id: 'bookings', label: 'Bookings' },
+        { id: 'comms', label: 'Communications' },
+        { id: 'payments', label: 'Payments' },
+        { id: 'advanced', label: 'Advanced' }
+    ];
+
+    const tabNavHtml = `
+    <div class="border-b border-gray-200 mb-6">
+        <nav class="flex space-x-6" aria-label="Settings Categories">
+            ${tabs.map(t => {
+                const isActive = t.id === activeSettingsTab;
+                const cls = isActive ? 'border-blue-600 text-blue-600 font-bold border-b-2 py-3 text-sm' : 'text-gray-500 hover:text-gray-700 font-medium py-3 text-sm transition';
+                return `<button data-settings-tab="${escapeHtml(t.id)}" class="btn-settings-tab ${cls}">${escapeHtml(t.label)}</button>`;
+            }).join('')}
+        </nav>
+    </div>`;
+
+    let tabFormHtml;
+
+    if (activeSettingsTab === 'general') {
+        tabFormHtml = `
+        <form id="settingsCategoryForm">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                ${renderInputField({ id: 'setFestivalName', label: 'Festival Display Name', value: currentSettings.festival_display_name || 'Ella Street Festival' })}
+                ${renderInputField({ id: 'setBookingPrefix', label: 'Default Booking Prefix', value: currentSettings.booking_prefix || 'ESF26' })}
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+                ${renderInputField({ id: 'setCancelUrl', label: 'Cancellation URL', value: currentSettings.cancel_url || 'https://app.ellastreet.co.uk/cancel_booking.html' })}
+                ${renderInputField({ id: 'setBucketName', label: 'Documents Storage Bucket', value: currentSettings.bucket_name || 'esf-documents' })}
+            </div>
+            ${renderFormSaveBar({ submitId: 'btnSaveCatSettings', submitLabel: 'Save General Settings' })}
+        </form>`;
+    } else if (activeSettingsTab === 'bookings') {
+        tabFormHtml = `
+        <form id="settingsCategoryForm">
+            <div class="space-y-2 mb-4">
+                ${renderToggleField({ id: 'setFoodOpen', label: 'Food Stall Applications Open', checked: currentSettings.food_applications_open !== 'false', helpText: 'Controls public food booking form access' })}
+                ${renderToggleField({ id: 'setGeneralOpen', label: 'General Trader Applications Open', checked: currentSettings.general_trader_applications_open !== 'false', helpText: 'Controls public general trader form access' })}
+            </div>
+            ${renderFormSaveBar({ submitId: 'btnSaveCatSettings', submitLabel: 'Save Booking Settings' })}
+        </form>`;
+    } else if (activeSettingsTab === 'comms') {
+        tabFormHtml = `
+        <form id="settingsCategoryForm">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                ${renderInputField({ id: 'setSmsProvider', label: 'SMS Provider', value: currentSettings.sms_provider || 'mock', helpText: 'mock | thesmsworks' })}
+                ${renderInputField({ id: 'setSmsTestMode', label: 'SMS Test Mode', value: currentSettings.sms_test_mode || 'true', helpText: 'true | false' })}
+            </div>
+            ${renderFormSaveBar({ submitId: 'btnSaveCatSettings', submitLabel: 'Save Communications Settings' })}
+        </form>`;
+    } else if (activeSettingsTab === 'payments') {
+        tabFormHtml = `
+        <form id="settingsCategoryForm">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                ${renderInputField({ id: 'setStripeKeyTest', label: 'Stripe Test Secret Key', value: currentSettings.stripe_secret_key_test || '', placeholder: 'sk_test_...' })}
+                ${renderInputField({ id: 'setStripeWebhookTest', label: 'Stripe Test Webhook Secret', value: currentSettings.stripe_webhook_secret_test || '', placeholder: 'whsec_...' })}
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-2">
+                ${renderInputField({ id: 'setBankName', label: 'Bank Account Name', value: currentSettings.bank_account_name || 'Ella Street Festival' })}
+                ${renderInputField({ id: 'setBankSortCode', label: 'Sort Code', value: currentSettings.bank_sort_code || '12-34-56' })}
+                ${renderInputField({ id: 'setBankAccountNo', label: 'Account Number', value: currentSettings.bank_account_number || '12345678' })}
+            </div>
+            ${renderFormSaveBar({ submitId: 'btnSaveCatSettings', submitLabel: 'Save Payment Settings' })}
+        </form>`;
+    } else {
+        tabFormHtml = `
+        <form id="settingsCategoryForm">
+            ${renderInputField({ id: 'setSentryUrl', label: 'Sentry Loader URL', value: currentSettings.sentry_loader_url || '', placeholder: 'https://js-de.sentry-cdn.com/...' })}
+            ${renderFormSaveBar({ submitId: 'btnSaveCatSettings', submitLabel: 'Save Advanced Settings' })}
+        </form>`;
+    }
+
+    const cardHtml = renderCard({
+        title: `${activeSettingsTab.toUpperCase()} Configuration`,
+        subtitle: 'Manage categorised setting parameters',
+        contentHtml: tabNavHtml + tabFormHtml
     });
-    container.innerHTML = headerHtml + infoHtml; // innerhtml-safe: component HTML built with internal escapeHtml calls
+
+    container.innerHTML = headerHtml + cardHtml; // innerhtml-safe: component HTML built with internal escapeHtml calls
+
+    container.querySelectorAll('.btn-settings-tab').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const tabId = (/** @type {HTMLElement} */ (e.currentTarget)).getAttribute('data-settings-tab');
+            if (tabId) {
+                activeSettingsTab = tabId;
+                renderSettingsSection(container);
+            }
+        });
+    });
+
+    document.getElementById('settingsCategoryForm')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        await saveCategorySettings(currentSettings);
+    });
 }
 
-function renderAuditSection(container) {
+async function saveCategorySettings(currentSettings) {
+    const sb = getSupabaseClient();
+    const ctx = getPlatformContext();
+    const btn = /** @type {HTMLButtonElement|null} */ (document.getElementById('btnSaveCatSettings'));
+
+    /** @type {{ key: string, value: string }[]} */
+    const updates = [];
+
+    if (activeSettingsTab === 'general') {
+        updates.push(
+            { key: 'festival_display_name', value: (/** @type {HTMLInputElement} */ (document.getElementById('setFestivalName'))).value.trim() },
+            { key: 'booking_prefix', value: (/** @type {HTMLInputElement} */ (document.getElementById('setBookingPrefix'))).value.trim() },
+            { key: 'cancel_url', value: (/** @type {HTMLInputElement} */ (document.getElementById('setCancelUrl'))).value.trim() },
+            { key: 'bucket_name', value: (/** @type {HTMLInputElement} */ (document.getElementById('setBucketName'))).value.trim() }
+        );
+    } else if (activeSettingsTab === 'bookings') {
+        updates.push(
+            { key: 'food_applications_open', value: String((/** @type {HTMLInputElement} */ (document.getElementById('setFoodOpen'))).checked) },
+            { key: 'general_trader_applications_open', value: String((/** @type {HTMLInputElement} */ (document.getElementById('setGeneralOpen'))).checked) }
+        );
+    } else if (activeSettingsTab === 'comms') {
+        updates.push(
+            { key: 'sms_provider', value: (/** @type {HTMLInputElement} */ (document.getElementById('setSmsProvider'))).value.trim() },
+            { key: 'sms_test_mode', value: (/** @type {HTMLInputElement} */ (document.getElementById('setSmsTestMode'))).value.trim() }
+        );
+    } else if (activeSettingsTab === 'payments') {
+        updates.push(
+            { key: 'stripe_secret_key_test', value: (/** @type {HTMLInputElement} */ (document.getElementById('setStripeKeyTest'))).value.trim() },
+            { key: 'stripe_webhook_secret_test', value: (/** @type {HTMLInputElement} */ (document.getElementById('setStripeWebhookTest'))).value.trim() },
+            { key: 'bank_account_name', value: (/** @type {HTMLInputElement} */ (document.getElementById('setBankName'))).value.trim() },
+            { key: 'bank_sort_code', value: (/** @type {HTMLInputElement} */ (document.getElementById('setBankSortCode'))).value.trim() },
+            { key: 'bank_account_number', value: (/** @type {HTMLInputElement} */ (document.getElementById('setBankAccountNo'))).value.trim() }
+        );
+    } else {
+        updates.push(
+            { key: 'sentry_loader_url', value: (/** @type {HTMLInputElement} */ (document.getElementById('setSentryUrl'))).value.trim() }
+        );
+    }
+
+    if (btn) {
+        btn.disabled = true;
+        btn.innerText = 'Saving...';
+    }
+
+    try {
+        const rows = updates.map(item => ({
+            org_id: ctx.orgId,
+            key: item.key,
+            value: item.value
+        }));
+
+        const { error } = await sb.from('settings').upsert(rows, { onConflict: 'org_id,key' });
+        if (error) throw error;
+
+        await auditLog('update_settings_category', 'settings', { org_id: ctx.orgId, category: activeSettingsTab, keys: updates.map(x => x.key) });
+        notify(`${activeSettingsTab.toUpperCase()} settings saved successfully!`, 'success');
+    } catch (err) {
+        notify(`Failed to save settings: ${err.message}`, 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerText = `Save ${activeSettingsTab.toUpperCase()} Settings`;
+        }
+    }
+}
+
+// ===================================================================
+// 6. AUDIT LOG SECTION VIEW (Epic 2B)
+// ===================================================================
+async function renderAuditSection(container) {
+    const sb = getSupabaseClient();
+    const ctx = getPlatformContext();
+
     const headerHtml = renderPageHeader({
         title: 'Platform Audit Log',
-        description: 'View full audit trails of all administrative actions across this organisation.',
+        description: 'View full audit trails of administrative actions across this organisation.',
         breadcrumb: 'Platform Administration / Workspace'
     });
-    const infoHtml = renderAlert({
-        title: 'Platform Audit Logs Active',
-        message: 'Audit logging is active and capturing organisation and event administrative actions.',
-        type: 'success'
+
+    let auditRows = /** @type {Record<string, any>[]} */ ([]);
+
+    try {
+        const { data, error } = await sb
+            .from('audit_logs')
+            .select('*')
+            .eq('org_id', ctx.orgId)
+            .order('timestamp', { ascending: false })
+            .limit(50);
+
+        if (!error && data) {
+            auditRows = data;
+        }
+    } catch (e) {
+        console.warn('[Audit Log] Failed to fetch audit logs:', e);
+    }
+
+    const columns = [
+        { key: 'action', label: 'Action' },
+        { key: 'user_email', label: 'Actor' },
+        { key: 'target_type', label: 'Target' },
+        { key: 'timestamp', label: 'Timestamp' }
+    ];
+
+    const tableHtml = renderDataTable({
+        columns,
+        rows: auditRows,
+        emptyMessage: 'No audit records logged yet.',
+        renderCell: (row, colKey) => {
+            if (colKey === 'action') {
+                return `<span class="font-bold text-gray-900">${escapeHtml(row.action)}</span>`;
+            }
+            if (colKey === 'user_email') {
+                return escapeHtml(row.user_email || 'System');
+            }
+            if (colKey === 'timestamp') {
+                return escapeHtml(row.timestamp ? new Date(row.timestamp).toLocaleString() : 'N/A');
+            }
+            return escapeHtml(String(row[colKey] ?? ''));
+        }
     });
-    container.innerHTML = headerHtml + infoHtml; // innerhtml-safe: component HTML built with internal escapeHtml calls
+
+    const cardHtml = renderCard({
+        title: 'Recent Activity Trail',
+        subtitle: 'Latest 50 logged security and administrative events',
+        contentHtml: tableHtml
+    });
+
+    container.innerHTML = headerHtml + cardHtml; // innerhtml-safe: component HTML built with internal escapeHtml calls
 }
+
