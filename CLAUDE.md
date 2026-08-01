@@ -22,10 +22,21 @@ reachable through a separate pre-auth code path) was only found afterward by
 grepping every `id="*Modal*"` across every `.html` file — not by the review
 itself, no matter how thorough it felt at the time.
 
-Concretely: before closing out work on a repeated pattern, run something
-mechanical and exhaustive for it — an element-id grep, a function-name grep,
-a shared-CSS-class grep — the same way `npm run build:css` / `npm run lint`
-are default closing steps for CSS/JS changes, not something that only
-happens when explicitly asked "are there any other gaps?" See HANDOVER.md
-§7's "When a fix touches one instance of a repeated pattern" for the full
-writeup and more examples of sweep-candidate patterns in this codebase.
+## Multi-Tenant SaaS Platform Foundation (v7.17.0+)
+
+The application is evolved into a multi-tenant ready platform:
+- **Tenants & Events**: `organisations` (`org_default`) and `events` (`event_default`).
+- **Membership**: `organisation_members` table (kept in sync with `user_roles` via `trg_sync_organisation_members` trigger).
+- **Settings**: Composite primary key `(org_id, key)` for per-tenant configuration isolation.
+- **Normalised Booking Type**: `bookings.booking_type` (`food`, `general`, `misc`, `dev`) while retaining `instance_prefix` for booking ID generation and legacy compatibility.
+- **Security & RLS**: `check_user_role()` and SECURITY DEFINER RPCs query `organisation_members` with `user_roles` fallback; `get_current_org_id()` provides dynamic tenant resolution.
+
+## Verification Commands
+
+- `npm run test:integration` — Full node test runner suite (282 tests, includes `foundation.test.mjs` and `phase2-tenant-isolation.test.mjs`).
+- `npm run test:a11y` — Playwright public accessibility suite.
+- `npm run test:a11y:admin` — Playwright admin accessibility & focus-trap suite.
+- `npm run lint` — ESLint validation.
+- `npm run typecheck` — TypeScript check (`tsc -p jsconfig.json`).
+- `npm run check:innerhtml-escaping` — innerHTML safety guard.
+

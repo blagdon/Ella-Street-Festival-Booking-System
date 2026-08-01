@@ -8,8 +8,10 @@
 > including applying additive migrations to production), which require specific
 > verification first, and the short list that needs an explicit instruction every
 > time. Default to acting.
-> Last updated: 2026-07-25.
-> Current release: **v7.14.0** (SMS sending; prepared 2026-07-25). Adds a
+> Last updated: 2026-08-01.
+> Current release: **v7.17.0** (Multi-Tenant SaaS Platform Foundation & Tenant Isolation; prepared 2026-08-01). Evolves the architecture into a platform ready for multi-tenancy while remaining 100% backwards compatible.
+> Highlights: `organisations` (`org_default`) and `events` (`event_default`) root entities; `organisation_members` membership model with automated `trg_sync_organisation_members` trigger from `user_roles`; `org_id` and `event_id` columns across 9 domain tables + 13 indexes; composite `settings` primary key `(org_id, key)`; normalised `bookings.booking_type` (`food`, `general`, `misc`, `dev`) while retaining `instance_prefix`; SECURITY DEFINER RPC migration to `organisation_members`; and dynamic `get_current_org_id()` RLS tenant isolation.
+> v7.14.0 (SMS sending; prepared 2026-07-25). Adds a
 > text-message pipeline that deliberately mirrors the existing email queue
 > (`sms_queue`/`sms_templates`/`claim_pending_sms()` alongside their `email_*`
 > counterparts, `_shared/sms.ts` alongside `_shared/zoho.ts`) — see item 74.

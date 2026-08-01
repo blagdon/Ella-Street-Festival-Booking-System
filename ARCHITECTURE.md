@@ -1,8 +1,8 @@
 # Ella Street Festival — Booking System Architecture
 
 > **Audience:** Developers maintaining or extending this system.
-> **Reflects:** v7.11.0
-> **Last verified against the code:** 22 July 2026
+> **Reflects:** v7.17.0 (Multi-Tenant SaaS Platform Foundation & Tenant Awareness)
+> **Last verified against the code:** 01 August 2026
 
 > **Where this sits among the docs**
 > - **`ARCHITECTURE.md`** (this file) — the shape of the system: what exists, how the pieces fit, where to look.
@@ -164,28 +164,37 @@ Fills in booking form            ──►  Booking appears on the Kanban board
 
 ---
 
-## 4. Instances & Data Separation
+## 4. Multi-Tenancy, Events & Data Separation
 
-Multiple booking types live in one database, separated by an `instance_prefix` column on every booking.
+The platform supports multi-tenant deployment and multi-event festival management while maintaining full backwards compatibility:
 
-| Instance Key | Prefix | Description |
-|---|---|---|
-| `DEV` | `ESF26-DEV-` | Test/development data (always uses Stripe **Test** mode) |
-| `FOOD` | `ESF26-FOOD-` | Food stall applications |
-| `GENERAL` | `ESF26-NONFOOD-` | General/non-food trader applications |
-| `MISC` | `ESF26-MISC-` | Non-bookable facilities (barriers, first aid…) |
+### Tenant & Event Scoping
+- **`organisations`**: Top-level tenant entity (`id`, `name`, `slug`). Default single-tenant row: `org_default` ("Ella Street Festival").
+- **`events`**: Festival event instance (`id`, `org_id`, `name`, `slug`, `booking_prefix`). Default row: `event_default` ("Ella Street Festival 2026", `booking_prefix='ESF26'`).
+- **Domain Tables**: `org_id` and `event_id` columns (`NOT NULL DEFAULT 'org_default'` / `'event_default'`) exist on all domain tables (`bookings`, `locations`, `payments`, `email_templates`, `sms_templates`, `audit_logs`, `hcc_checks`, `email_queue`, `sms_queue`).
 
-The `ESF26` part is **not hardcoded** — it comes from the `booking_prefix` setting (falling back to `ESF26`), so the festival year can be rolled over without a code change.
+### Booking Type Normalisation
+Bookings are normalised with an explicit `booking_type` column (`food`, `general`, `misc`, `dev`), while retaining `instance_prefix` for booking ID generation and legacy compatibility:
 
-The active instance is stored in `localStorage` under `ESF_INSTANCE`; the nav header switches it and reloads.
+| Instance Key | Prefix | `booking_type` | Description |
+|---|---|---|---|
+| `DEV` | `ESF26-DEV-` | `dev` | Test/development data (always uses Stripe **Test** mode) |
+| `FOOD` | `ESF26-FOOD-` | `food` | Food stall applications |
+| `GENERAL` | `ESF26-NONFOOD-` | `general` | General/non-food trader applications |
+| `MISC` | `ESF26-MISC-` | `misc` | Non-bookable facilities (barriers, first aid…) |
 
-> **Key rule:** booking IDs are `{PREFIX}-{TYPE}-{NNNN}` (e.g. `ESF26-FOOD-0042`), enforced by `utils.js → validateBookingId()`. IDs are allocated server-side by the `get_next_booking_id` RPC, with retry-on-conflict in `submit-booking` — see that function's comments for why the lock alone isn't enough.
+The `ESF26` prefix comes from `events.booking_prefix` / `settings.booking_prefix`.
+The active instance is stored in `localStorage` under `ESF_INSTANCE`; `getCurrentOrgId()` and `getCurrentEventId()` in `js/config.js` resolve the active tenant/event context.
+
+> **Key rule:** booking IDs remain `{PREFIX}-{TYPE}-{NNNN}` (e.g. `ESF26-FOOD-0042`), allocated server-side by the `get_next_booking_id` RPC.
 
 ---
 
-## 5. Authentication & Roles
+## 5. Authentication, Roles & Membership
 
-Supabase Auth (email + password). Roles live in `user_roles`, typed by the `user_role` enum:
+Supabase Auth (email + password).
+- **`organisation_members`**: Primary tenant membership table (`org_id`, `user_id`, `role`).
+- **`user_roles`**: Legacy role table (`id`, `role`, `email`), kept automatically in sync with `organisation_members` via the `trg_sync_organisation_members` database trigger.
 
 | Role | Access |
 |---|---|
@@ -195,10 +204,10 @@ Supabase Auth (email + password). Roles live in `user_roles`, typed by the `user
 ### How auth works
 
 1. Admin pages load `js/page-*.js`, which calls `initAdminPage(callback)` from `supabase.js`.
-2. That calls `requireAuth(requiredRole = 'admin')`: checks the session, then reads `user_roles`.
-3. Access is granted if the user's role is `admin` **or** matches `requiredRole` — so an admin can also use steward pages, but not vice versa.
-4. Not logged in → redirected to `login.html` (or `steward_login.html` for steward pages).
-5. Wrong role → same page with `?error=unauthorized`.
+2. That calls `requireAuth(requiredRole = 'admin')`: checks the session, then verifies `organisation_members` / `user_roles`.
+3. `check_user_role(required_role)` evaluates `organisation_members` for the current tenant (`get_current_org_id()`), with a fallback to `user_roles` for backwards compatibility.
+4. Not logged in → redirected to `login.html` (or `steward_login.html`).
+5. Wrong role → redirected with `?error=unauthorized`.
 
 `requireAuth()` also loads the settings-driven config (`loadStallCosts`) before the page renders, which is why costs and stall types are available synchronously afterwards.
 
@@ -314,7 +323,10 @@ All under `supabase/functions/`. Shared helpers live in `_shared/`.
 
 | Table | Purpose |
 |---|---|
-| `bookings` | The main table — every application, separated by `instance_prefix` |
+| `organisations` | Tenant root table (`id`, `name`, `slug`) |
+| `events` | Festival event instance per organisation (`id`, `org_id`, `name`, `slug`, `booking_prefix`) |
+| `organisation_members` | Tenant membership (`org_id`, `user_id`, `role`) with auto-sync trigger from `user_roles` |
+| `bookings` | Main applications table — scoped by `org_id`, `event_id`, `booking_type` (`food`, `general`, `misc`, `dev`) and `instance_prefix` |
 | `payments` | Payment/refund state, one row per paid booking |
 | `booking_locations` | **Join table** mapping bookings → pitches (a booking may hold several) |
 | `locations` | Reference data for physical pitches |
@@ -322,8 +334,8 @@ All under `supabase/functions/`. Shared helpers live in `_shared/`.
 | `email_templates` | HTML templates, editable in the admin UI |
 | `audit_logs` | Admin action trail |
 | `hcc_checks` | Council food-safety check entries |
-| `user_roles` | Role per Supabase Auth user (`admin` / `steward`) |
-| `settings` | Key/value runtime configuration (§13) |
+| `user_roles` | Legacy role table (`id`, `role`, `email`), kept in sync with `organisation_members` |
+| `settings` | Key/value runtime configuration, composite primary key `(org_id, key)` (§13) |
 | `stripe_webhook_events` | Processed Stripe event ledger — the email-send idempotency boundary |
 | `google_reviews_cache` | Cached Google reviews lookups |
 | `performers`, `schedules` | **Owned by a separate application** — see below |
@@ -334,7 +346,7 @@ All under `supabase/functions/`. Shared helpers live in `_shared/`.
 
 ### `bookings` — selected columns
 
-`id` · `instance_prefix` · `status` · `business_name` · `registered_business_name` · `owner_name` · `email` · `phone` · `address` · `website` · `category` · `stall_type` · `description` · `other_requirements` · `docs_checklist` · `power_required` · `is_resident` · `is_charity` · `documents` · `cancel_token` · `stall_cost` · `admin_notes` · `rejection_reason` · `created_at` · `date_confirmed` · `stripe_checkout_session_id` · `stripe_payment_intent_id` · `stripe_payment_requested_at`
+`id` · `org_id` · `event_id` · `booking_type` · `instance_prefix` · `status` · `business_name` · `registered_business_name` · `owner_name` · `email` · `phone` · `address` · `website` · `category` · `stall_type` · `description` · `other_requirements` · `docs_checklist` · `power_required` · `is_resident` · `is_charity` · `documents` · `cancel_token` · `stall_cost` · `admin_notes` · `rejection_reason` · `created_at` · `date_confirmed` · `stripe_checkout_session_id` · `stripe_payment_intent_id` · `stripe_payment_requested_at`
 
 `website` is optional, free text (a URL or social-media handle), collected on the public Food/General forms and the admin "Add Misc" form. Rendered as a link only via `utils.js → sanitizeUrl()` — never trusted as a raw `href`, since it accepts arbitrary public input.
 
@@ -344,12 +356,13 @@ All under `supabase/functions/`. Shared helpers live in `_shared/`.
 
 `Pending` · `Payment Requested` · `Confirmed` · `Rejected` · `Cancelled` · `HCC Checks`
 
-> `On Hold` no longer exists — it was removed by migration. `Payment Requested` was added with Stripe.
-
 ### Key RPCs
 
 | RPC | Purpose |
 |---|---|
+| `get_current_org_id` | Resolves tenant `org_id` from JWT claim or `organisation_members` |
+| `get_current_event_id` | Resolves event `event_id` |
+| `check_user_role` | Evaluates user role against `organisation_members` (fallback `user_roles`) |
 | `get_next_booking_id` | Allocates the next sequential booking ID |
 | `rpc_get_next_misc_id` | Same, for misc facilities |
 | `finalize_stripe_payment` | Atomic status change + payments upsert on successful payment |
