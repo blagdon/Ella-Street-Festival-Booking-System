@@ -1,5 +1,6 @@
 // @ts-check
 import { getSupabaseClient } from './supabase.js';
+import { getCurrentOrgId } from './config.js';
 import { escapeHtml } from './utils.js';
 import { showToast } from './ui.js';
 import { retryQueuedSms, checkSmsDelivery } from './api.js';
@@ -69,11 +70,12 @@ async function loadCounts() {
     if (!totalEl || !sentEl || !errorEl) return;
 
     try {
+        const orgId = getCurrentOrgId();
         const [total, sent, errored, simulated] = await Promise.all([
-            sb.from('sms_queue').select('*', { count: 'exact', head: true }),
-            sb.from('sms_queue').select('*', { count: 'exact', head: true }).eq('status', 'Sent'),
-            sb.from('sms_queue').select('*', { count: 'exact', head: true }).eq('status', 'Error'),
-            sb.from('sms_queue').select('*', { count: 'exact', head: true })
+            sb.from('sms_queue').select('*', { count: 'exact', head: true }).eq('org_id', orgId),
+            sb.from('sms_queue').select('*', { count: 'exact', head: true }).eq('org_id', orgId).eq('status', 'Sent'),
+            sb.from('sms_queue').select('*', { count: 'exact', head: true }).eq('org_id', orgId).eq('status', 'Error'),
+            sb.from('sms_queue').select('*', { count: 'exact', head: true }).eq('org_id', orgId)
                 .eq('status', 'Sent').like('provider_message_id', 'mock-%'),
         ]);
         if (total.error) throw total.error;
@@ -121,7 +123,7 @@ async function loadPage(reset) {
     const statusFilter = (/** @type {HTMLSelectElement} */ (document.getElementById('sms-statusFilter'))).value;
 
     try {
-        let query = sb.from('sms_queue').select('*').order('id', { ascending: false });
+        let query = sb.from('sms_queue').select('*').eq('org_id', getCurrentOrgId()).order('id', { ascending: false });
 
         if (term) {
             query = query.or(`recipient.ilike.%${term}%,body.ilike.%${term}%,error_message.ilike.%${term}%,instance_prefix.ilike.%${term}%`);

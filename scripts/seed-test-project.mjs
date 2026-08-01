@@ -99,6 +99,8 @@ async function ensureSettings() {
     { org_id: 'org_default', key: 'bank_account_name', value: 'Ella Street Festival' },
     { org_id: 'org_default', key: 'bank_sort_code', value: '12-34-56' },
     { org_id: 'org_default', key: 'bank_account_number', value: '12345678' },
+    { org_id: 'org_default', key: 'sms_provider', value: 'mock' },
+    { org_id: 'org_default', key: 'sms_test_mode', value: 'true' },
   ];
 
   const testStripeKey = process.env.TEST_STRIPE_SECRET_KEY;

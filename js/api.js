@@ -1,6 +1,6 @@
 // @ts-check
 import { getSupabaseClient } from './supabase.js';
-import { CONFIG } from './config.js';
+import { CONFIG, getCurrentOrgId, getCurrentEventId } from './config.js';
 import { validateString, validateEmail, validateBookingId, validateStatus, parseEdgeFunctionError, MAX_FIELD_LENGTHS } from './utils.js';
 import { auditLog } from './audit.js';
 
@@ -717,10 +717,14 @@ export async function updateLocation(id, locationIds) {
  * page has no way to show money that went back out.
  * @returns {Promise<Array>}
  */
-export async function fetchStatsData() {
+export async function fetchStatsData(orgId = getCurrentOrgId(), eventId = getCurrentEventId()) {
     const sb = getSupabaseClient();
     return await fetchCapped(
-        sb.from(TBL_BOOKINGS).select('*, payments(refund_amount)').order('created_at', { ascending: false }),
+        sb.from(TBL_BOOKINGS)
+          .select('*, payments(refund_amount)')
+          .eq('org_id', orgId)
+          .eq('event_id', eventId)
+          .order('created_at', { ascending: false }),
         STATS_CAP
     );
 }
@@ -735,14 +739,16 @@ export async function fetchStatsData() {
  * @param {string} todaySinceIso - ISO timestamp for the start of "today" in
  *   the admin's own local time (computed client-side - the server has no
  *   reliable notion of which timezone "today" should mean for this app).
+ * @param {string} [orgId]
+ * @param {string} [eventId]
  */
-export async function fetchHubSummary(todaySinceIso) {
+export async function fetchHubSummary(todaySinceIso, orgId = getCurrentOrgId(), eventId = getCurrentEventId()) {
     const sb = getSupabaseClient();
     const [newToday, paymentRequested, emailErrors, smsErrors] = await Promise.all([
-        sb.from(TBL_BOOKINGS).select('*', { count: 'exact', head: true }).gte('created_at', todaySinceIso),
-        sb.from(TBL_BOOKINGS).select('*', { count: 'exact', head: true }).eq('status', 'Payment Requested'),
-        sb.from(TBL_EMAIL_QUEUE).select('*', { count: 'exact', head: true }).eq('status', 'Error'),
-        sb.from(TBL_SMS_QUEUE).select('*', { count: 'exact', head: true }).eq('status', 'Error'),
+        sb.from(TBL_BOOKINGS).select('*', { count: 'exact', head: true }).eq('org_id', orgId).eq('event_id', eventId).gte('created_at', todaySinceIso),
+        sb.from(TBL_BOOKINGS).select('*', { count: 'exact', head: true }).eq('org_id', orgId).eq('event_id', eventId).eq('status', 'Payment Requested'),
+        sb.from(TBL_EMAIL_QUEUE).select('*', { count: 'exact', head: true }).eq('org_id', orgId).eq('status', 'Error'),
+        sb.from(TBL_SMS_QUEUE).select('*', { count: 'exact', head: true }).eq('org_id', orgId).eq('status', 'Error'),
     ]);
     if (newToday.error) throw newToday.error;
     if (paymentRequested.error) throw paymentRequested.error;

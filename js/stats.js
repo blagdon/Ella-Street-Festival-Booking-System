@@ -70,13 +70,16 @@ export async function loadGlobalStats() {
         const allRows = await fetchStatsData();
         notifyIfTruncated(allRows, STATS_CAP, 'bookings — charts and totals only reflect these');
 
-        // 2. Segment Data
-        const foodData = allRows.filter(r => r.instance_prefix === PREFIX_FOOD);
-        const nonFoodData = allRows.filter(r => r.instance_prefix === PREFIX_NONFOOD);
+        // 2. Segment Data (normalised booking_type with instance_prefix fallback)
+        const foodData = allRows.filter(r => r.booking_type === 'food' || r.instance_prefix === PREFIX_FOOD);
+        const nonFoodData = allRows.filter(r => r.booking_type === 'general' || r.instance_prefix === PREFIX_NONFOOD);
         const combinedData = [...foodData, ...nonFoodData];
 
-        // Attractions / Others
+        // Attractions / Others (misc)
         const otherData = allRows.filter(r =>
+            r.booking_type !== 'food' &&
+            r.booking_type !== 'general' &&
+            r.booking_type !== 'dev' &&
             r.instance_prefix !== PREFIX_FOOD &&
             r.instance_prefix !== PREFIX_NONFOOD &&
             r.instance_prefix !== PREFIX_DEV

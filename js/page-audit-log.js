@@ -1,5 +1,6 @@
 // @ts-check
 import { initAdminPage, getSupabaseClient } from './supabase.js';
+import { getCurrentOrgId } from './config.js';
 import { escapeHtml } from './utils.js';
 import { showToast } from './ui.js';
 
@@ -112,7 +113,7 @@ async function loadPage(reset) {
     const actionFilter = (/** @type {HTMLSelectElement} */ (document.getElementById('actionFilter'))).value;
 
     try {
-        let query = sb.from('audit_logs').select('*').order('id', { ascending: false });
+        let query = sb.from('audit_logs').select('*').eq('org_id', getCurrentOrgId()).order('id', { ascending: false });
 
         if (term) {
             query = query.or(`target_id.ilike.%${term}%,user_email.ilike.%${term}%,action.ilike.%${term}%,details.ilike.%${term}%`);

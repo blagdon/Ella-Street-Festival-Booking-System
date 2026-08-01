@@ -1,5 +1,6 @@
 // @ts-check
 import { getSupabaseClient } from './supabase.js';
+import { getCurrentOrgId, getCurrentEventId } from './config.js';
 
 const TBL_AUDIT_LOGS = 'audit_logs';
 
@@ -8,8 +9,10 @@ const TBL_AUDIT_LOGS = 'audit_logs';
  * @param {string} action
  * @param {string} targetId
  * @param {object} details
+ * @param {string} [orgId]
+ * @param {string} [eventId]
  */
-export async function auditLog(action, targetId, details = {}) {
+export async function auditLog(action, targetId, details = {}, orgId = getCurrentOrgId(), eventId = getCurrentEventId()) {
     try {
         const sb = getSupabaseClient();
         const { data: { session } } = await sb.auth.getSession();
@@ -23,7 +26,9 @@ export async function auditLog(action, targetId, details = {}) {
             target_id: targetId || null,
             user_email: userEmail,
             details: details,
-            instance: currentInstance
+            instance: currentInstance,
+            org_id: orgId,
+            event_id: eventId
         });
     } catch (e) {
         console.warn('Audit log failed:', e.message);

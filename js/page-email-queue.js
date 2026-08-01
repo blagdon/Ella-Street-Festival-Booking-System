@@ -1,5 +1,6 @@
 // @ts-check
 import { getSupabaseClient } from './supabase.js';
+import { getCurrentOrgId } from './config.js';
 import { escapeHtml } from './utils.js';
 import { showToast } from './ui.js';
 import { retryQueuedEmail } from './api.js';
@@ -65,7 +66,7 @@ async function loadPage(reset) {
     const statusFilter = (/** @type {HTMLSelectElement} */ (document.getElementById('email-statusFilter'))).value;
 
     try {
-        let query = sb.from('email_queue').select('*').order('id', { ascending: false });
+        let query = sb.from('email_queue').select('*').eq('org_id', getCurrentOrgId()).order('id', { ascending: false });
 
         if (term) {
             query = query.or(`recipient.ilike.%${term}%,subject.ilike.%${term}%,error_message.ilike.%${term}%,instance_prefix.ilike.%${term}%`);

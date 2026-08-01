@@ -44,10 +44,12 @@ before(async () => {
 
   await service.from('email_templates').update({ subject: 'Role enum test baseline' }).eq('id', 'application_received');
   await service.from('bookings').delete().like('id', `${PREFIX}%`);
+  await service.from('settings').delete().in('key', ['role_enum_test_key', 'role_enum_test_key_steward']);
 });
 
 after(async () => {
   await service.from('bookings').delete().like('id', `${PREFIX}%`);
+  await service.from('settings').delete().in('key', ['role_enum_test_key', 'role_enum_test_key_steward']);
   await service.from('user_roles').update({ role: 'admin' }).eq('id', adminUserId);
 });
 
