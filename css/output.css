@@ -2658,6 +2658,9 @@
     .lg\:hidden {
       display: none;
     }
+    .lg\:inline-flex {
+      display: inline-flex;
+    }
     .lg\:w-1\/4 {
       width: calc(1 / 4 * 100%);
     }
