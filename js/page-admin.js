@@ -623,20 +623,23 @@ async function submitAddMember() {
         return;
     }
 
-    const fakeUserId = `usr_${Date.now()}`;
+    const memberUserId = typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : '00000000-0000-4000-8000-' + String(Date.now()).padStart(12, '0');
 
     try {
         const { error } = await sb.from('user_roles').upsert({
-            id: fakeUserId,
+            id: memberUserId,
             email,
             role
         }, { onConflict: 'id' });
 
         if (error) throw error;
 
-        await auditLog('add_member', 'user_roles', { org_id: ctx.orgId, email, role });
+        await auditLog('add_member', 'user_roles', { org_id: ctx.orgId, email, role, user_id: memberUserId });
         notify(`Member ${email} added as ${role}!`, 'success');
         document.getElementById('dialogAddMember')?.classList.add('hidden');
+        await loadWorkspaceData();
         renderActiveSection();
     } catch (err) {
         notify(`Failed to add member: ${err.message}`, 'error');
@@ -667,6 +670,7 @@ function openChangeRoleDialog(userId, currentRole) {
             await auditLog('change_member_role', 'user_roles', { org_id: ctx.orgId, target_user: userId, new_role: newRole });
             notify(`Role changed to ${newRole}!`, 'success');
             document.getElementById('dialogChangeRole')?.classList.add('hidden');
+            await loadWorkspaceData();
             renderActiveSection();
         } catch (err) {
             notify(`Failed to change role: ${err.message}`, 'error');
@@ -686,6 +690,7 @@ async function removeMember(userId) {
 
         await auditLog('remove_member', 'user_roles', { org_id: ctx.orgId, target_user: userId });
         notify('Member removed successfully.', 'success');
+        await loadWorkspaceData();
         renderActiveSection();
     } catch (err) {
         notify(`Failed to remove member: ${err.message}`, 'error');
