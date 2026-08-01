@@ -94,31 +94,26 @@ export const CONFIG = {
  * Phase 2: derived from the authenticated user's JWT claims or an
  *           organisation_members lookup, allowing the same codebase
  *           to serve multiple tenant organisations.
- *
- * Use this constant wherever org_id is written to the database or passed
- * to an Edge Function, rather than the literal string 'org_default'.
- * This makes the Phase 2 migration a single-file change rather than a
- * grep-and-replace across the whole codebase.
- *
- * NOTE: This constant has no interaction with getCurrentInstance() or
- * INSTANCE_MAP. Those handle booking-type separation (FOOD/GENERAL/MISC/DEV)
- * via instance_prefix and remain the active mechanism throughout Phase 1.
- * The instance_prefix → event_id migration is Phase 2.
  */
-export const CURRENT_ORG_ID = 'org_default';
+export function getCurrentOrgId() {
+    return (typeof localStorage !== 'undefined' && localStorage.getItem('ESF_ORG_ID'))
+        ? localStorage.getItem('ESF_ORG_ID')
+        : 'org_default';
+}
 
 /**
  * The ID of the active event for this deployment.
  *
  * Phase 1: always 'event_default' — there is only one event.
- * Phase 2: derived from the user's active event selection (localStorage
- *           or JWT claims), enabling multi-year and multi-festival support.
- *
- * NOTE: This is the events.id FK value, not the instance_prefix string.
- * It does NOT replace getCurrentInstance() or INSTANCE_MAP in Phase 1.
- * See implementation_plan.md §3.1 for the full instance_prefix surface audit
- * and the Phase 2 migration plan.
+ * Phase 2: derived from active event selection in localStorage.
  */
+export function getCurrentEventId() {
+    return (typeof localStorage !== 'undefined' && localStorage.getItem('ESF_EVENT_ID'))
+        ? localStorage.getItem('ESF_EVENT_ID')
+        : 'event_default';
+}
+
+export const CURRENT_ORG_ID = 'org_default';
 export const CURRENT_EVENT_ID = 'event_default';
 
 /**
