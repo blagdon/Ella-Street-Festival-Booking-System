@@ -8,11 +8,8 @@
 > including applying additive migrations to production), which require specific
 > verification first, and the short list that needs an explicit instruction every
 > time. Default to acting.
-> Last updated: 2026-07-25.
-> Current release: **v7.14.0** (SMS sending; prepared 2026-07-25). Adds a
-> text-message pipeline that deliberately mirrors the existing email queue
-> (`sms_queue`/`sms_templates`/`claim_pending_sms()` alongside their `email_*`
-> counterparts, `_shared/sms.ts` alongside `_shared/zoho.ts`) — see item 74.
+> Last updated: 2026-08-01.
+> Current release: **v7.18.0** (Epic 1 Multi-Tenant Platform Foundation; prepared 2026-08-01). Adds first-class Platform Context module (`getPlatformContext()` / `resolvePlatformContext()`), multi-tenant database groundwork (`organisations`, `events`, `organisation_members`), statistics normalisation (`booking_type`), queue partitioning (`org_id`, `event_id`), audit logging scoping, and active tenant header UI indicator.
 > **It ships inert**: the seeded `sms_provider` setting is `mock`, a no-op
 > adapter that logs instead of sending, so nothing is texted or billed until
 > someone deliberately configures a real provider from the Settings page. That

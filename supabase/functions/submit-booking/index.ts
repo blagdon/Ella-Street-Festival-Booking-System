@@ -79,8 +79,12 @@ function sanitizeBookingInput(raw: Record<string, any>, bookingPrefix: string): 
     throw new PublicError('Invalid stall_type.')
   }
 
+  const bookingType = instancePrefix.includes('FOOD') ? 'food' : 'general'
   return {
     instance_prefix: instancePrefix,
+    booking_type: bookingType,
+    org_id: 'org_default',
+    event_id: 'event_default',
     stall_type: stallType,
     business_name: sanitizeString(raw.business_name, MAX_FIELD_LENGTHS.business_name),
     registered_business_name: sanitizeString(raw.registered_business_name, MAX_FIELD_LENGTHS.registered_business_name),

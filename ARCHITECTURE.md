@@ -1,8 +1,8 @@
 # Ella Street Festival — Booking System Architecture
 
 > **Audience:** Developers maintaining or extending this system.
-> **Reflects:** v7.11.0
-> **Last verified against the code:** 22 July 2026
+> **Reflects:** v7.18.0
+> **Last verified against the code:** 1 August 2026
 
 > **Where this sits among the docs**
 > - **`ARCHITECTURE.md`** (this file) — the shape of the system: what exists, how the pieces fit, where to look.
