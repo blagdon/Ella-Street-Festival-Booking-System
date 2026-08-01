@@ -3,7 +3,7 @@
  * nav.js
  * Handles dynamic injection of the Admin Header and Mobile Menu.
  */
-import { getCurrentInstance, CONFIG } from './config.js';
+import { getPlatformContext, getCurrentInstance, CONFIG } from './config.js';
 import { signOut } from './supabase.js';
 import { escapeHtml } from './utils.js';
 
@@ -12,6 +12,7 @@ export function initNavigation() {
     if (!container) return;
 
     const current = getCurrentInstance();
+    const ctx = getPlatformContext();
 
     // Helper to get badge style
     const getBadgeStyle = (val) => {
@@ -53,6 +54,9 @@ export function initNavigation() {
                     </h1>
                 </a>
                 <span id="instanceBadge" class="text-xs font-bold px-2 py-1 rounded ml-2 border shrink-0 ${getBadgeStyle(current)}">${current}</span>
+                <span id="tenantBadge" class="hidden lg:inline-flex items-center text-xs font-semibold px-2 py-0.5 rounded bg-blue-50 text-blue-800 border border-blue-200 ml-2" title="Organisation / Event Context">
+                    ${escapeHtml(ctx.orgId)} | ${escapeHtml(ctx.eventId)}
+                </span>
             </div>
             
             <!-- Desktop Controls -->
