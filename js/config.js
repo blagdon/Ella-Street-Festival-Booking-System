@@ -83,6 +83,39 @@ export const CONFIG = {
     }
 };
 
+// ===================================================================
+// === PLATFORM FOUNDATION — Phase 1 constants ===
+// ===================================================================
+
+/**
+ * The ID of the organisation that owns this deployment.
+ *
+ * Phase 1: always 'org_default' — there is only one organisation.
+ * Phase 2: derived from the authenticated user's JWT claims or an
+ *           organisation_members lookup, allowing the same codebase
+ *           to serve multiple tenant organisations.
+ */
+export function getCurrentOrgId() {
+    return (typeof localStorage !== 'undefined' && localStorage.getItem('ESF_ORG_ID'))
+        ? localStorage.getItem('ESF_ORG_ID')
+        : 'org_default';
+}
+
+/**
+ * The ID of the active event for this deployment.
+ *
+ * Phase 1: always 'event_default' — there is only one event.
+ * Phase 2: derived from active event selection in localStorage.
+ */
+export function getCurrentEventId() {
+    return (typeof localStorage !== 'undefined' && localStorage.getItem('ESF_EVENT_ID'))
+        ? localStorage.getItem('ESF_EVENT_ID')
+        : 'event_default';
+}
+
+export const CURRENT_ORG_ID = 'org_default';
+export const CURRENT_EVENT_ID = 'event_default';
+
 /**
  * Get the current instance from localStorage or default to DEV.
  */

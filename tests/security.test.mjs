@@ -103,12 +103,12 @@ before(async () => {
   });
   if (emailQueueInsertErr) throw new Error(`Fixture setup failed (email_queue): ${emailQueueInsertErr.message}`);
 
-  const { data: savedRows, error: savedErr } = await service.from('settings').select('key, value').in('key', bookingOpenKeys);
+  const { data: savedRows, error: savedErr } = await service.from('settings').select('org_id, key, value').in('key', bookingOpenKeys);
   if (savedErr) throw new Error(`Fixture setup failed (settings read): ${savedErr.message}`);
   savedBookingOpenRows = savedRows;
   const { error: settingsErr } = await service.from('settings').upsert(
-    bookingOpenKeys.map((key) => ({ key, value: 'true' })),
-    { onConflict: 'key' },
+    bookingOpenKeys.map((key) => ({ org_id: 'org_default', key, value: 'true' })),
+    { onConflict: 'org_id,key' },
   );
   if (settingsErr) throw new Error(`Fixture setup failed (settings): ${settingsErr.message}`);
 });
@@ -125,7 +125,7 @@ after(async () => {
     const savedKeys = savedBookingOpenRows.map((r) => r.key);
     const unsavedKeys = bookingOpenKeys.filter((k) => !savedKeys.includes(k));
     if (unsavedKeys.length) await service.from('settings').delete().in('key', unsavedKeys);
-    if (savedKeys.length) await service.from('settings').upsert(savedBookingOpenRows, { onConflict: 'key' });
+    if (savedKeys.length) await service.from('settings').upsert(savedBookingOpenRows, { onConflict: 'org_id,key' });
   }
 });
 
