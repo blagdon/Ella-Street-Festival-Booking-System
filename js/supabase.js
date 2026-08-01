@@ -79,14 +79,26 @@ export async function requireAuth(requiredRole = 'admin') {
             throw new Error('Not authenticated');
         }
 
-        // Fetch User Role
+        // Fetch User Role (checks user_roles first, falls back to organisation_members)
+        let userRole = null;
         const { data: roleData } = await sb
             .from('user_roles')
             .select('role')
             .eq('id', session.user.id)
-            .single();
+            .maybeSingle();
 
-        const userRole = (roleData && roleData.role) ? roleData.role : null;
+        if (roleData && roleData.role) {
+            userRole = roleData.role;
+        } else {
+            const { data: memberData } = await sb
+                .from('organisation_members')
+                .select('role')
+                .eq('user_id', session.user.id)
+                .maybeSingle();
+            if (memberData && memberData.role) {
+                userRole = memberData.role;
+            }
+        }
 
         // Authorization logic
         if (userRole === 'admin' || userRole === requiredRole) {
