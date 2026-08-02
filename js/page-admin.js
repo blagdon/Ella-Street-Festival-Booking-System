@@ -5,7 +5,7 @@
  * Manages section view switching (Organisation, Events, Members, Branding, Settings, Audit).
  */
 import { initAdminPage, getSupabaseClient } from './supabase.js';
-import { getPlatformContext, CONFIG } from './config.js';
+import { getPlatformContext, setCurrentOrgId, CONFIG } from './config.js';
 import { escapeHtml } from './utils.js';
 import { renderAdminSidebar } from './platform/navigation.js';
 import { renderPageHeader } from './platform/layout.js';
@@ -26,7 +26,30 @@ initAdminPage(initAdminWorkspace);
 async function initAdminWorkspace() {
     renderSidebar();
     await loadWorkspaceData();
+    setupBannerControls();
     renderActiveSection();
+}
+
+function setupBannerControls() {
+    const ctx = getPlatformContext();
+    const labelEl = document.getElementById('orgSlugLabel');
+    if (labelEl && orgData) {
+        labelEl.textContent = orgData.name || ctx.orgId;
+    }
+
+    const btnSwitchDefault = document.getElementById('btnSwitchPrimaryOrg');
+    if (btnSwitchDefault) {
+        if (ctx.orgId !== 'org_default') {
+            btnSwitchDefault.classList.remove('hidden');
+            btnSwitchDefault.classList.add('inline-flex');
+            btnSwitchDefault.addEventListener('click', () => {
+                setCurrentOrgId('org_default');
+                window.location.reload();
+            });
+        } else {
+            btnSwitchDefault.classList.add('hidden');
+        }
+    }
 }
 
 function renderSidebar() {
