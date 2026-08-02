@@ -5,10 +5,28 @@ import { ESF_PUBLIC_CONFIG } from '../supabase-public.js';
  * Central configuration constants for the application.
  */
 
+/**
+ * Resolves the active event's booking prefix from localStorage or configuration fallback.
+ */
+export function getActiveBookingPrefix() {
+    if (typeof localStorage !== 'undefined') {
+        try {
+            const cached = localStorage.getItem('ESF_ACTIVE_EVENT');
+            if (cached) {
+                const parsed = JSON.parse(cached);
+                if (parsed && parsed.booking_prefix) return parsed.booking_prefix;
+            }
+        } catch (e) {
+            // fallback to default
+        }
+    }
+    return ESF_PUBLIC_CONFIG?.BOOKING_PREFIX || "ESF26";
+}
+
 export const CONFIG = {
     // Database Prefixes (Strictly enforces data separation)
     get INSTANCE_MAP() {
-        const prefix = ESF_PUBLIC_CONFIG?.BOOKING_PREFIX || "ESF26";
+        const prefix = getActiveBookingPrefix();
         return {
             'DEV': `${prefix}-DEV-`,
             'FOOD': `${prefix}-FOOD-`,
