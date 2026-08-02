@@ -15,6 +15,7 @@ import { renderDataTable, renderStatusBadge } from './platform/tables.js';
 import { openDialog } from './platform/dialogs.js';
 import { notify } from './platform/notifications.js';
 import { auditLog } from './audit.js';
+import { renderProvisioningSection } from './page-provisioning.js';
 
 let activeSection = 'dashboard';
 let orgData = /** @type {Record<string, any>|null} */ (null);
@@ -105,6 +106,9 @@ function renderActiveSection() {
             break;
         case 'members':
             renderMembersSection(contentEl);
+            break;
+        case 'provisioning':
+            renderProvisioningSection(contentEl);
             break;
         case 'branding':
             renderBrandingSection(contentEl);
@@ -299,7 +303,7 @@ function renderEventsSection(container) {
         { key: 'name', label: 'Event Name' },
         { key: 'booking_prefix', label: 'Booking Prefix' },
         { key: 'slug', label: 'Slug' },
-        { key: 'is_active', label: 'Status' },
+        { key: 'status', label: 'Lifecycle State' },
         { key: 'actions', label: 'Actions' }
     ];
 
@@ -311,14 +315,31 @@ function renderEventsSection(container) {
             if (colKey === 'name') {
                 return `<div><div class="font-bold text-gray-900">${escapeHtml(row.name)}</div><div class="text-xs text-gray-400">ID: ${escapeHtml(row.id)}</div></div>`;
             }
-            if (colKey === 'is_active') {
-                return renderStatusBadge(row.is_active ? 'Active' : 'Archived', row.is_active ? 'active' : 'inactive');
+            if (colKey === 'status') {
+                const st = row.status || (row.is_active ? 'open' : 'archived');
+                const badgeType = st === 'open' ? 'active' : st === 'draft' ? 'warning' : 'inactive';
+                return renderStatusBadge(st.toUpperCase(), badgeType);
             }
             if (colKey === 'actions') {
+                const currentStatus = row.status || (row.is_active ? 'open' : 'archived');
+                let toggleAction = 'Publish / Open';
+                let nextStatus = 'open';
+
+                if (currentStatus === 'open') {
+                    toggleAction = 'Close Applications';
+                    nextStatus = 'closed';
+                } else if (currentStatus === 'closed') {
+                    toggleAction = 'Archive Event';
+                    nextStatus = 'archived';
+                } else if (currentStatus === 'archived') {
+                    toggleAction = 'Re-open Event';
+                    nextStatus = 'open';
+                }
+
                 return `
                 <button data-event-id="${escapeHtml(row.id)}" class="btn-edit-event text-xs font-semibold text-blue-600 hover:text-blue-800 mr-3">Edit</button>
-                <button data-event-id="${escapeHtml(row.id)}" class="btn-toggle-event text-xs font-semibold ${row.is_active ? 'text-amber-600 hover:text-amber-800' : 'text-emerald-600 hover:text-emerald-800'}">
-                    ${row.is_active ? 'Archive' : 'Activate'}
+                <button data-event-id="${escapeHtml(row.id)}" data-next-status="${nextStatus}" class="btn-toggle-event text-xs font-semibold text-emerald-600 hover:text-emerald-800">
+                    ${toggleAction}
                 </button>`;
             }
             return escapeHtml(String(row[colKey] ?? ''));
@@ -347,8 +368,9 @@ function renderEventsSection(container) {
     container.querySelectorAll('.btn-toggle-event').forEach(btn => {
         btn.addEventListener('click', async (e) => {
             const evtId = (/** @type {HTMLElement} */ (e.currentTarget)).getAttribute('data-event-id');
+            const nextStatus = (/** @type {HTMLElement} */ (e.currentTarget)).getAttribute('data-next-status') || 'open';
             const evt = eventsList.find(x => x.id === evtId);
-            if (evt) await toggleEventStatus(evt);
+            if (evt) await toggleEventStatus(evt, nextStatus);
         });
     });
 }
@@ -470,19 +492,20 @@ async function submitEditEvent(eventId) {
     }
 }
 
-async function toggleEventStatus(evt) {
+async function toggleEventStatus(evt, targetStatus = 'open') {
     const sb = getSupabaseClient();
-    const newActiveState = !evt.is_active;
+    const isNowActive = targetStatus === 'open' || targetStatus === 'ready';
 
     try {
         const { error } = await sb.from('events').update({
-            is_active: newActiveState
+            status: targetStatus,
+            is_active: isNowActive
         }).eq('id', evt.id);
 
         if (error) throw error;
 
-        await auditLog(newActiveState ? 'activate_event' : 'archive_event', 'events', { event_id: evt.id });
-        notify(`Event ${newActiveState ? 'activated' : 'archived'} successfully!`, 'success');
+        await auditLog('update_event_status', 'events', { event_id: evt.id, status: targetStatus });
+        notify(`Event lifecycle state set to '${targetStatus.toUpperCase()}'!`, 'success');
         await loadWorkspaceData();
         renderActiveSection();
     } catch (err) {
