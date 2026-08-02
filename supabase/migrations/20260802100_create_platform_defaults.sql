@@ -60,16 +60,16 @@ INSERT INTO "public"."platform_defaults_settings" (key, value, category) VALUES
 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, category = EXCLUDED.category;
 
 INSERT INTO "public"."platform_defaults_email_templates" (id, subject, body_html, description) VALUES
-    ('application_received', 'Application Received - {{business_name}}', '<h1>Application Received</h1><p>Thank you for submitting your booking application for {{business_name}}.</p>', 'Sent automatically upon booking submission'),
-    ('confirmed_chargeable', 'Booking Confirmed - {{business_name}}', '<h1>Booking Confirmed</h1><p>Your booking {{booking_id}} has been approved.</p>', 'Sent when booking status is updated to Confirmed'),
-    ('payment_requested', 'Payment Requested - {{booking_id}}', '<h1>Payment Requested</h1><p>Please complete payment using the link below:</p><p><a href="{{payment_url}}">Pay Now</a></p>', 'Sent when payment link is generated'),
-    ('cancellation_confirmed', 'Booking Cancelled - {{booking_id}}', '<h1>Booking Cancelled</h1><p>Your booking {{booking_id}} has been cancelled.</p>', 'Sent when booking is cancelled')
+    ('application_received', 'Application Received (Ref: {{booking_id}})', 'Dear {{owner_name}}, thanks for applying with {{business_name}}. Ref: {{booking_id}}. Cancel: {{cancel_link}}', 'Sent automatically upon booking submission'),
+    ('confirmed_chargeable', 'Booking Confirmed (Ref: {{booking_id}})', 'Dear {{owner_name}}, your booking {{booking_id}} for {{business_name}} is confirmed. Cost: {{cost}}. Bank details: {{bank_details}}. Cancel: {{cancel_link}}', 'Sent when booking status is updated to Confirmed'),
+    ('payment_requested', 'Payment required (Ref: {{booking_id}})', 'Dear {{owner_name}}, please pay {{cost}} for {{business_name}} ({{booking_id}}) using this link: {{payment_link}}. Or pay by bank transfer - Account Name: {{bank_account_name}}, Sort Code: {{bank_sort_code}}, Account Number: {{bank_account_number}}, Payment Reference: {{payment_reference}}. Your booking will not be confirmed until payment has been received and verified by an administrator. Cancel: {{cancel_link}}', 'Sent when payment link is generated'),
+    ('cancellation_confirmed', 'Cancellation Confirmed (Ref: {{booking_id}})', 'Dear {{owner_name}}, your booking {{booking_id}} for {{business_name}} has been cancelled.', 'Sent when booking is cancelled')
 ON CONFLICT (id) DO UPDATE SET subject = EXCLUDED.subject, body_html = EXCLUDED.body_html, description = EXCLUDED.description;
 
 INSERT INTO "public"."platform_defaults_sms_templates" (id, body, description) VALUES
-    ('booking_received', 'Thanks for your application to {{event_name}}! Ref: {{booking_id}}', 'Sent when booking application is submitted'),
-    ('payment_requested', 'Payment requested for {{event_name}} (Ref: {{booking_id}}). Link: {{payment_url}}', 'Sent when payment link is generated'),
-    ('cancellation_confirmed', 'Your booking {{booking_id}} for {{event_name}} has been cancelled.', 'Sent when booking is cancelled')
+    ('booking_received', 'Dear {{owner_name}}, thanks for applying with {{business_name}}. Ref: {{booking_id}}. Cancel: {{cancel_link}}', 'Sent when booking application is submitted'),
+    ('payment_requested', 'Dear {{owner_name}}, please pay {{cost}} for {{business_name}} (Ref: {{booking_id}}). Link: {{payment_link}}', 'Sent when payment link is generated'),
+    ('cancellation_confirmed', 'Dear {{owner_name}}, your booking {{booking_id}} for {{business_name}} has been cancelled.', 'Sent when booking is cancelled')
 ON CONFLICT (id) DO UPDATE SET body = EXCLUDED.body, description = EXCLUDED.description;
 
 -- 6. RPC: Initialise Tenant Defaults
@@ -95,25 +95,25 @@ BEGIN
         RAISE EXCEPTION 'Organisation ID is required';
     END IF;
 
-    -- Clone settings from platform_defaults_settings
+    -- Clone settings from platform_defaults_settings (DO NOTHING on conflict)
     INSERT INTO public.settings (org_id, key, value, updated_at, updated_by)
     SELECT p_org_id, key, value, now(), 'system_provisioner'
     FROM public.platform_defaults_settings
-    ON CONFLICT (org_id, key) DO UPDATE SET value = EXCLUDED.value, updated_at = now();
+    ON CONFLICT (org_id, key) DO NOTHING;
     GET DIAGNOSTICS v_setting_count = ROW_COUNT;
 
-    -- Clone email templates
+    -- Clone email templates (DO NOTHING on conflict)
     INSERT INTO public.email_templates (org_id, id, subject, body_html, description, updated_at)
     SELECT p_org_id, id, subject, body_html, description, now()
     FROM public.platform_defaults_email_templates
-    ON CONFLICT (id) DO UPDATE SET subject = EXCLUDED.subject, body_html = EXCLUDED.body_html, description = EXCLUDED.description, updated_at = now();
+    ON CONFLICT (id) DO NOTHING;
     GET DIAGNOSTICS v_email_count = ROW_COUNT;
 
-    -- Clone SMS templates
+    -- Clone SMS templates (DO NOTHING on conflict)
     INSERT INTO public.sms_templates (org_id, id, body, description, updated_at)
     SELECT p_org_id, id, body, description, now()
     FROM public.platform_defaults_sms_templates
-    ON CONFLICT (id) DO UPDATE SET body = EXCLUDED.body, description = EXCLUDED.description, updated_at = now();
+    ON CONFLICT (id) DO NOTHING;
     GET DIAGNOSTICS v_sms_count = ROW_COUNT;
 
     RETURN jsonb_build_object(

@@ -121,27 +121,31 @@ async function ensureSettings() {
 async function ensureEmailTemplates() {
   const rows = [
     {
+      org_id: 'org_default',
       id: 'application_received',
       subject: 'Application Received (Ref: {{booking_id}})',
       body_html: 'Dear {{owner_name}}, thanks for applying with {{business_name}}. Ref: {{booking_id}}. Cancel: {{cancel_link}}',
     },
     {
+      org_id: 'org_default',
       id: 'cancellation_confirmed',
       subject: 'Cancellation Confirmed (Ref: {{booking_id}})',
       body_html: 'Dear {{owner_name}}, your booking {{booking_id}} for {{business_name}} has been cancelled.',
     },
     {
+      org_id: 'org_default',
       id: 'confirmed_chargeable',
       subject: 'Booking Confirmed (Ref: {{booking_id}})',
       body_html: 'Dear {{owner_name}}, your booking {{booking_id}} for {{business_name}} is confirmed. Cost: {{cost}}. Bank details: {{bank_details}}. Cancel: {{cancel_link}}',
     },
     {
+      org_id: 'org_default',
       id: 'payment_requested',
       subject: 'Payment required (Ref: {{booking_id}})',
       body_html: 'Dear {{owner_name}}, please pay {{cost}} for {{business_name}} ({{booking_id}}) using this link: {{payment_link}}. Or pay by bank transfer - Account Name: {{bank_account_name}}, Sort Code: {{bank_sort_code}}, Account Number: {{bank_account_number}}, Payment Reference: {{payment_reference}}. Your booking will not be confirmed until payment has been received and verified by an administrator. Cancel: {{cancel_link}}',
     },
   ];
-  const { error } = await admin.from('email_templates').upsert(rows, { onConflict: 'id' });
+  const { error } = await admin.from('email_templates').upsert(rows, { onConflict: 'org_id,id' });
   if (error) throw new Error(`Failed to upsert email_templates: ${error.message}`);
   console.log('Ensured email_templates rows:', rows.map((r) => r.id).join(', '));
 }
