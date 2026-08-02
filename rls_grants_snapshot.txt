@@ -54,6 +54,9 @@ GRANT ALL ON FUNCTION "public"."is_booking_confirmed"("p_booking_id" "text") TO 
 GRANT ALL ON FUNCTION "public"."is_booking_confirmed"("p_booking_id" "text") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."is_booking_confirmed"("p_booking_id" "text") TO "service_role";
 GRANT ALL ON FUNCTION "public"."is_performer_publicly_visible"("p_performer_id" "uuid") TO "service_role";
+GRANT ALL ON FUNCTION "public"."link_pending_user_roles_on_signup"() TO "service_role";
+GRANT ALL ON FUNCTION "public"."rpc_add_organisation_member"("p_email" "text", "p_role" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."rpc_add_organisation_member"("p_email" "text", "p_role" "text") TO "service_role";
 GRANT ALL ON FUNCTION "public"."rpc_claim_stripe_session_slot"("p_payment_link_code" "text", "p_freshness_seconds" integer, "p_unfulfilled_claim_seconds" integer) TO "service_role";
 GRANT ALL ON FUNCTION "public"."rpc_get_next_misc_id"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rpc_get_next_misc_id"() TO "service_role";
