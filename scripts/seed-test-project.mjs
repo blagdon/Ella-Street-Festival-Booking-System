@@ -150,6 +150,32 @@ async function ensureEmailTemplates() {
   console.log('Ensured email_templates rows:', rows.map((r) => r.id).join(', '));
 }
 
+async function ensureSmsTemplates() {
+  const rows = [
+    {
+      org_id: 'org_default',
+      id: 'booking_received',
+      body: 'Dear {{owner_name}}, thanks for applying with {{business_name}}. Ref: {{booking_id}}. Cancel: {{cancel_link}}',
+      description: 'Sent when booking application is submitted',
+    },
+    {
+      org_id: 'org_default',
+      id: 'payment_requested',
+      body: 'Dear {{owner_name}}, please pay {{cost}} for {{business_name}} (Ref: {{booking_id}}). Link: {{payment_link}}',
+      description: 'Sent when payment link is generated',
+    },
+    {
+      org_id: 'org_default',
+      id: 'cancellation_confirmed',
+      body: 'Dear {{owner_name}}, your booking {{booking_id}} for {{business_name}} has been cancelled.',
+      description: 'Sent when booking is cancelled',
+    },
+  ];
+  const { error } = await admin.from('sms_templates').upsert(rows, { onConflict: 'org_id,id' });
+  if (error) throw new Error(`Failed to upsert sms_templates: ${error.message}`);
+  console.log('Ensured sms_templates rows:', rows.map((r) => r.id).join(', '));
+}
+
 // Phase 1: foundation rows must exist before user/settings/template fixtures,
 // because user_roles insert triggers sync_organisation_members_from_user_roles
 // which inserts into organisation_members (which FK-references organisations).
@@ -157,5 +183,6 @@ await ensureFoundationRows();
 const adminUserId = await ensureAdminUser();
 await ensureSettings();
 await ensureEmailTemplates();
+await ensureSmsTemplates();
 
 console.log('\nSeed complete. TEST_ADMIN_USER_ID=' + adminUserId);
