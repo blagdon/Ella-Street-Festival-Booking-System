@@ -19,6 +19,18 @@ export function getCurrentEvent() {
         return activeEventState;
     }
 
+    if (typeof localStorage !== 'undefined') {
+        try {
+            const cached = localStorage.getItem('ESF_ACTIVE_EVENT');
+            if (cached) {
+                activeEventState = JSON.parse(cached);
+                return activeEventState;
+            }
+        } catch (e) {
+            // fallback
+        }
+    }
+
     const ctx = getPlatformContext();
     return {
         id: ctx.eventId || 'event_default',
@@ -49,6 +61,9 @@ export function setCurrentEvent(eventOrId) {
 
     if (typeof localStorage !== 'undefined') {
         localStorage.setItem('ESF_EVENT_ID', eventId);
+        if (activeEventState) {
+            localStorage.setItem('ESF_ACTIVE_EVENT', JSON.stringify(activeEventState));
+        }
     }
 
     eventChangeListeners.forEach(fn => {
@@ -77,6 +92,11 @@ export async function fetchAvailableEvents() {
 
         if (error || !data || data.length === 0) {
             return [getCurrentEvent()];
+        }
+
+        const matched = data.find(e => e.id === ctx.eventId);
+        if (matched) {
+            setCurrentEvent(matched);
         }
 
         return data;
