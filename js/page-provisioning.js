@@ -6,14 +6,12 @@
  */
 import { getSupabaseClient } from './supabase.js';
 import { getPlatformContext, CONFIG } from './config.js';
-import { escapeHtml, notify } from './utils.js';
-import {
-    renderPageHeader,
-    renderCard,
-    renderInputField,
-    renderStatusBadge,
-    renderFormSaveBar
-} from './platform/ui.js';
+import { escapeHtml } from './utils.js';
+import { renderPageHeader } from './platform/layout.js';
+import { renderCard } from './platform/cards.js';
+import { renderInputField } from './platform/forms.js';
+import { renderStatusBadge } from './platform/tables.js';
+import { notify } from './platform/notifications.js';
 
 let wizardState = {
     step: 1,
