@@ -125,8 +125,9 @@ export function initNavigation() {
     fetchAvailableEvents().then(events => {
         const selectEl = /** @type {HTMLSelectElement|null} */ (document.getElementById('eventSelect'));
         if (!selectEl) return;
+        const currentEvt = getCurrentEvent();
         selectEl.innerHTML = events.map(e =>
-            `<option value="${escapeHtml(e.id)}" ${e.id === activeEvent.id ? 'selected' : ''}>${escapeHtml(e.name)}</option>`
+            `<option value="${escapeHtml(e.id)}" ${e.id === currentEvt.id ? 'selected' : ''}>${escapeHtml(e.name)}</option>`
         ).join(''); // innerhtml-safe: component HTML built with internal escapeHtml calls
 
         selectEl.addEventListener('change', (evt) => {
@@ -134,6 +135,7 @@ export function initNavigation() {
             const selectedEvt = events.find(x => x.id === target.value);
             if (selectedEvt) {
                 setCurrentEvent(selectedEvt);
+                window.location.reload();
             }
         });
     });
