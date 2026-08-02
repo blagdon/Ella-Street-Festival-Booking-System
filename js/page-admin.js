@@ -1034,7 +1034,7 @@ async function renderAuditSection(container) {
             .from('audit_logs')
             .select('*')
             .eq('org_id', ctx.orgId)
-            .order('timestamp', { ascending: false })
+            .order('created_at', { ascending: false })
             .limit(50);
 
         if (!error && data) {
@@ -1047,8 +1047,8 @@ async function renderAuditSection(container) {
     const columns = [
         { key: 'action', label: 'Action' },
         { key: 'user_email', label: 'Actor' },
-        { key: 'target_type', label: 'Target' },
-        { key: 'timestamp', label: 'Timestamp' }
+        { key: 'target_id', label: 'Target' },
+        { key: 'created_at', label: 'Timestamp' }
     ];
 
     const tableHtml = renderDataTable({
@@ -1062,8 +1062,8 @@ async function renderAuditSection(container) {
             if (colKey === 'user_email') {
                 return escapeHtml(row.user_email || 'System');
             }
-            if (colKey === 'timestamp') {
-                return escapeHtml(row.timestamp ? new Date(row.timestamp).toLocaleString() : 'N/A');
+            if (colKey === 'created_at') {
+                return escapeHtml(row.created_at ? new Date(row.created_at).toLocaleString() : 'N/A');
             }
             return escapeHtml(String(row[colKey] ?? ''));
         }
