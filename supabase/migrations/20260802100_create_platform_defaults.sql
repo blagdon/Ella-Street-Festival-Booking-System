@@ -55,7 +55,7 @@ INSERT INTO "public"."platform_defaults_settings" (key, value, category) VALUES
     ('stall_cost_general', '75.00', 'pricing'),
     ('stall_cost_dev', '0.00', 'pricing'),
     ('allowed_stall_types', 'Food,General,Crafts,Charity', 'booking'),
-    ('sms_provider', 'twilio', 'messaging'),
+    ('sms_provider', 'mock', 'messaging'),
     ('sms_test_mode', 'true', 'messaging')
 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, category = EXCLUDED.category;
 

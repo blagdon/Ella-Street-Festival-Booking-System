@@ -86,6 +86,13 @@ async function ensureFoundationRows() {
   );
   if (evtErr) throw new Error(`Failed to upsert events: ${evtErr.message}`);
   console.log('Ensured events row: event_default');
+
+  // Clean up any temporary test organisations/settings created during previous test runs
+  await admin.from('settings').delete().neq('org_id', 'org_default');
+  await admin.from('email_templates').delete().neq('org_id', 'org_default');
+  await admin.from('sms_templates').delete().neq('org_id', 'org_default');
+  await admin.from('events').delete().neq('org_id', 'org_default');
+  await admin.from('organisations').delete().neq('id', 'org_default');
 }
 
 async function ensureSettings() {
