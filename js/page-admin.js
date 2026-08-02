@@ -623,20 +623,15 @@ async function submitAddMember() {
         return;
     }
 
-    const memberUserId = typeof crypto !== 'undefined' && crypto.randomUUID
-        ? crypto.randomUUID()
-        : '00000000-0000-4000-8000-' + String(Date.now()).padStart(12, '0');
-
     try {
-        const { error } = await sb.from('user_roles').upsert({
-            id: memberUserId,
-            email,
-            role
-        }, { onConflict: 'id' });
+        const { data, error } = await sb.rpc('rpc_add_organisation_member', {
+            p_email: email,
+            p_role: role
+        });
 
         if (error) throw error;
 
-        await auditLog('add_member', 'user_roles', { org_id: ctx.orgId, email, role, user_id: memberUserId });
+        await auditLog('add_member', 'organisation_members', { org_id: ctx.orgId, email, role, user_id: data?.user_id });
         notify(`Member ${email} added as ${role}!`, 'success');
         document.getElementById('dialogAddMember')?.classList.add('hidden');
         await loadWorkspaceData();
