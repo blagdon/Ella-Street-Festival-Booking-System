@@ -280,6 +280,22 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
+    // 2b. Enforce Event Lifecycle Guard: Rejection if event.status is not 'open'
+    if (bookingData.event_id) {
+      const { data: targetEvent } = await supabaseAdmin
+        .from('events')
+        .select('status, is_active')
+        .eq('id', bookingData.event_id)
+        .maybeSingle()
+
+      if (targetEvent && targetEvent.status && targetEvent.status !== 'open') {
+        return new Response(
+          JSON.stringify({ error: `Applications for this event are currently in '${targetEvent.status.toUpperCase()}' mode and closed for public submissions.` }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+    }
+
     // 3. Build a safe row from an explicit allow-list — never insert the
     // raw request body (see sanitizeBookingInput's docstring).
     const { data: prefixSetting } = await supabaseAdmin
