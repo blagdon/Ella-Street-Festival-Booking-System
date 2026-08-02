@@ -35,13 +35,20 @@ export function getCurrentEvent() {
  * @param {Record<string, any>|string} eventOrId
  */
 export function setCurrentEvent(eventOrId) {
+    let eventId = 'event_default';
     if (typeof eventOrId === 'string') {
+        eventId = eventOrId;
         activeEventState = {
             ...getCurrentEvent(),
             id: eventOrId
         };
     } else if (eventOrId && typeof eventOrId === 'object') {
+        eventId = eventOrId.id || 'event_default';
         activeEventState = eventOrId;
+    }
+
+    if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('ESF_EVENT_ID', eventId);
     }
 
     eventChangeListeners.forEach(fn => {
