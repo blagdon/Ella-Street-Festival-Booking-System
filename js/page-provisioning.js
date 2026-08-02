@@ -265,6 +265,16 @@ function attachWizardListeners(container) {
     });
 }
 
+async function parseEdgeFunctionError(error) {
+    if (error && error.context && typeof error.context.json === 'function') {
+        try {
+            const body = await error.context.json();
+            if (body && body.error) return body.error;
+        } catch (_) {}
+    }
+    return error?.message || 'Execution failed';
+}
+
 async function executePreflightValidation(container) {
     const sb = getSupabaseClient();
     try {
@@ -288,8 +298,9 @@ async function executePreflightValidation(container) {
         wizardState.step = 4;
         renderProvisioningSection(container);
     } catch (err) {
+        const msg = await parseEdgeFunctionError(err);
         wizardState.preflightValid = false;
-        wizardState.preflightError = err.message || 'Pre-flight validation failed';
+        wizardState.preflightError = msg;
         wizardState.step = 4;
         renderProvisioningSection(container);
     }
@@ -325,7 +336,8 @@ async function executeProvisioning(container) {
         notify('Organisation provisioned successfully!', 'success');
         renderProvisioningSection(container);
     } catch (err) {
-        notify(`Provisioning failed: ${err.message}`, 'error');
+        const msg = await parseEdgeFunctionError(err);
+        notify(`Provisioning failed: ${msg}`, 'error');
         if (btn) {
             btn.disabled = false;
             btn.innerText = '🚀 Provision Organisation';

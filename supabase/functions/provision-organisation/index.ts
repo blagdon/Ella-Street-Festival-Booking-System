@@ -64,13 +64,22 @@ Deno.serve(async (req) => {
       }
 
       if (!isServiceRole && user) {
-        const { data: userRole, error: roleErr } = await supabaseAdmin
+        const { data: memberRole } = await supabaseAdmin
+          .from('organisation_members')
+          .select('role')
+          .eq('user_id', user.id)
+          .eq('role', 'admin')
+          .maybeSingle()
+
+        const { data: userRole } = await supabaseAdmin
           .from('user_roles')
           .select('role')
           .eq('id', user.id)
           .single()
 
-        if (roleErr || userRole?.role !== 'admin') {
+        const isAdmin = memberRole?.role === 'admin' || userRole?.role === 'admin'
+
+        if (!isAdmin) {
           return new Response(
             JSON.stringify({ error: 'Forbidden: Admin role required for provisioning' }),
             { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
