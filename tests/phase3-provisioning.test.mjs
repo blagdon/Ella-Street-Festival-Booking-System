@@ -107,4 +107,33 @@ test('Epic 3 — Platform Provisioning Suite', async (t) => {
         await supabaseAdmin.from('organisations').delete().in('id', [tenantA, tenantB]);
     });
 
+    await t.test('4. provision-organisation Edge Function End-to-End Execution', async () => {
+        const testSlug = `prov-test-${Date.now()}`;
+        const testPrefix = `PT${Date.now().toString().slice(-4)}`;
+
+        const { data, error } = await supabaseAdmin.functions.invoke('provision-organisation', {
+            body: {
+                org_name: 'Provision Test Org',
+                org_slug: testSlug,
+                owner_email: 'owner@provision.test',
+                event_name: 'Provision Test Event',
+                event_prefix: testPrefix,
+                dry_run: false
+            }
+        });
+
+        assert.ifError(error, 'provision-organisation execution should succeed');
+        assert.equal(data.status, 'success');
+        assert.equal(data.org_id, testSlug);
+        assert.equal(data.event_status, 'draft');
+
+        // Cleanup
+        await supabaseAdmin.from('events').delete().eq('org_id', testSlug);
+        await supabaseAdmin.from('settings').delete().eq('org_id', testSlug);
+        await supabaseAdmin.from('email_templates').delete().eq('org_id', testSlug);
+        await supabaseAdmin.from('sms_templates').delete().eq('org_id', testSlug);
+        await supabaseAdmin.from('organisation_members').delete().eq('org_id', testSlug);
+        await supabaseAdmin.from('organisations').delete().eq('id', testSlug);
+    });
+
 });

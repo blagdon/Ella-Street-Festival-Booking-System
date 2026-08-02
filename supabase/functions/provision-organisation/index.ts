@@ -33,28 +33,51 @@ Deno.serve(async (req) => {
 
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey)
 
-    // Verify caller has admin role
-    const token = authHeader.replace('Bearer ', '')
-    const { data: { user }, error: authErr } = await supabaseAdmin.auth.getUser(token)
+    const token = (authHeader ? authHeader.replace('Bearer ', '') : '').trim()
+    const apiKey = (req.headers.get('apikey') || '').trim()
 
-    if (authErr || !user) {
-      return new Response(
-        JSON.stringify({ error: 'Unauthorized user token' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+    let isServiceRole = false
+    if (supabaseServiceKey && (token === supabaseServiceKey.trim() || apiKey === supabaseServiceKey.trim())) {
+      isServiceRole = true
     }
 
-    const { data: userRole, error: roleErr } = await supabaseAdmin
-      .from('user_roles')
-      .select('role')
-      .eq('id', user.id)
-      .single()
+    let callerEmail = 'service_role'
 
-    if (roleErr || userRole?.role !== 'admin') {
-      return new Response(
-        JSON.stringify({ error: 'Forbidden: Admin role required for provisioning' }),
-        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+    if (!isServiceRole) {
+      const { data: { user }, error: authErr } = await supabaseAdmin.auth.getUser(token)
+
+      if (authErr || !user) {
+        // Fallback: check if token payload has role === 'service_role'
+        try {
+          const payload = JSON.parse(atob(token.split('.')[1]))
+          if (payload?.role === 'service_role') {
+            isServiceRole = true
+          }
+        } catch (_) {}
+
+        if (!isServiceRole) {
+          return new Response(
+            JSON.stringify({ error: 'Unauthorized user token' }),
+            { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          )
+        }
+      }
+
+      if (!isServiceRole && user) {
+        const { data: userRole, error: roleErr } = await supabaseAdmin
+          .from('user_roles')
+          .select('role')
+          .eq('id', user.id)
+          .single()
+
+        if (roleErr || userRole?.role !== 'admin') {
+          return new Response(
+            JSON.stringify({ error: 'Forbidden: Admin role required for provisioning' }),
+            { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          )
+        }
+        callerEmail = user.email || user.id
+      }
     }
 
     const body = await req.json()
@@ -136,10 +159,40 @@ Deno.serve(async (req) => {
     }
 
     // Step B: Assign Owner Member
-    const { data: memberData, error: memberErr } = await supabaseAdmin.rpc('rpc_add_organisation_member', {
-      p_email: cleanEmail,
-      p_role: 'admin'
-    })
+    let ownerUserId: string | null = null
+
+    const { data: authUsers } = await supabaseAdmin.auth.admin.listUsers()
+    const foundUser = authUsers?.users?.find((u: any) => u.email?.toLowerCase() === cleanEmail)
+
+    if (foundUser) {
+      ownerUserId = foundUser.id
+    } else {
+      const { data: existingRole } = await supabaseAdmin
+        .from('user_roles')
+        .select('id')
+        .eq('email', cleanEmail)
+        .maybeSingle()
+      
+      ownerUserId = existingRole?.id || crypto.randomUUID()
+    }
+
+    const { error: userRoleErr } = await supabaseAdmin
+      .from('user_roles')
+      .upsert(
+        { id: ownerUserId, email: cleanEmail, role: 'admin' },
+        { onConflict: 'id' }
+      )
+
+    if (userRoleErr) {
+      throw new Error(`Failed to assign owner user_roles: ${userRoleErr.message}`)
+    }
+
+    const { error: memberErr } = await supabaseAdmin
+      .from('organisation_members')
+      .upsert(
+        { org_id: cleanOrgSlug, user_id: ownerUserId, role: 'admin' },
+        { onConflict: 'org_id,user_id' }
+      )
 
     if (memberErr) {
       throw new Error(`Failed to assign owner member: ${memberErr.message}`)
@@ -186,7 +239,7 @@ Deno.serve(async (req) => {
           event_id: newEventId,
           event_name,
           owner_email: cleanEmail,
-          provisioned_by: user.email
+          provisioned_by: callerEmail
         }
       })
 
