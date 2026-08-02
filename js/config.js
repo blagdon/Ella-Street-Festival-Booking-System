@@ -120,6 +120,22 @@ export function getCurrentOrgId() {
 }
 
 /**
+ * Sets the active organisation ID in localStorage.
+ * @param {string} orgId
+ */
+export function setCurrentOrgId(orgId) {
+    if (typeof localStorage !== 'undefined') {
+        if (orgId && orgId !== 'org_default') {
+            localStorage.setItem('ESF_ORG_ID', orgId);
+        } else {
+            localStorage.removeItem('ESF_ORG_ID');
+        }
+        localStorage.removeItem('ESF_EVENT_ID');
+        localStorage.removeItem('ESF_ACTIVE_EVENT');
+    }
+}
+
+/**
  * The ID of the active event for this deployment.
  *
  * Phase 1: always 'event_default' — there is only one event.

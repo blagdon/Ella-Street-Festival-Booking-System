@@ -3,8 +3,8 @@
  * nav.js
  * Handles dynamic injection of the Admin Header and Mobile Menu.
  */
-import { getPlatformContext, getCurrentInstance, CONFIG } from './config.js';
-import { signOut } from './supabase.js';
+import { getPlatformContext, getCurrentInstance, setCurrentOrgId, CONFIG } from './config.js';
+import { signOut, getSupabaseClient } from './supabase.js';
 import { escapeHtml } from './utils.js';
 import { getCurrentEvent, setCurrentEvent, fetchAvailableEvents } from './event-service.js';
 
@@ -64,8 +64,15 @@ export function initNavigation() {
             <!-- Desktop Controls -->
             <div class="hidden md:flex items-center gap-3">
                 <div class="flex items-center bg-gray-50 rounded px-3 py-1 border border-gray-200">
+                    <span class="text-xs text-gray-500 mr-2 uppercase font-bold tracking-wider">Org:</span>
+                    <select id="orgSelect" aria-label="Select active organisation" class="bg-transparent text-sm font-bold text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded cursor-pointer max-w-[160px] truncate">
+                        <option value="${escapeHtml(ctx.orgId)}">${escapeHtml(ctx.orgId)}</option>
+                    </select>
+                </div>
+
+                <div class="flex items-center bg-gray-50 rounded px-3 py-1 border border-gray-200">
                     <span class="text-xs text-gray-500 mr-2 uppercase font-bold tracking-wider">Event:</span>
-                    <select id="eventSelect" aria-label="Select active festival event" class="bg-transparent text-sm font-bold text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded cursor-pointer">
+                    <select id="eventSelect" aria-label="Select active festival event" class="bg-transparent text-sm font-bold text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded cursor-pointer max-w-[160px] truncate">
                         <option value="${escapeHtml(activeEvent.id)}">${escapeHtml(activeEvent.name)}</option>
                     </select>
                 </div>
@@ -101,6 +108,12 @@ export function initNavigation() {
         <div id="mobileMenu" class="mobile-menu hidden mt-4 pt-4 border-t border-gray-200 space-y-3">
              ${backBtnMobile}
              <div class="flex flex-col gap-2">
+                <span class="text-xs text-gray-500 uppercase font-bold tracking-wider">Organisation:</span>
+                <select id="orgSelectMobile" aria-label="Select active organisation" class="bg-gray-50 border border-gray-200 rounded px-3 py-2 text-sm font-bold text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer">
+                    <option value="${escapeHtml(ctx.orgId)}">${escapeHtml(ctx.orgId)}</option>
+                </select>
+            </div>
+             <div class="flex flex-col gap-2">
                 <span class="text-xs text-gray-500 uppercase font-bold tracking-wider">Database:</span>
                 <select id="instanceSelectMobile" aria-label="Select database instance" class="bg-gray-50 border border-gray-200 rounded px-3 py-2 text-sm font-bold text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer">
                     <option value="DEV">🛠️ DEV (Test Data)</option>
@@ -120,6 +133,34 @@ export function initNavigation() {
     `;
 
     container.innerHTML = headerHTML; // innerhtml-safe: component HTML built with internal escapeHtml calls
+
+    // Populate Organisation Selectors
+    const sb = getSupabaseClient();
+    sb.from('organisations').select('id, name, slug').order('name', { ascending: true }).then(({ data: orgs, error }) => {
+        let list = (orgs && orgs.length > 0)
+            ? orgs
+            : [{ id: 'org_default', name: 'Ella Street Festival', slug: 'org_default' }];
+
+        // Ensure org_default is always present in list
+        if (!list.some(o => o.id === 'org_default')) {
+            list.unshift({ id: 'org_default', name: 'Ella Street Festival (Default)', slug: 'org_default' });
+        }
+
+        ['orgSelect', 'orgSelectMobile'].forEach(id => {
+            const selectEl = /** @type {HTMLSelectElement|null} */ (document.getElementById(id));
+            if (!selectEl) return;
+
+            selectEl.innerHTML = list.map(o =>
+                `<option value="${escapeHtml(o.id)}" ${o.id === ctx.orgId ? 'selected' : ''}>🏢 ${escapeHtml(o.name)}</option>`
+            ).join('');
+
+            selectEl.addEventListener('change', (evt) => {
+                const target = /** @type {HTMLSelectElement} */ (evt.target);
+                setCurrentOrgId(target.value);
+                window.location.reload();
+            });
+        });
+    });
 
     // Populate Event Selector
     fetchAvailableEvents().then(events => {
