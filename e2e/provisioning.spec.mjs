@@ -43,33 +43,41 @@ test.describe('Organisation Setup Wizard', () => {
     // 5 steps and so proves nothing about *this* step having rendered yet)
     // is what actually removed the render-race flakiness seen while writing
     // this test — each step below does the same before touching its fields.
-    await expect(page.locator('#wOrgName')).toBeVisible();
+    // A 15s timeout (Playwright's default is 5s) on each: this repo's shared
+    // CI runners have measurably more latency to the test project than a
+    // local machine does, even under the same 8-worker parallel load — this
+    // step passed 6/6 locally, including alongside the full admin-a11y suite,
+    // but still needed this headroom the first time it ran in CI.
+    const CI_STEP_TIMEOUT = { timeout: 15_000 };
+    await expect(page.locator('#wOrgName')).toBeVisible(CI_STEP_TIMEOUT);
     await page.locator('#wOrgName').fill('E2E Provisioning Test Org');
     await page.locator('#wOrgSlug').fill(testOrgSlug);
     await page.locator('#wOwnerEmail').fill('test-admin@example.com');
     await page.getByRole('button', { name: /Continue to Event Setup/ }).click();
 
     // Step 2 — Primary Event
-    await expect(page.locator('#wEventName')).toBeVisible();
+    await expect(page.locator('#wEventName')).toBeVisible(CI_STEP_TIMEOUT);
     await page.locator('#wEventName').fill('E2E Provisioning Test Festival');
     await page.locator('#wEventPrefix').fill(testEventPrefix);
     await page.getByRole('button', { name: /Review Defaults/ }).click();
 
     // Step 3 — Platform Defaults preview (informational, no fields)
-    await expect(page.getByRole('button', { name: /Run Pre-flight & Preview/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Run Pre-flight & Preview/ })).toBeVisible(CI_STEP_TIMEOUT);
     await page.getByRole('button', { name: /Run Pre-flight & Preview/ }).click();
 
     // Step 4 — Preview, gated on a real pre-flight check passing
-    await expect(page.getByText('Pre-flight Validation Passed')).toBeVisible();
-    await expect(page.getByText(testOrgSlug).first()).toBeVisible();
-    await expect(page.locator('#btnConfirmProvision')).toBeEnabled();
+    await expect(page.getByText('Pre-flight Validation Passed')).toBeVisible(CI_STEP_TIMEOUT);
+    await expect(page.getByText(testOrgSlug).first()).toBeVisible(CI_STEP_TIMEOUT);
+    await expect(page.locator('#btnConfirmProvision')).toBeEnabled(CI_STEP_TIMEOUT);
     await page.locator('#btnConfirmProvision').click();
 
     // Step 5 — Report. Heading text (not getByText) because the success
-    // toast's own message overlaps enough to trip strict-mode matching.
-    await expect(page.getByRole('heading', { name: /Organisation Provisioned Successfully/ })).toBeVisible();
-    await expect(page.getByText(testOrgSlug).first()).toBeVisible();
-    await expect(page.getByText('test-admin@example.com').first()).toBeVisible();
+    // toast's own message overlaps enough to trip strict-mode matching. This
+    // step involves a real round trip to provision-organisation, so it gets
+    // the same CI-latency headroom as the pure client-side steps above.
+    await expect(page.getByRole('heading', { name: /Organisation Provisioned Successfully/ })).toBeVisible(CI_STEP_TIMEOUT);
+    await expect(page.getByText(testOrgSlug).first()).toBeVisible(CI_STEP_TIMEOUT);
+    await expect(page.getByText('test-admin@example.com').first()).toBeVisible(CI_STEP_TIMEOUT);
 
     // Verify the real rows, not just the report text — matching this
     // project's own convention of trusting the database over the UI.
