@@ -173,9 +173,33 @@ async function ensureSmsTemplates() {
     },
     {
       org_id: 'org_default',
+      id: 'booking_cancelled',
+      body: 'Hi {{owner_name}}, your stall booking {{booking_id}} has been cancelled. Replies are not monitored.',
+      description: 'Sent when a booking is cancelled',
+    },
+    {
+      org_id: 'org_default',
       id: 'cancellation_confirmed',
-      body: 'Dear {{owner_name}}, your booking {{booking_id}} for {{business_name}} has been cancelled.',
-      description: 'Sent when booking is cancelled',
+      body: 'Hi {{owner_name}}, your booking {{booking_id}} for {{business_name}} has been cancelled.',
+      description: 'Sent when cancellation is confirmed via self-service cancel link',
+    },
+    {
+      org_id: 'org_default',
+      id: 'booking_confirmed',
+      body: 'Hi {{owner_name}}, your stall booking {{booking_id}} for {{business_name}} is confirmed.',
+      description: 'Sent when a booking is confirmed',
+    },
+    {
+      org_id: 'org_default',
+      id: 'booking_rejected',
+      body: 'Hi {{owner_name}}, unfortunately we cannot offer you a stall this year. Email us if you have questions.',
+      description: 'Sent when a booking is rejected',
+    },
+    {
+      org_id: 'org_default',
+      id: 'location_update',
+      body: 'Hi {{owner_name}}, your stall location for booking {{booking_id}} has been updated.',
+      description: 'Sent when a stall location is updated',
     },
   ];
   const { error } = await admin.from('sms_templates').upsert(rows, { onConflict: 'org_id,id' });

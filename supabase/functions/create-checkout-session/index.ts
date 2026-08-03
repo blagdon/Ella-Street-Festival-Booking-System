@@ -222,6 +222,7 @@ Deno.serve(async (req) => {
       const { data: templateData, error: templateErr } = await supabaseClient
         .from('email_templates')
         .select('subject, body_html')
+        .eq('org_id', 'org_default')
         .eq('id', 'payment_requested')
         .single()
 
@@ -287,6 +288,7 @@ Deno.serve(async (req) => {
         const { data: smsTemplateData, error: smsTemplateErr } = await supabaseClient
           .from('sms_templates')
           .select('body')
+          .eq('org_id', 'org_default')
           .eq('id', 'payment_requested')
           .single()
 
