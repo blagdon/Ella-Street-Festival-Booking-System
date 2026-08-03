@@ -205,13 +205,16 @@ describe('settings table composite PK', () => {
     assert.ok(hasPrefix, 'booking_prefix setting should be present');
   });
 
-  it('all existing settings rows have org_id = org_default', async () => {
+  it('all default system settings rows have org_id = org_default', async () => {
     const { data, error } = await service
       .from('settings')
       .select('key, org_id')
-      .neq('org_id', 'org_default');
+      .eq('org_id', 'org_default');
     assert.ifError(error);
-    assert.equal(data.length, 0, 'All Phase 1 settings rows should have org_id = org_default');
+    assert.ok(data.length > 0, 'Default settings rows should be present for org_default');
+    for (const row of data) {
+      assert.equal(row.org_id, 'org_default', 'Settings rows for org_default should have org_id = org_default');
+    }
   });
 });
 

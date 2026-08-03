@@ -152,6 +152,8 @@ Deno.serve(async (req) => {
     }
 
     // 2. Execution Pipeline
+    let createdOrgSlug: string | null = null
+
     // Step A: Create Organisation
     const { error: createOrgErr } = await supabaseAdmin
       .from('organisations')
@@ -166,6 +168,7 @@ Deno.serve(async (req) => {
     if (createOrgErr) {
       throw new Error(`Failed to create organisation: ${createOrgErr.message}`)
     }
+    createdOrgSlug = cleanOrgSlug
 
     // Step B: Assign Owner Member
     let ownerUserId: string | null = null
@@ -273,6 +276,19 @@ Deno.serve(async (req) => {
     )
 
   } catch (err: any) {
+    if (createdOrgSlug) {
+      try {
+        await supabaseAdmin.from('events').delete().eq('org_id', createdOrgSlug)
+        await supabaseAdmin.from('settings').delete().eq('org_id', createdOrgSlug)
+        await supabaseAdmin.from('email_templates').delete().eq('org_id', createdOrgSlug)
+        await supabaseAdmin.from('sms_templates').delete().eq('org_id', createdOrgSlug)
+        await supabaseAdmin.from('organisation_members').delete().eq('org_id', createdOrgSlug)
+        await supabaseAdmin.from('organisations').delete().eq('id', createdOrgSlug)
+      } catch (cleanupErr: any) {
+        console.warn('[Provisioning Cleanup Failed]:', cleanupErr?.message || cleanupErr)
+      }
+    }
+
     return new Response(
       JSON.stringify({ error: err.message || 'Provisioning failed' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

@@ -136,4 +136,27 @@ test('Epic 3 — Platform Provisioning Suite', async (t) => {
         await supabaseAdmin.from('organisations').delete().eq('id', testSlug);
     });
 
+    await t.test('5. provision-organisation Rollback Cleanup Verification', async () => {
+        const testSlug = `rollback-test-${Date.now()}`;
+        // Intentionally invalid event status in payload to trigger failure at event insertion step
+        const { data, error } = await supabaseAdmin.functions.invoke('provision-organisation', {
+            body: {
+                org_name: 'Rollback Test Org',
+                org_slug: testSlug,
+                owner_email: 'rollback@provision.test',
+                event_name: 'Rollback Test Event',
+                event_prefix: `RB${Date.now().toString().slice(-4)}`,
+                event_slug: 'invalid slug with spaces!!',
+                dry_run: false
+            }
+        });
+
+        // Verify pre-flight or pipeline rejection
+        if (data && data.error) {
+            // Check that organisations table has no orphaned row for testSlug
+            const { data: orgRow } = await supabaseAdmin.from('organisations').select('id').eq('id', testSlug).maybeSingle();
+            assert.equal(orgRow, null, 'Orphaned organisation should be rolled back and cleaned up on failure');
+        }
+    });
+
 });

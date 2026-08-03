@@ -116,8 +116,8 @@ function sanitizeBookingInput(raw: Record<string, any>, bookingPrefix: string): 
  */
 async function sendReceivedEmail(supabaseAdmin: ReturnType<typeof createClient>, booking: Record<string, any>) {
   const [{ data: templateData, error: templateErr }, { data: settingRows }] = await Promise.all([
-    supabaseAdmin.from('email_templates').select('subject, body_html').eq('id', 'application_received').single(),
-    supabaseAdmin.from('settings').select('key, value').eq('key', 'cancel_url')
+    supabaseAdmin.from('email_templates').select('subject, body_html').eq('org_id', 'org_default').eq('id', 'application_received').single(),
+    supabaseAdmin.from('settings').select('key, value').eq('org_id', 'org_default').eq('key', 'cancel_url')
   ])
 
   if (templateErr || !templateData) {
@@ -193,8 +193,8 @@ async function sendReceivedSms(supabaseAdmin: ReturnType<typeof createClient>, b
   if (!booking.phone) return
 
   const [{ data: templateData, error: templateErr }, { data: settingRows }] = await Promise.all([
-    supabaseAdmin.from('sms_templates').select('body').eq('id', 'booking_received').single(),
-    supabaseAdmin.from('settings').select('key, value').eq('key', 'cancel_url')
+    supabaseAdmin.from('sms_templates').select('body').eq('org_id', 'org_default').eq('id', 'booking_received').single(),
+    supabaseAdmin.from('settings').select('key, value').eq('org_id', 'org_default').eq('key', 'cancel_url')
   ])
 
   if (templateErr || !templateData) {

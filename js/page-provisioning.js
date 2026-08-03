@@ -170,11 +170,17 @@ export function renderProvisioningSection(container) {
             </div>
 
             <div class="p-4 bg-gray-50 border border-gray-200 rounded-lg">
-                <h4 class="text-xs font-bold uppercase tracking-wider text-gray-700 mb-2">Recommended Next Actions</h4>
+                <h4 class="text-xs font-bold uppercase tracking-wider text-gray-700 mb-2">Optional Next Actions</h4>
                 <div class="flex flex-wrap gap-3">
-                    <button type="button" id="btnSwitchToNewOrg" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg transition">Switch Context to ${escapeHtml(r.org_name)}</button>
+                    <button type="button" id="btnSwitchToNewOrg" class="px-4 py-2 border border-blue-300 bg-white text-blue-700 hover:bg-blue-50 text-xs font-semibold rounded-lg transition">View as ${escapeHtml(r.org_name)}</button>
                     <button type="button" id="btnResetWizard" class="px-4 py-2 border border-gray-300 text-gray-700 hover:bg-gray-50 text-xs font-semibold rounded-lg transition">Provision Another Organisation</button>
                 </div>
+                <p class="text-xs text-gray-500 mt-3 max-w-2xl">
+                    Public booking forms don't yet route by organisation — every real booking still lands in the
+                    primary organisation until that ships. Viewing as ${escapeHtml(r.org_name)} switches every admin
+                    page to its (currently empty) data until you switch back; an amber "↩ Primary org" button appears
+                    in the header at all times to return.
+                </p>
             </div>
         </div>`;
     }

@@ -303,7 +303,7 @@ describe('sms_templates', () => {
   for (const id of REQUIRED) {
     test(`the ${id} template exists and is substitutable`, async () => {
       const { data, error } = await service
-        .from('sms_templates').select('body').eq('id', id).single();
+        .from('sms_templates').select('body').eq('org_id', 'org_default').eq('id', id).single();
 
       assert.equal(error, null, error?.message);
       assert.match(data.body, /\{\{owner_name\}\}/,
@@ -354,7 +354,7 @@ describe('sms_templates', () => {
       // Stripe session id, so this fake is exact-length, not worst-case.
       .replace(/\{\{payment_link\}\}/g, 'https://app.ellastreet.co.uk/pay.html?token=' + 'a'.repeat(8));
 
-    return service.from('sms_templates').select('id, body').then(({ data, error }) => {
+    return service.from('sms_templates').select('id, body').eq('org_id', 'org_default').then(({ data, error }) => {
       assert.equal(error, null, error?.message);
       const oversized = (data || [])
         .map((r) => ({ id: r.id, parts: parts(filled(r.body)), len: filled(r.body).length }))

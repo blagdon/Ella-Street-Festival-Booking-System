@@ -32,6 +32,7 @@ async function sendConfirmationEmail(supabaseAdmin: ReturnType<typeof createClie
   const { data: templateData, error: templateErr } = await supabaseAdmin
     .from('email_templates')
     .select('subject, body_html')
+    .eq('org_id', 'org_default')
     .eq('id', 'confirmed_chargeable')
     .single()
 
@@ -42,6 +43,7 @@ async function sendConfirmationEmail(supabaseAdmin: ReturnType<typeof createClie
   const { data: settingsRows } = await supabaseAdmin
     .from('settings')
     .select('key, value')
+    .eq('org_id', 'org_default')
     .in('key', ['cancel_url', 'bank_account_name', 'bank_sort_code', 'bank_account_number'])
   const settingsMap: Record<string, string> = {}
   ;(settingsRows || []).forEach((r: any) => { settingsMap[r.key] = r.value })
@@ -130,6 +132,7 @@ async function sendConfirmationSms(supabaseAdmin: ReturnType<typeof createClient
   const { data: templateData, error: templateErr } = await supabaseAdmin
     .from('sms_templates')
     .select('body')
+    .eq('org_id', 'org_default')
     .eq('id', 'booking_confirmed')
     .single()
 
@@ -140,6 +143,7 @@ async function sendConfirmationSms(supabaseAdmin: ReturnType<typeof createClient
   const { data: settingsRows } = await supabaseAdmin
     .from('settings')
     .select('key, value')
+    .eq('org_id', 'org_default')
     .in('key', ['cancel_url', 'bank_account_name', 'bank_sort_code', 'bank_account_number'])
   const settingsMap: Record<string, string> = {}
   ;(settingsRows || []).forEach((r: any) => { settingsMap[r.key] = r.value })

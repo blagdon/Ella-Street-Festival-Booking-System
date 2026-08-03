@@ -51,13 +51,24 @@ Deno.serve(async (req) => {
       })
     }
 
-    const { data: roleData, error: roleError } = await supabaseClient
-      .from('user_roles')
+    const { data: memberData } = await supabaseClient
+      .from('organisation_members')
       .select('role')
-      .eq('id', user.id)
-      .single()
+      .eq('user_id', user.id)
+      .eq('role', 'admin')
+      .maybeSingle()
 
-    if (roleError || !roleData || roleData.role !== 'admin') {
+    let isAdmin = !!memberData
+    if (!isAdmin) {
+      const { data: roleData } = await supabaseClient
+        .from('user_roles')
+        .select('role')
+        .eq('id', user.id)
+        .maybeSingle()
+      isAdmin = roleData?.role === 'admin'
+    }
+
+    if (!isAdmin) {
       return new Response(JSON.stringify({ error: 'Forbidden: Admin role required' }), {
         status: 403,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -211,6 +222,7 @@ Deno.serve(async (req) => {
       const { data: templateData, error: templateErr } = await supabaseClient
         .from('email_templates')
         .select('subject, body_html')
+        .eq('org_id', 'org_default')
         .eq('id', 'payment_requested')
         .single()
 
@@ -276,6 +288,7 @@ Deno.serve(async (req) => {
         const { data: smsTemplateData, error: smsTemplateErr } = await supabaseClient
           .from('sms_templates')
           .select('body')
+          .eq('org_id', 'org_default')
           .eq('id', 'payment_requested')
           .single()
 

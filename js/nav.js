@@ -15,6 +15,7 @@ export async function initNavigation() {
     const current = getCurrentInstance();
     const ctx = getPlatformContext();
     const activeEvent = getCurrentEvent();
+    const isPrimaryOrg = ctx.orgId === 'org_default';
 
     // Helper to get badge style
     const getBadgeStyle = (val) => {
@@ -56,9 +57,13 @@ export async function initNavigation() {
                     </h1>
                 </a>
                 <span id="instanceBadge" class="text-xs font-bold px-2 py-1 rounded ml-2 border shrink-0 ${getBadgeStyle(current)}">${current}</span>
-                <span id="tenantBadge" class="hidden lg:inline-flex items-center text-xs font-semibold px-2 py-0.5 rounded bg-blue-50 text-blue-800 border border-blue-200 ml-2" title="Organisation / Event Context">
+                <span id="tenantBadge" class="inline-flex items-center text-xs font-semibold px-2 py-0.5 rounded ml-2 border shrink-0 ${isPrimaryOrg ? 'bg-blue-50 text-blue-800 border-blue-200' : 'bg-amber-50 text-amber-800 border-amber-300'}" title="Organisation / Event Context">
                     ${escapeHtml(ctx.orgId)} | ${escapeHtml(activeEvent.booking_prefix || ctx.eventId)}
                 </span>
+                ${!isPrimaryOrg ? `
+                <button id="btnSwitchPrimaryOrgNav" class="inline-flex items-center ml-1 px-2 py-0.5 rounded text-xs font-semibold border shrink-0 bg-amber-500 text-white border-amber-600 hover:bg-amber-600 transition" title="Switch back to the primary organisation (org_default)">
+                    ↩ Primary org
+                </button>` : ''}
             </div>
             
             <!-- Desktop Controls -->
@@ -133,6 +138,17 @@ export async function initNavigation() {
     `;
 
     container.innerHTML = headerHTML; // innerhtml-safe: component HTML built with internal escapeHtml calls
+
+    // Switch back to the primary organisation from any admin page — mirrors
+    // js/page-admin.js's own btnSwitchPrimaryOrg, but available everywhere
+    // nav.js is injected (not just admin.html's workspace), since an admin
+    // can end up viewing a non-primary org from the header dropdown or the
+    // provisioning wizard and would otherwise have no way back except
+    // navigating to the Platform Administration Workspace specifically.
+    document.getElementById('btnSwitchPrimaryOrgNav')?.addEventListener('click', () => {
+        setCurrentOrgId('org_default');
+        window.location.reload();
+    });
 
     // Populate Organisation Selectors
     const sb = getSupabaseClient();

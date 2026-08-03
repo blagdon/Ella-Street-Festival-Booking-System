@@ -270,6 +270,8 @@ page-*.js            (entry points — one per HTML page)
 | Email Queue | `page-email-queue.js` | View sent/failed emails, retry |
 | Audit Log | `page-audit-log.js` | Browse the audit trail |
 | Manage Users | `page-manage-users.js` | Assign admin/steward roles |
+| Workspace | `page-admin.js` | Single-page Platform Administration Workspace |
+| Provisioning Wizard | `page-provisioning.js` | Self-service tenant organisation onboarding & dry-run validation |
 | Steward App | `page-steward.js` | **Offline-capable** — works from `localStorage` with a sync queue, for on-site use with poor signal. The only page using `sw.js`/`manifest.json` (installable as a PWA) |
 
 ### Public pages (no login)
@@ -289,14 +291,19 @@ All under `supabase/functions/`. Shared helpers live in `_shared/`.
 
 | Function | Auth | Purpose |
 |---|---|---|
-| `submit-booking` | Public (Turnstile) | Validates the CAPTCHA, builds a booking row from an **allow-list** of fields, allocates the ID, moves uploaded files into the booking's folder, sends the "received" email |
+| `provision-organisation` | Admin JWT / Service Role | Self-service tenant provisioning: validates slug/prefix uniqueness, creates organisation, assigns admin owner member, creates primary event, and invokes `rpc_initialise_tenant_defaults` |
+| `submit-booking` | Public (Turnstile) | Validates CAPTCHA and event `open` status guard, builds booking row from allow-list, allocates ID, handles documents, sends email |
 | `cancel-booking` | Public — Turnstile **and** `cancel_token` | Self-service cancellation (via `cancel_booking_secure`) + confirmation email |
-| `create-checkout-session` | Admin JWT | Creates a Stripe Checkout Session, emails the payment request, moves the booking to `Payment Requested` |
+| `create-checkout-session` | Admin JWT | Creates a Stripe Checkout Session, emails payment request, moves booking to `Payment Requested` |
 | `stripe-webhook` | Stripe signature | Finalises payments, records refunds (§11) |
 | `refund-payment` | Admin JWT | Issues a real Stripe refund, then records it |
 | `send-email` | Admin JWT | Single-email send path |
 | `queue-bulk-email` | Admin JWT | Drains `email_queue` in the background |
 | `retry-queued-email` | Admin JWT | Re-sends one failed `email_queue` row |
+| `send-sms` | Admin JWT | Sends SMS via configured provider (or mock mode) |
+| `queue-bulk-sms` | Admin JWT | Drains `sms_queue` in the background |
+| `retry-queued-sms` | Admin JWT | Re-sends one failed `sms_queue` row |
+| `check-sms-delivery` | Admin JWT | Queries SMS provider delivery receipt |
 | `get-booking-documents` | Admin JWT | Signs private-bucket document paths into time-limited URLs |
 | `get-reviews` | Admin JWT | Google reviews lookup, cached in `google_reviews_cache` |
 

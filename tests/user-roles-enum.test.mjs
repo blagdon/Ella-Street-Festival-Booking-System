@@ -60,7 +60,7 @@ describe('the six directly-rewritten policies (previously plain text, now user_r
   });
 
   test('a steward cannot write email_templates', async () => {
-    const { data: before } = await service.from('email_templates').select('subject').eq('id', 'application_received').single();
+    const { data: before } = await service.from('email_templates').select('subject').eq('org_id', 'org_default').eq('id', 'application_received').single();
 
     await asSteward(async () => {
       const { error } = await authed
@@ -72,7 +72,7 @@ describe('the six directly-rewritten policies (previously plain text, now user_r
       assert.equal(error, null, error?.message);
     });
 
-    const { data: after } = await service.from('email_templates').select('subject').eq('id', 'application_received').single();
+    const { data: after } = await service.from('email_templates').select('subject').eq('org_id', 'org_default').eq('id', 'application_received').single();
     assert.equal(after.subject, before.subject, 'a steward-authored update must not have changed the row');
   });
 

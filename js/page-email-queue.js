@@ -55,7 +55,7 @@ async function loadPage(reset) {
     if (reset) {
         offset = 0;
         hasMore = true;
-        tbody.innerHTML = '<tr><td colspan="7" class="px-4 py-10 text-center text-gray-400 text-sm animate-pulse">Loading email queue...</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" class="px-4 py-10 text-center text-gray-500 text-sm animate-pulse">Loading email queue...</td></tr>';
     } else {
         loadMoreBtn.disabled = true;
         loadMoreBtn.textContent = 'Loading...';
@@ -83,7 +83,7 @@ async function loadPage(reset) {
         if (reset) tbody.innerHTML = '';
 
         if (reset && (!data || data.length === 0)) {
-            tbody.innerHTML = '<tr><td colspan="7" class="px-4 py-10 text-center text-gray-400 text-sm">No matching email queue entries.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="7" class="px-4 py-10 text-center text-gray-500 text-sm">No matching email queue entries.</td></tr>';
         } else {
             (data || []).forEach((row) => tbody.insertAdjacentHTML('beforeend', renderRow(row)));
         }

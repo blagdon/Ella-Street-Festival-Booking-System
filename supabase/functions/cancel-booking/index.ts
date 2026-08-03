@@ -40,6 +40,7 @@ async function sendCancellationEmail(supabaseAdmin: ReturnType<typeof createClie
   const { data: templateData, error: templateErr } = await supabaseAdmin
     .from('email_templates')
     .select('subject, body_html')
+    .eq('org_id', 'org_default')
     .eq('id', 'cancellation_confirmed')
     .single()
 
@@ -114,6 +115,7 @@ async function sendCancellationSms(supabaseAdmin: ReturnType<typeof createClient
   const { data: templateData, error: templateErr } = await supabaseAdmin
     .from('sms_templates')
     .select('body')
+    .eq('org_id', 'org_default')
     .eq('id', 'booking_cancelled')
     .single()
 
