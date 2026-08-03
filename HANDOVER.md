@@ -17,6 +17,67 @@
 > `'unsafe-inline'` for `script-src` — see the "No inline event handlers" gotcha — so it silently never
 > ran. A broken logo URL showed the browser's default broken-image icon instead of the intended clean
 > fallback. Fixed with `addEventListener('error', ...)`, matching every other listener in `js/nav.js`.
+> **Epic 4, Phases 4A + 4C — in progress on `feat/epic4-phase-4a-4c`, not yet released or merged.**
+> Explicitly scoped to just these two phases; 4B (Event Configuration), 4D (Public Booking), 4E
+> (Publishing workflow), and 4F (Public Experience polish) are deliberately untouched — see Next
+> Steps for the full phase breakdown. **Phase 4A (Public Identity & Event Resolution)**: a new
+> `validateSlug()`/`RESERVED_SLUGS` pair (`js/utils.js`, mirrored in
+> `supabase/functions/_shared/slugs.ts` since there's no shared module system between browser ESM
+> and Deno) enforces lowercase-hyphenated org/event slugs and blocks a fixed list of reserved words
+> (real page basenames, the `org_default`/`event_default` sentinel ids, generic infra words), wired
+> into the Organisation/Event Details forms (`js/page-admin.js`) and `provision-organisation`'s
+> pre-flight checks. `20260804090000_public_identity_resolution.sql` adds two anon-readable views —
+> `public_organisations_info` (id/slug/name/website only, no `contact_email`) and
+> `public_events_info` (excludes `draft` status rows, so a visitor can't resolve a
+> still-being-configured event by guessing its slug) — plus widens the existing anon settings
+> allow-list with the branding keys (`brand_primary_color`, `logo_url`, etc.). A new
+> `/{orgSlug}/{eventSlug}` pretty URL (via `vercel.json` `rewrites`, mirrored locally in
+> `scripts/dev-server.mjs` for testability) resolves through `js/public-context.js`
+> (`resolvePublicContext()`) to a minimal `event.html` landing page (`js/page-event.js`) showing the
+> organisation's name/logo/branding and the event's status — deliberately **not** a booking page;
+> that's Phase 4D's job, kept separate on purpose. `event.html`'s own `<script>`/`<link>` tags use
+> **absolute** paths (`/js/...`, not `./js/...`) — a relative path there resolves against the visible
+> two-segment rewritten URL, not the file's real location at the root, and 404s (caught live via
+> network-request inspection while first testing this). **Phase 4C (Location Management)**: a full
+> admin module (`js/page-admin-locations.js`, new "Locations" sidebar section) replacing manual-SQL
+> pitch management with Add/Edit/Delete/Duplicate/Import-CSV/Export-CSV/Clone (same-event or
+> cross-organisation)/bulk-delete. Two real, previously-latent gaps surfaced and were fixed while
+> building it, not just papered over: (1) `authenticated` had only a `SELECT` grant on `locations`
+> since the 2026-07-18 grant-narrowing pass (nothing had ever needed to write to it before) — a
+> live 403 on the first Add-Location test — fixed with a new, narrowly-scoped
+> `20260804100000_grant_authenticated_write_locations.sql` (the RLS policy already existed and
+> correctly gates writes to admins; only the grant was missing). (2) `locations`' primary key is the
+> pre-existing composite `(id, dataset)` — **no `org_id`** — so two organisations picking the same
+> generic pitch code (`P1`, confirmed live by cloning `org_default`'s own seed into a second org)
+> collide directly rather than being scoped away. Add/Edit surface that as a plain "that code's
+> taken" message (same treatment as an org/event slug collision); Duplicate/Import/Clone instead
+> proactively check dataset-wide via a shared `resolveAvailableId()` helper and auto-suffix
+> (`-2`, `-3`, ...), since those three bulk-populate ids the admin didn't hand-choose one at a time.
+> `js/api.js`'s `fetchLocationData` (backing `location_admin.html`) also gained `event_id` scoping
+> (it already had `org_id` from the Epic 3 hardening pass) so both it and the new admin module agree
+> on the same set of rows. **Testing**: `tests/phase4a-public-identity.test.mjs` and
+> `tests/phase4c-location-management.test.mjs` verify all of the above at the DB/RLS/grant level —
+> neither `js/page-admin-locations.js` nor `js/page-event.js` is imported directly in a test, since
+> both (like every other `js/page-*.js` module) reach for `window`/`document` at call time and throw
+> outside a real browser; `event.html`'s not-found render got a Playwright accessibility check
+> instead (`e2e/accessibility.spec.mjs`), since it needs no auth or seeded data (a nonsense slug pair
+> just resolves to "not found", the same zero-config guarantee every other page in that file relies
+> on — the "found"/branded render needs a real seeded org+event and is left for the admin-gated
+> suite). Two bugs found and fixed while writing these tests, not introduced by them: `validateSlug`'s
+> "a"/"an" article check (`/^[aeiou]/.test(label)`) was case-sensitive against labels the real call
+> sites pass capitalised (`'Event slug'`, `'Organisation slug'`), so it always fell through to "a" —
+> producing "can't be used as a event slug" in production; fixed with the `i` flag in both copies.
+> Separately, roughly half of `RESERVED_SLUGS`' entries were stored with underscores
+> (`food_stall_booking`, matching the real page's basename) even though `SLUG_FORMAT` only ever
+> allows hyphens — meaning a cleaned candidate could never contain an underscore, so those entries
+> could never actually be matched by the reserved-word check; a hyphenated variant of the same name
+> (`food-stall-booking`) would slip through unreserved instead. Converted every entry to its
+> hyphenated form in both `js/utils.js` and `_shared/slugs.ts`. Running the full suite afterward also
+> caught one pre-existing test asserting the *old* (pre-4C) contract:
+> `tests/security.test.mjs`'s "authenticated cannot write to locations directly (physical locations
+> are seed/migration-only)" encoded exactly the assumption Phase 4C deliberately reverses; updated to
+> assert the new, intended behaviour (an admin *can* write; RLS still blocks non-admins) rather than
+> deleting or skipping it.
 > **v7.20.1** (Epic 3 hardening sprint; merged 2026-08-03 as PR #152, plus two same-day
 > follow-on PRs, #153–#154, and a direct Edge Function redeploy with no PR of its own — see below).
 > v7.20.1 itself scoped several Edge Function
@@ -875,6 +936,21 @@ seeded independently and could collide on `id`. This is why `booking_locations` 
 FK to `locations` (a plain `location_id → locations.id` FK isn't even possible without a
 unique constraint on `id` alone) and why `schedules.location` needed a `dataset` column
 added before it could get a composite FK.
+
+Also carries `org_id`/`event_id` (added Phase 1, actually filtered on since Epic 3's
+hardening pass and Phase 4C) — but **neither is part of the primary key**. That means
+the composite key's uniqueness is genuinely dataset-wide, not per-tenant: two different
+organisations picking the same generic pitch code (`P1`, the obvious case — confirmed
+live cloning `org_default`'s own seed into a second organisation) collide directly at
+the DB level, there is no scoping that saves them. Phase 4C's admin UI
+(`js/page-admin-locations.js`) works around this rather than changing the schema: Add/
+Edit surface the resulting `23505` as a plain "that code's taken" message, while
+Duplicate/Import/Clone proactively check dataset-wide via a shared
+`resolveAvailableId()` helper and auto-suffix (`-2`, `-3`, ...) before inserting, since
+those three bulk-populate ids the admin didn't hand-pick one at a time. If this table
+ever needs real multi-tenant uniqueness (not just multi-tenant *filtering*), the actual
+fix is adding `org_id` to the primary key — a real migration, not more client-side
+workaround layering.
 
 ### `payments`
 One row per chargeable booking that has a payment resolved one way or another:
@@ -2386,7 +2462,12 @@ tested live, and deployed. In order, what was just finished:
     `booking_locations`/`locations` writes all route through
     `rpc_set_booking_locations` (`SECURITY DEFINER`) — `js/locations.js`'s
     `updateLocation()` despite its name calls that RPC, never touching the
-    `locations` table directly, and the table itself is seed/migration-only;
+    `locations` table directly, and the table itself is seed/migration-only
+    (**reversed for `locations` by Epic 4 Phase 4C** — `20260804100000_grant_authenticated_write_locations.sql`
+    restores `authenticated`'s INSERT/UPDATE/DELETE grant now that
+    `js/page-admin-locations.js` gives admins a real UI to manage pitches
+    directly; `booking_locations` itself is unaffected and still
+    RPC-only);
     `email_queue` status transitions are `claim_pending_emails()`
     (`SECURITY DEFINER`) + service-role Edge Functions only, no direct
     UPDATE/DELETE call site exists; `email_templates` has no create/delete UI

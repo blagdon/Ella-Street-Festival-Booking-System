@@ -527,9 +527,11 @@ describe('authenticated table grant narrowing (20260718110000)', () => {
     assert.ok(error, 'expected authenticated INSERT on booking_locations to be rejected outright');
   });
 
-  test('authenticated cannot write to locations directly (physical locations are seed/migration-only)', async () => {
-    const { error } = await admin.from('locations').update({ lat: 0 }).eq('id', liveLocationId);
-    assert.ok(error, 'expected authenticated UPDATE on locations to be rejected outright');
+  test('an admin CAN write to locations directly (Phase 4C: reversed by 20260804100000 — physical locations now have a real admin UI, not seed/migration-only)', async () => {
+    const { error } = await admin.from('locations').update({ lat: 12.34 }).eq('id', liveLocationId);
+    assert.equal(error, null, error?.message);
+    const { data } = await service.from('locations').select('lat').eq('id', liveLocationId).eq('dataset', 'LIVE').maybeSingle();
+    assert.equal(data.lat, 12.34, 'expected the authenticated UPDATE to have actually taken effect');
   });
 
   test('authenticated cannot UPDATE or DELETE audit_logs (append-only log)', async () => {

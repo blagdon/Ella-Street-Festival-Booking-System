@@ -6,7 +6,7 @@
  */
 import { initAdminPage, getSupabaseClient } from './supabase.js';
 import { getPlatformContext, setCurrentOrgId, CONFIG } from './config.js';
-import { escapeHtml } from './utils.js';
+import { escapeHtml, validateSlug } from './utils.js';
 import { renderAdminSidebar } from './platform/navigation.js';
 import { renderPageHeader } from './platform/layout.js';
 import { renderStatCard, renderCard } from './platform/cards.js';
@@ -16,6 +16,7 @@ import { openDialog } from './platform/dialogs.js';
 import { notify } from './platform/notifications.js';
 import { auditLog } from './audit.js';
 import { renderProvisioningSection } from './page-provisioning.js';
+import { renderLocationsSection } from './page-admin-locations.js';
 
 let activeSection = 'dashboard';
 let orgData = /** @type {Record<string, any>|null} */ (null);
@@ -126,6 +127,9 @@ function renderActiveSection() {
             break;
         case 'events':
             renderEventsSection(contentEl);
+            break;
+        case 'locations':
+            renderLocationsSection(contentEl);
             break;
         case 'members':
             renderMembersSection(contentEl);
@@ -262,12 +266,20 @@ async function saveOrganisationDetails() {
     const btn = /** @type {HTMLButtonElement|null} */ (document.getElementById('btnSaveOrg'));
 
     const name = (/** @type {HTMLInputElement} */ (document.getElementById('orgName'))).value.trim();
-    const slug = (/** @type {HTMLInputElement} */ (document.getElementById('orgSlug'))).value.trim();
+    const rawSlug = (/** @type {HTMLInputElement} */ (document.getElementById('orgSlug'))).value.trim();
     const email = (/** @type {HTMLInputElement} */ (document.getElementById('orgContactEmail'))).value.trim();
     const website = (/** @type {HTMLInputElement} */ (document.getElementById('orgWebsite'))).value.trim();
 
     if (!name) {
         notify('Organisation Name is required.', 'error');
+        return;
+    }
+
+    let slug;
+    try {
+        slug = validateSlug(rawSlug, 'Organisation slug');
+    } catch (err) {
+        notify(err.message, 'error');
         return;
     }
 
@@ -298,7 +310,10 @@ async function saveOrganisationDetails() {
             orgData.website = website;
         }
     } catch (err) {
-        notify(`Failed to update organisation: ${err.message}`, 'error');
+        const message = err.code === '23505'
+            ? `Slug '${slug}' is already in use by another organisation.`
+            : `Failed to update organisation: ${err.message}`;
+        notify(message, 'error');
     } finally {
         if (btn) {
             btn.disabled = false;
@@ -428,10 +443,18 @@ async function submitCreateEvent() {
 
     const name = (/** @type {HTMLInputElement} */ (document.getElementById('newEventName'))).value.trim();
     const prefix = (/** @type {HTMLInputElement} */ (document.getElementById('newEventPrefix'))).value.trim();
-    const slug = (/** @type {HTMLInputElement} */ (document.getElementById('newEventSlug'))).value.trim() || prefix.toLowerCase();
+    const rawSlug = (/** @type {HTMLInputElement} */ (document.getElementById('newEventSlug'))).value.trim() || prefix;
 
     if (!name || !prefix) {
         notify('Event Name and Booking Prefix are required.', 'error');
+        return;
+    }
+
+    let slug;
+    try {
+        slug = validateSlug(rawSlug, 'Event slug');
+    } catch (err) {
+        notify(err.message, 'error');
         return;
     }
 
@@ -455,7 +478,10 @@ async function submitCreateEvent() {
         await loadWorkspaceData();
         renderActiveSection();
     } catch (err) {
-        notify(`Failed to create event: ${err.message}`, 'error');
+        const message = err.code === '23505'
+            ? `Slug '${slug}' is already in use by another event in this organisation.`
+            : `Failed to create event: ${err.message}`;
+        notify(message, 'error');
     }
 }
 
@@ -489,10 +515,18 @@ async function submitEditEvent(eventId) {
 
     const name = (/** @type {HTMLInputElement} */ (document.getElementById('editEventName'))).value.trim();
     const prefix = (/** @type {HTMLInputElement} */ (document.getElementById('editEventPrefix'))).value.trim();
-    const slug = (/** @type {HTMLInputElement} */ (document.getElementById('editEventSlug'))).value.trim();
+    const rawSlug = (/** @type {HTMLInputElement} */ (document.getElementById('editEventSlug'))).value.trim();
 
     if (!name || !prefix) {
         notify('Event Name and Booking Prefix are required.', 'error');
+        return;
+    }
+
+    let slug;
+    try {
+        slug = validateSlug(rawSlug, 'Event slug');
+    } catch (err) {
+        notify(err.message, 'error');
         return;
     }
 
@@ -511,7 +545,10 @@ async function submitEditEvent(eventId) {
         await loadWorkspaceData();
         renderActiveSection();
     } catch (err) {
-        notify(`Failed to update event: ${err.message}`, 'error');
+        const message = err.code === '23505'
+            ? `Slug '${slug}' is already in use by another event in this organisation.`
+            : `Failed to update event: ${err.message}`;
+        notify(message, 'error');
     }
 }
 

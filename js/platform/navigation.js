@@ -9,6 +9,7 @@ export const ADMIN_SECTIONS = [
     { id: 'dashboard', label: 'Dashboard', icon: '📊' },
     { id: 'organisation', label: 'Organisation', icon: '🏢' },
     { id: 'events', label: 'Events', icon: '📅' },
+    { id: 'locations', label: 'Locations', icon: '📍' },
     { id: 'members', label: 'Members', icon: '👥' },
     { id: 'provisioning', label: 'Provisioning', icon: '🚀' },
     { id: 'branding', label: 'Branding', icon: '🎨' },

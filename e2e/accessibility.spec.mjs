@@ -70,6 +70,24 @@ for (const pagePath of PAGES) {
   });
 }
 
+test('event.html (not-found state) has no detectable accessibility violations', async ({ page }) => {
+  // No test-project auth needed - a slug pair this unlikely to exist resolves
+  // to the not-found render (js/page-event.js's renderNotFound) regardless of
+  // which Supabase project supabase-public.js happens to point at, the same
+  // zero-config guarantee every other page in this file relies on. The
+  // "found" render (branding/logo applied) is Phase 4A's other state, but it
+  // needs a real seeded org+event and belongs with the auth-gated admin suite
+  // instead, not this no-backend-required one.
+  await page.goto('/e2e-a11y-nonexistent-org/e2e-a11y-nonexistent-event');
+  await page.waitForSelector('#eventRoot h1');
+
+  const results = await new AxeBuilder({ page })
+    .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+    .analyze();
+
+  expect(results.violations, formatViolations(results.violations)).toEqual([]);
+});
+
 test('index.html#type=recovery (mandatory password-reset gate) has no detectable accessibility violations', async ({ page }) => {
   // No admin session needed - this is the one admin-hub state reachable with
   // no auth at all, since Supabase's password-recovery redirect lands here

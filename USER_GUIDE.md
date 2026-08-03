@@ -28,6 +28,7 @@
 19. [Steward Accounts](#19-steward-accounts)
 20. [Frequently Asked Questions](#20-frequently-asked-questions)
 21. [Setting Up a New Organisation & Branding](#21-setting-up-a-new-organisation--branding)
+22. [Location Management — Adding & Editing Pitches](#22-location-management--adding--editing-pitches)
 
 ---
 
@@ -409,6 +410,12 @@ cloned → a pre-flight check → the final report) and click **Provision Organi
 the organisation, its first event, and a starter set of settings/email/SMS templates it can then
 customise.
 
+**Slug rules.** The organisation and event slugs (used in the public `/{organisation}/{event}` link,
+and editable from the Organisation/Event Details forms) must be lowercase letters, numbers, and
+single hyphens only — no spaces, underscores, or capital letters, and a handful of words (page
+names like `admin` or `settings`, and generic ones like `api`/`www`) are reserved and can't be used.
+An invalid or reserved slug is rejected immediately with a plain-English error explaining why.
+
 **Switching which organisation you're viewing.** The header's **Org** dropdown (and, on the Platform
 Administration Workspace, the Organisation selector) changes which organisation's data every admin
 page shows. If you're ever looking at a Kanban board or Payments page that seems unexpectedly
@@ -421,6 +428,37 @@ SMS sender name, a support email, and an email footer for the organisation you'r
 The logo appears in that organisation's admin header once saved and the page is reloaded. A newly
 created organisation starts with everything blank — it will never show a previous organisation's
 logo or contact details as if they were its own.
+
+---
+
+## 22. Location Management — Adding & Editing Pitches
+
+The Workspace's **Locations** tab (sidebar, `admin.html`) is where the physical pitches/stalls
+themselves are created and maintained — separate from the Location Manager (§10), which *assigns*
+already-confirmed bookings to pitches that already exist here. Everything on this tab is scoped to
+whichever organisation and event you're currently viewing.
+
+### Adding, editing, and removing a pitch
+- **+ Add Location** opens a form for an ID (e.g. `P1`, `Gate-A`), latitude/longitude, and whether
+  it has a power hookup. The ID can't be changed after creation.
+- **Edit** changes an existing pitch's coordinates and power flag.
+- **Delete** (single, or **Delete Selected** after ticking several rows) removes a pitch. Any
+  booking currently assigned to it is unassigned, not deleted.
+
+### Duplicate, Import, and Clone
+- **Duplicate** (on any row) creates a copy with `-copy` appended to the ID.
+- **Import CSV** accepts a file with `id,lat,lng,has_power` columns; rows whose ID already exists
+  for this event are skipped, not overwritten.
+- **Clone From…** copies every pitch from another event in this organisation, or — with the right
+  access — from another organisation's active event entirely, useful for starting a new event from
+  a previous year's layout without re-entering every pitch by hand.
+- **Export CSV** downloads the current event's pitches in the same format Import expects.
+
+> **A duplicated, imported, or cloned ID that's already taken elsewhere is automatically renamed**
+> (`P1` becomes `P1-2`, and so on) rather than the operation failing — a success message lists
+> exactly which IDs were changed, so nothing is silently renamed without you knowing. This can
+> happen because a generic code like `P1` may already be in use by a *different* organisation
+> entirely, not just within this one.
 
 ---
 

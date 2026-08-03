@@ -1,0 +1,16 @@
+-- Migration: 20260804100000_grant_authenticated_write_locations.sql
+-- Epic 4, Phase 4C — Location Management.
+--
+-- `locations` has always had an "Admin manage locations" RLS policy
+-- (USING (check_user_role('admin')), baseline schema) — but the 2026-07-18
+-- grant-narrowing pass (20260718110000_narrow_authenticated_table_grants.sql)
+-- reduced `authenticated`'s table-level grant to SELECT only, because at
+-- the time nothing in the app ever wrote to this table (pitches were seeded
+-- once by hand via SQL as service_role, which bypasses grants entirely).
+--
+-- Phase 4C's whole point is to replace that manual-SQL workflow with a real
+-- admin UI — which needs INSERT/UPDATE/DELETE to actually reach the table
+-- at all. The existing RLS policy already gates who can use it (real admins
+-- only, same as every other admin-writable table); this migration only
+-- restores the grant-level prerequisite for that policy to run on writes.
+GRANT INSERT, UPDATE, DELETE ON TABLE "public"."locations" TO "authenticated";
