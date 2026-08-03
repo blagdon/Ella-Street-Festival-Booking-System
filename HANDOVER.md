@@ -9,7 +9,52 @@
 > verification first, and the short list that needs an explicit instruction every
 > time. Default to acting.
 > Last updated: 2026-08-03.
-> Current release: **v7.20.0** (Epic 3 Platform Provisioning & Multi-Tenant Isolation; prepared 2026-08-03). Introduces self-service organisation onboarding (`provisioning.html`), `provision-organisation` Edge Function, platform defaults cloning (`rpc_initialise_tenant_defaults`), event status lifecycle constraints (`draft`/`ready`/`open`/`closed`/`archived`), event lifecycle submission guards, and automatic rollback cleanup.
+> Current release: **v7.20.1** (Epic 3 hardening sprint; merged 2026-08-03 as PR #152, plus two same-day
+> follow-on PRs, #153–#154, and a direct Edge Function redeploy with no PR of its own — see below).
+> v7.20.1 itself scoped several Edge Function
+> `email_templates`/`sms_templates`/`settings` queries by `org_id` (the multi-tenant seed's `org_demo` row
+> was making `.single()` calls ambiguous) and added an `organisation_members` fallback to `send-sms`/
+> `create-checkout-session`'s admin-role checks.
+> **Same-day regression investigation and fixes on top of v7.20.1** (not a version bump —
+> read this before touching org-context or booking-ID code):
+> A report of "admins can't change booking status" / "new bookings don't appear" traced to a
+> **client-side UX gap, not a functional regression**: `submit-booking` intentionally hardcodes
+> `org_id: 'org_default'` (public forms aren't tenant-routed yet — a later epic), but the `org_id`
+> scoping PR #152 added to `fetchKanbanData`/`fetchPayments` (`js/api.js`) trusts
+> `getCurrentOrgId()`, which is **entirely client-side** (`localStorage['ESF_ORG_ID']`, set by the
+> header's Organisation dropdown or the provisioning wizard's "Switch to New Org" button) — any admin
+> whose browser drifts onto a non-primary org sees a silently empty board, with no warning anywhere
+> outside `admin.html`. Fixed (PR #152, same PR) by making the org/event badge always-visible and
+> amber-warned on every admin page via `js/nav.js`, with a one-click reset to `org_default` — not by
+> auto-resetting the context, which stays a deliberate, reversible admin choice.
+> Merging #152 itself surfaced an unrelated, real gap: **Edge Function deploys aren't part of `main`'s
+> CI/Vercel pipeline** — the disposable test project was still serving Edge Functions from
+> 2026-08-01, two days before #152's `org_id`-scoping fix, so `integration-tests` failed against
+> genuinely stale code, not a flaky shared DB. Fixed by manually deploying the affected functions
+> (`submit-booking`, `cancel-booking`, `stripe-webhook`, `create-checkout-session`, `send-sms`,
+> `provision-organisation`) to the test project, then — since the same gap existed there — to
+> production too, via `supabase functions deploy <name> --project-ref <ref>` (preserving each
+> function's existing `verify_jwt` setting explicitly; never rely on the deploy default).
+> **A second, unrelated, real bug** (PR #153) surfaced during manual retesting: `js/utils.js`'s
+> `validateBookingId()` checked booking IDs against `ESF_PUBLIC_CONFIG.BOOKING_PREFIX` — sourced from
+> the **`settings` table's `booking_prefix` key** — instead of the active **event's own**
+> `booking_prefix` (`js/config.js`'s `getActiveBookingPrefix()`, the value `CONFIG.INSTANCE_MAP`
+> already correctly trusts to build/filter real booking IDs). The two are independently editable and
+> had drifted apart in production (`settings.booking_prefix = 'ESF28'` vs the event's real
+> `ESF26-...` bookings), rejecting every genuinely valid ID — surfaced live as "Invalid booking ID
+> format" when moving a booking to Payment Requested or Confirmed. Fixed by making
+> `validateBookingId()` resolve the prefix the same event-aware way, plus a narrow, exact-value-guarded
+> data migration (`20260803100000_fix_booking_prefix_drift.sql`) correcting the drifted
+> `settings.booking_prefix`/`festival_display_name` rows for `org_default` — that same settings value
+> feeds the **public booking forms directly**, so left uncorrected, new real submissions would have
+> kept landing as invisible `ESF28-...` bookings. **The general lesson**: anywhere a "prefix"/config
+> value exists in more than one editable place (a `settings` row vs. an `events` column), pick one
+> as the actual source of truth for anything that does validation or generates real IDs, and don't
+> let a second, differently-scoped copy of the same concept quietly become the one that's wrong.
+> A follow-up audit (PR #154) found two bookings (`ESF28-NONFOOD-0001`/`0002`) that had actually been
+> created under the wrong prefix while it was misconfigured — both confirmed as the admin's own test
+> data (not real trader applications) before deleting.
+> Prior release, unchanged by the above: **v7.20.0** (Epic 3 Platform Provisioning & Multi-Tenant Isolation; prepared 2026-08-03). Introduces self-service organisation onboarding (`provisioning.html`), `provision-organisation` Edge Function, platform defaults cloning (`rpc_initialise_tenant_defaults`), event status lifecycle constraints (`draft`/`ready`/`open`/`closed`/`archived`), event lifecycle submission guards, and automatic rollback cleanup.
 > **It ships inert**: the seeded `sms_provider` setting is `mock`, a no-op
 > adapter that logs instead of sending, so nothing is texted or billed until
 > someone deliberately configures a real provider from the Settings page. That
@@ -3739,6 +3784,44 @@ stay in the separate `ellafestperformersadmin.vercel.app` codebase.
   `schedules` schema, RLS, or grants, check actual row recency
   (`SELECT max(created_at) FROM performers`) — don't infer "dead" from an
   in-repo grep alone.
+
+- **Client-side "active organisation" context (`localStorage['ESF_ORG_ID']`) can silently drift
+  onto a non-primary org with no warning, making every org-scoped query — Kanban, Payments, Stats,
+  Hub Summary — return a plain empty result.** The header's Organisation dropdown (`js/nav.js`) and
+  the provisioning wizard's "Switch to New Org" button (`js/page-provisioning.js`) both just write
+  to this key and reload; nothing resets it automatically, and it survives indefinitely across
+  sessions. Reported live (2026-08-03) as "admins can't change status" / "new bookings don't
+  appear" — really an admin's browser stuck viewing an org with zero real bookings (since
+  `submit-booking` hardcodes `org_id: 'org_default'` — public forms aren't tenant-routed yet), not
+  a functional bug in the status-update or booking-insert path. A reset button already existed, but
+  only on `admin.html`. Fixed by making the org/event badge always-visible (not `hidden lg:` gated)
+  and amber-warned on every admin page, with the same one-click reset everywhere — deliberately
+  **not** an auto-reset, since switching orgs to inspect a newly-provisioned tenant is legitimate.
+  If a future report looks like "the board is empty" or "X isn't showing up," check the header's
+  org badge color before assuming a data/RLS bug.
+
+- **Two independently-editable "booking prefix" values exist — `settings.booking_prefix` and the
+  active event's own `events.booking_prefix` — and nothing keeps them in sync.** `js/config.js`'s
+  `getActiveBookingPrefix()` (used by `CONFIG.INSTANCE_MAP` to build/filter every real booking ID)
+  correctly prefers the event's value; `js/utils.js`'s `validateBookingId()` did not — it read
+  `ESF_PUBLIC_CONFIG.BOOKING_PREFIX` (sourced from the `settings` row) directly. Production's
+  `settings.booking_prefix` had drifted to `'ESF28'` while the real event and its bookings were
+  `'ESF26-...'` (root cause never conclusively identified — most likely a hand-edit on
+  `settings.html`'s System Constants card that was never reverted), so `validateBookingId()`
+  rejected every genuinely valid ID, surfacing as "Invalid booking ID format" on any booking
+  mutation that validates the ID (status changes, payment requests, notes, refunds, location
+  assignment — `validateBookingId()` is called from most of `js/api.js`). Fixed by making it use
+  `getActiveBookingPrefix()` too, plus a one-off data-fix migration
+  (`20260803100000_fix_booking_prefix_drift.sql`) correcting the drifted settings row. **This
+  `settings` value is also read directly by the public booking forms** (`Food_Stall_booking.html`/
+  `General_Booking.html`) to build new booking IDs — while it was wrong, any real submission would
+  have been created under the wrong prefix and never matched by the event's own Kanban filtering,
+  invisible exactly like the original report. Two bookings (`ESF28-NONFOOD-0001`/`0002`) had indeed
+  been created that way; confirmed as admin test data and deleted (PR #154), not real applications.
+  **The general lesson**: when the same real-world concept (a booking-ID prefix, a display name,
+  anything with an obvious "current value") is editable from two different UI surfaces writing to
+  two different tables, every reader has to agree on which one is authoritative — grep for every
+  reader of the *other* one before trusting either.
 
 ---
 
