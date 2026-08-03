@@ -1,6 +1,5 @@
 // @ts-check
-import { ESF_PUBLIC_CONFIG } from '../supabase-public.js';
-import { CONFIG } from './config.js';
+import { CONFIG, getActiveBookingPrefix } from './config.js';
 
 // ===================================================================
 // === SECURITY: HTML Escaping Utilities ===
@@ -69,7 +68,15 @@ export function validateEmail(val) {
 
 export function validateBookingId(id) {
     if (!id || typeof id !== 'string') throw new Error('Missing booking ID.');
-    const prefix = (typeof ESF_PUBLIC_CONFIG !== 'undefined' && ESF_PUBLIC_CONFIG.BOOKING_PREFIX) || "ESF26";
+    // Must match the same event-aware prefix resolution CONFIG.INSTANCE_MAP
+    // uses to actually generate/filter booking IDs (js/config.js), not the
+    // raw settings-table value. The settings.booking_prefix row and the
+    // active event's own booking_prefix are two independently-editable
+    // values that can drift apart (reported live: settings had 'ESF28'
+    // while the event's real bookings were 'ESF26-...', rejecting every
+    // genuinely valid ID) — the event's value is the one real booking IDs
+    // are actually built from, so it's the one this must trust.
+    const prefix = getActiveBookingPrefix();
     const regex = new RegExp(`^${prefix}-(FOOD|NONFOOD|DEV|MISC)-\\d{4}$`);
     if (!regex.test(id)) throw new Error('Invalid booking ID format.');
     return id;
