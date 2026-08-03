@@ -8,7 +8,7 @@ import { signOut, getSupabaseClient } from './supabase.js';
 import { escapeHtml } from './utils.js';
 import { getCurrentEvent, setCurrentEvent, fetchAvailableEvents } from './event-service.js';
 
-export function initNavigation() {
+export async function initNavigation() {
     const container = document.getElementById('nav-container');
     if (!container) return;
 
@@ -163,23 +163,33 @@ export function initNavigation() {
     });
 
     // Populate Event Selector
-    fetchAvailableEvents().then(events => {
+    try {
+        const events = await fetchAvailableEvents();
         const selectEl = /** @type {HTMLSelectElement|null} */ (document.getElementById('eventSelect'));
-        if (!selectEl) return;
-        const currentEvt = getCurrentEvent();
-        selectEl.innerHTML = events.map(e =>
-            `<option value="${escapeHtml(e.id)}" ${e.id === currentEvt.id ? 'selected' : ''}>${escapeHtml(e.name)}</option>`
-        ).join(''); // innerhtml-safe: component HTML built with internal escapeHtml calls
+        if (selectEl) {
+            const currentEvt = getCurrentEvent();
+            selectEl.innerHTML = events.map(e =>
+                `<option value="${escapeHtml(e.id)}" ${e.id === currentEvt.id ? 'selected' : ''}>${escapeHtml(e.name)}</option>`
+            ).join(''); // innerhtml-safe: component HTML built with internal escapeHtml calls
 
-        selectEl.addEventListener('change', (evt) => {
-            const target = /** @type {HTMLSelectElement} */ (evt.target);
-            const selectedEvt = events.find(x => x.id === target.value);
-            if (selectedEvt) {
-                setCurrentEvent(selectedEvt);
-                window.location.reload();
-            }
-        });
-    });
+            selectEl.addEventListener('change', (evt) => {
+                const target = /** @type {HTMLSelectElement} */ (evt.target);
+                const selectedEvt = events.find(x => x.id === target.value);
+                if (selectedEvt) {
+                    setCurrentEvent(selectedEvt);
+                    window.location.reload();
+                }
+            });
+        }
+
+        const tenantBadge = document.getElementById('tenantBadge');
+        if (tenantBadge) {
+            const resolvedEvt = getCurrentEvent();
+            tenantBadge.textContent = `${ctx.orgId} | ${resolvedEvt.booking_prefix || ctx.eventId}`;
+        }
+    } catch (e) {
+        console.warn('Failed to fetch events for nav:', e);
+    }
 
     // Dynamically update document title to use current prefix
     if (document.title.includes('ESF26')) {

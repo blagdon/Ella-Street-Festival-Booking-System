@@ -97,6 +97,11 @@ export async function fetchAvailableEvents() {
         const matched = data.find(e => e.id === ctx.eventId);
         if (matched) {
             setCurrentEvent(matched);
+        } else {
+            const activeEvt = data.find(e => e.is_active) || data[0];
+            if (activeEvt) {
+                setCurrentEvent(activeEvt);
+            }
         }
 
         return data;

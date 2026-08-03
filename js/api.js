@@ -79,12 +79,12 @@ async function fetchCapped(queryBuilder, cap) {
  * @param {string} currentInstance
  * @returns {Promise<Array>}
  */
-export async function fetchKanbanData(currentInstance) {
+export async function fetchKanbanData(currentInstance, orgId = getCurrentOrgId()) {
     const sb = getSupabaseClient();
     const prefix = CONFIG.INSTANCE_MAP[currentInstance] || CONFIG.INSTANCE_MAP['DEV'];
 
     const bookings = await fetchCapped(
-        sb.from(TBL_BOOKINGS).select('*').eq('instance_prefix', prefix).order('created_at', { ascending: false }),
+        sb.from(TBL_BOOKINGS).select('*').eq('org_id', orgId).eq('instance_prefix', prefix).order('created_at', { ascending: false }),
         LIST_CAP
     );
     await attachLocationIds(sb, bookings);
@@ -363,7 +363,7 @@ export async function finalizeConfirmation(id) {
  * the totals silently drifting out of sync with what the table shows.
  * @param {string} currentInstance
  */
-export async function fetchPayments(currentInstance) {
+export async function fetchPayments(currentInstance, orgId = getCurrentOrgId()) {
     const sb = getSupabaseClient();
 
     // Payments page shows all live instances together (FOOD + NONFOOD + MISC)
@@ -377,7 +377,7 @@ export async function fetchPayments(currentInstance) {
     }
 
     const bookings = await fetchCapped(
-        sb.from(TBL_BOOKINGS).select('*').in('instance_prefix', instanceFilter),
+        sb.from(TBL_BOOKINGS).select('*').eq('org_id', orgId).in('instance_prefix', instanceFilter),
         LIST_CAP
     );
 

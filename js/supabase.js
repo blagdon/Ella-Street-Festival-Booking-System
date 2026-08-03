@@ -155,7 +155,7 @@ export function initAdminPage(initCallback, requiredRole = 'admin') {
         try {
             await requireAuth(requiredRole);
             if (requiredRole === 'admin') {
-                initNavigation();
+                await initNavigation();
             }
             if (typeof initCallback === 'function') {
                 await initCallback();
