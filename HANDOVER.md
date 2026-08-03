@@ -9,7 +9,15 @@
 > verification first, and the short list that needs an explicit instruction every
 > time. Default to acting.
 > Last updated: 2026-08-03.
-> Current release: **v7.20.1** (Epic 3 hardening sprint; merged 2026-08-03 as PR #152, plus two same-day
+> Current release: **v7.21.0** ("Epic 3 Complete" — the formal closing tag for Epic 3, cut 2026-08-03.
+> `package.json` had drifted to 7.16.0 across v7.17.0–v7.20.2; this release catches it up.) Bundles
+> v7.20.0's provisioning engine, v7.20.1's multi-tenant Edge Function fixes, and v7.20.2's operational-
+> readiness hardening (below), plus one more fix found while cutting this release itself: the logo's
+> `onerror="this.remove()"` (added in v7.20.2) is an inline event handler, and this app's CSP has no
+> `'unsafe-inline'` for `script-src` — see the "No inline event handlers" gotcha — so it silently never
+> ran. A broken logo URL showed the browser's default broken-image icon instead of the intended clean
+> fallback. Fixed with `addEventListener('error', ...)`, matching every other listener in `js/nav.js`.
+> **v7.20.1** (Epic 3 hardening sprint; merged 2026-08-03 as PR #152, plus two same-day
 > follow-on PRs, #153–#154, and a direct Edge Function redeploy with no PR of its own — see below).
 > v7.20.1 itself scoped several Edge Function
 > `email_templates`/`sms_templates`/`settings` queries by `org_id` (the multi-tenant seed's `org_demo` row

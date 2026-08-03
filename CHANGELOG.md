@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## [7.21.0] - 2026-08-03
+
+"Epic 3 Complete" — closing release for Epic 3 (Platform Provisioning & Multi-Tenant Isolation), bringing together v7.20.0's provisioning engine, v7.20.1's multi-tenant Edge Function fixes, and v7.20.2's operational-readiness hardening (logo rendering, neutral branding defaults, location tenant isolation, a real provisioning E2E test) into one tagged release. `package.json`'s version had drifted behind the last several entries here (stuck at 7.16.0 through v7.17.0–v7.20.2) — this release also catches it up.
+
+### Fixed
+
+- **Organisation logo error fallback silently blocked by CSP.** v7.20.2's `onerror="this.remove()"` on the logo `<img>` (`js/nav.js`) is an inline event handler; this app's CSP has no `'unsafe-inline'` for `script-src`, so it never actually ran — a broken/unreachable logo URL showed the browser's default broken-image icon instead of falling back cleanly. Replaced with `addEventListener('error', ...)`, matching every other listener in the same function. Verified live: a nonexistent-domain logo URL now removes the image with no broken-image icon and no CSP violation logged.
+
 ## [7.20.2] - 2026-08-03
 
 "Epic 3 Final Hardening" — closes out the defects found by an operational readiness review that ran a second, freshly provisioned organisation through the full onboarding-to-close-out journey rather than just reading the code. See that review for full findings, classification, and the prioritised backlog this sprint worked from.
