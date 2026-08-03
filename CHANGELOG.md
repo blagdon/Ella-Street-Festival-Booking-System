@@ -2,7 +2,19 @@
 
 All notable changes to this project are documented in this file.
 
-## [7.20.0] - 2026-08-03
+## [7.20.1] - 2026-08-03
+
+### Fixed
+
+- **Multi-tenant edge function template scoping**: Added `.eq('org_id', 'org_default')` to all `email_templates`, `sms_templates`, and `settings` PostgREST queries in `submit-booking`, `cancel-booking`, `stripe-webhook`, and `create-checkout-session` Edge Functions. Without this filter, the multi-tenant seed (`org_demo`) caused `.single()` calls to return PGRST116 ("multiple rows returned"), silently preventing `email_queue` and `sms_queue` rows from being written — making integration test assertions on queue row counts fail in CI.
+- **Test seed: missing SMS templates**: Added `booking_cancelled`, `booking_confirmed`, `booking_rejected`, and `location_update` rows to `scripts/seed-test-project.mjs`. The seed previously only provided `booking_received`, `payment_requested`, and `cancellation_confirmed` — but `cancel-booking/index.ts` fetches `booking_cancelled` and `sms-send.test.mjs` requires all six template IDs. This caused the cancel-booking integration test to fail with "Could not load booking_cancelled SMS template".
+- **Epic 3 multi-tenant auth fallback**: Updated `send-sms` and `create-checkout-session` Edge Functions to query `organisation_members` for admin role validation before falling back to the legacy `user_roles` table, ensuring provisioned organisations work without needing a legacy role row.
+
+### Verified
+
+- **Orphaned organisation rollback** (audit finding): Confirmed the `provision-organisation` Edge Function already implements rollback cleanup in its catch block (lines 278–290 of `index.ts`). On any mid-pipeline failure after the organisation INSERT, the catch block deletes (in FK-safe order) `events`, `settings`, `email_templates`, `sms_templates`, `organisation_members`, then `organisations` — all scoped by `org_id` using service-role key (bypasses RLS). Finding closed as: **verified, rollback already implemented, no additional action required**.
+
+
 
 ### Added
 
