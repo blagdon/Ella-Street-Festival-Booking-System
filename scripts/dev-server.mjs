@@ -179,7 +179,22 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  const filePath = resolveFilePath(req.url === '/' ? '/index.html' : req.url);
+  let filePath = resolveFilePath(req.url === '/' ? '/index.html' : req.url);
+
+  // Mirrors vercel.json's /:orgSlug/:eventSlug rewrite to event.html, for
+  // local testing of Epic 4 Phase 4A's public resolver — filesystem match
+  // wins first (a real 2-segment path like /css/output.css is served
+  // normally), same precedence Vercel applies in production. event.html
+  // itself reads the org/event slugs back out of location.pathname, so the
+  // address bar keeps the pretty path exactly as it would after Vercel's
+  // rewrite.
+  if (!filePath || !fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
+    const pathOnly = decodeURIComponent(req.url.split('?')[0].split('#')[0]);
+    const segments = pathOnly.split('/').filter(Boolean);
+    if (segments.length === 2) {
+      filePath = resolveFilePath('/event.html');
+    }
+  }
 
   if (!filePath || !fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
     res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });

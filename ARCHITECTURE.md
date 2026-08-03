@@ -272,6 +272,7 @@ page-*.js            (entry points — one per HTML page)
 | Manage Users | `page-manage-users.js` | Assign admin/steward roles |
 | Workspace | `page-admin.js` | Single-page Platform Administration Workspace |
 | Provisioning Wizard | `page-provisioning.js` (rendered inside `admin.html`'s Workspace — Provisioning tab in the sidebar, not its own page; there is no `provisioning.html`) | Admin-run tenant onboarding: creates the organisation, its primary event, and clones platform defaults, with a pre-flight check before committing |
+| Location Management | `page-admin-locations.js` (rendered inside `admin.html`'s Workspace — Locations tab; Epic 4 Phase 4C) | Add/Edit/Delete/Duplicate/Import-CSV/Export-CSV/Clone (same-event or cross-organisation) physical pitches, scoped to the active org+event, replacing manual SQL |
 | Steward App | `page-steward.js` | **Offline-capable** — works from `localStorage` with a sync queue, for on-site use with poor signal. The only page using `sw.js`/`manifest.json` (installable as a PWA) |
 
 ### Public pages (no login)
@@ -282,6 +283,7 @@ page-*.js            (entry points — one per HTML page)
 | `Food_Stall_booking.html` | Food stall application |
 | `cancel_booking.html` | Self-cancellation via `cancel_token` link |
 | `payment_success.html` / `payment_cancelled.html` | Stripe Checkout return pages |
+| `event.html` | Epic 4 Phase 4A — public `/{orgSlug}/{eventSlug}` landing page (`js/page-event.js`); resolves org/event identity and shows name/logo/branding/status via anon-readable views. Not a booking page — that's Phase 4D |
 
 ---
 
@@ -291,7 +293,7 @@ All under `supabase/functions/`. Shared helpers live in `_shared/`.
 
 | Function | Auth | Purpose |
 |---|---|---|
-| `provision-organisation` | Admin JWT / Service Role | Self-service tenant provisioning: validates slug/prefix uniqueness, creates organisation, assigns admin owner member, creates primary event, and invokes `rpc_initialise_tenant_defaults` |
+| `provision-organisation` | Admin JWT / Service Role | Self-service tenant provisioning: validates org/event slug format + reserved words (`_shared/slugs.ts`, Epic 4 Phase 4A) and prefix uniqueness, creates organisation, assigns admin owner member, creates primary event, and invokes `rpc_initialise_tenant_defaults` |
 | `submit-booking` | Public (Turnstile) | Validates CAPTCHA and event `open` status guard, builds booking row from allow-list, allocates ID, handles documents, sends email |
 | `cancel-booking` | Public — Turnstile **and** `cancel_token` | Self-service cancellation (via `cancel_booking_secure`) + confirmation email |
 | `create-checkout-session` | Admin JWT | Creates a Stripe Checkout Session, emails payment request, moves booking to `Payment Requested` |
@@ -334,6 +336,12 @@ All under `supabase/functions/`. Shared helpers live in `_shared/`.
 | `stripe_webhook_events` | Processed Stripe event ledger — the email-send idempotency boundary |
 | `google_reviews_cache` | Cached Google reviews lookups |
 | `performers`, `schedules` | **Owned by a separate application** — see below |
+
+> This list predates the multi-tenant model (Epics 1–4) and isn't a full schema
+> reference — it doesn't list `organisations`/`events`/`organisation_members`/
+> `platform_defaults_settings`/`sms_templates`/`sms_queue`, or the anon-readable
+> views (`public_bookings_info`, and Epic 4 Phase 4A's `public_organisations_info`/
+> `public_events_info`). See HANDOVER.md's Data Model section for those.
 
 ### Enums
 

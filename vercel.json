@@ -5,6 +5,12 @@
       "schedule": "0 8 * * *"
     }
   ],
+  "rewrites": [
+    {
+      "source": "/:orgSlug/:eventSlug",
+      "destination": "/event.html"
+    }
+  ],
   "headers": [
     {
       "source": "/(.*)",

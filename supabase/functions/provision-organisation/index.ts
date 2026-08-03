@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { ALLOWED_ORIGIN } from '../_shared/cors.ts'
+import { validateSlug } from '../_shared/slugs.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
@@ -108,9 +109,23 @@ Deno.serve(async (req) => {
       )
     }
 
-    const cleanOrgSlug = String(org_slug).trim().toLowerCase().replace(/[^a-z0-9-]/g, '')
+    let cleanOrgSlug: string
+    let cleanEventSlug: string
     const cleanPrefix = String(event_prefix).trim().toUpperCase()
     const cleanEmail = String(owner_email).trim().toLowerCase()
+
+    try {
+      cleanOrgSlug = validateSlug(org_slug, 'Organisation slug')
+      // Falls back to the booking prefix, matching the previous behaviour —
+      // but now validated the same way an explicitly-provided slug is,
+      // rather than assumed safe because it's derived from cleanPrefix.
+      cleanEventSlug = validateSlug(event_slug || cleanPrefix, 'Event slug')
+    } catch (err) {
+      return new Response(
+        JSON.stringify({ error: err instanceof Error ? err.message : 'Invalid slug.' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
 
     // 1. Dry Run / Pre-flight Checks
     const { data: existingOrg } = await supabaseAdmin
@@ -125,6 +140,14 @@ Deno.serve(async (req) => {
         { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
+
+    // Event slugs are only unique *within* an organisation (events_slug_unique
+    // is (org_id, slug)), but this organisation doesn't exist yet at
+    // pre-flight time, so there's nothing for a duplicate event slug to
+    // collide with here — the DB constraint is the real backstop once the
+    // organisation (and therefore an org_id to scope by) exists. Nothing to
+    // pre-check for event_slug specifically beyond the format/reserved-word
+    // validation already done above.
 
     const { data: existingPrefix } = await supabaseAdmin
       .from('events')
@@ -211,8 +234,9 @@ Deno.serve(async (req) => {
     }
 
     // Step C: Create Default Primary Event (status: draft)
+    // cleanEventSlug was already validated (format + reserved words) above,
+    // before the organisation was created.
     const newEventId = `evt_${Date.now()}`
-    const cleanEventSlug = event_slug ? String(event_slug).trim().toLowerCase() : cleanPrefix.toLowerCase()
 
     const { error: createEventErr } = await supabaseAdmin
       .from('events')

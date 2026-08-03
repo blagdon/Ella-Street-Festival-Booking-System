@@ -630,8 +630,9 @@ export async function refundStripePayment(payload) {
  * Fetches location data including bookings, locations, and global occupancy.
  * @param {string} currentInstance
  * @param {string} [orgId] defaults to the active Platform Context organisation
+ * @param {string} [eventId] defaults to the active Platform Context event
  */
-export async function fetchLocationData(currentInstance, orgId = getCurrentOrgId()) {
+export async function fetchLocationData(currentInstance, orgId = getCurrentOrgId(), eventId = getCurrentEventId()) {
     const sb = getSupabaseClient();
     const currentPrefix = CONFIG.INSTANCE_MAP[currentInstance] || CONFIG.INSTANCE_MAP['DEV'];
 
@@ -667,13 +668,14 @@ export async function fetchLocationData(currentInstance, orgId = getCurrentOrgId
         : { data: [], error: null };
     if (occErr) throw occErr;
 
-    // 3. Get Locations Reference — org-scoped like every other domain table;
-    // dataset (DEV/LIVE) narrows further within the organisation's own pitches.
+    // 3. Get Locations Reference — org- and event-scoped like every other
+    // domain table (Phase 4C); dataset (DEV/LIVE) narrows further within
+    // the event's own pitches.
     const dataset = (currentInstance === 'DEV') ? 'DEV' : 'LIVE';
 
     let locs = [];
     try {
-        const { data: lData } = await sb.from(TBL_LOCATIONS).select('*').eq('org_id', orgId).eq('dataset', dataset).limit(LIST_CAP);
+        const { data: lData } = await sb.from(TBL_LOCATIONS).select('*').eq('org_id', orgId).eq('event_id', eventId).eq('dataset', dataset).limit(LIST_CAP);
         if (lData) locs = normalizeLocationIds(lData);
     } catch (e) {
         console.warn('Failed to fetch locations reference data:', e.message);

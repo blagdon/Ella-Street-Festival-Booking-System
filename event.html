@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://vercel.live; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; connect-src 'self' https://rsnxhuhibglieofikkpo.supabase.co https://vercel.live; frame-src https://vercel.live; img-src 'self' data: https:; font-src 'self' https://fonts.gstatic.com;">
+  <title>Event</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link href="/css/output.css" rel="stylesheet">
+
+  <!-- Absolute paths, not relative: this page is also served at
+       /{orgSlug}/{eventSlug} (see vercel.json's rewrite + scripts/dev-server.mjs's
+       matching one) — a relative path there would resolve against the
+       visible two-segment URL, not this file's real location at the root. -->
+  <script src="/js/vendor/supabase.js"></script>
+  <script type="module" src="/supabase-public.js"></script>
+  <script type="module" src="/js/page-event.js"></script>
+</head>
+
+<body class="bg-gray-50 min-h-screen font-sans text-gray-800 flex items-center justify-center px-4">
+
+  <main id="eventRoot" class="w-full max-w-lg py-12 text-center">
+    <p class="text-sm text-gray-500">Loading event…</p>
+  </main>
+
+</body>
+
+</html>

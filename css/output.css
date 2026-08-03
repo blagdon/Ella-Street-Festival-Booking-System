@@ -768,6 +768,9 @@
   .max-w-\[160px\] {
     max-width: 160px;
   }
+  .max-w-full {
+    max-width: 100%;
+  }
   .max-w-lg {
     max-width: var(--container-lg);
   }
@@ -1983,6 +1986,9 @@
   }
   .text-yellow-900 {
     color: var(--color-yellow-900);
+  }
+  .lowercase {
+    text-transform: lowercase;
   }
   .uppercase {
     text-transform: uppercase;
