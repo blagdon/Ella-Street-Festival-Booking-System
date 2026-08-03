@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented in this file.
 
+## [7.20.2] - 2026-08-03
+
+"Epic 3 Final Hardening" — closes out the defects found by an operational readiness review that ran a second, freshly provisioned organisation through the full onboarding-to-close-out journey rather than just reading the code. See that review for full findings, classification, and the prioritised backlog this sprint worked from.
+
+### Fixed
+
+- **Organisation logo now renders.** It was already saving and reloading correctly, scoped to the right organisation — nothing in the app ever displayed it. `js/nav.js`'s shared admin header now renders the active organisation's `logo_url` (falling back to the existing plain-text header when empty, and removing itself rather than showing a broken-image icon on an invalid URL), reusing the exact per-org settings fetch every admin page already performs on load (`loadStallCosts()` → `applySettingsToConfig()` → new `CONFIG.BRANDING`) — no new network request, no duplicated branding-loading logic.
+- **New organisations no longer inherit the original organisation's branding as their "defaults".** The Branding form's logo/SMS-sender/support-email/footer fields fell back to Ella Street's own real configured values whenever an organisation had no row yet — true for every organisation provisioned since Epic 3 shipped. They're empty now, with generic placeholders for guidance only.
+- **Branding key-namespace consolidation.** While fixing the above, found that `platform_defaults_settings` seeded `primary_color`/`accent_color`/`support_email`, but the Branding form has only ever read/written `brand_primary_color`/`brand_accent_color`/`org_support_email` — a different set of names for the same three concepts. The seeded rows were therefore cloned into every provisioned organisation and never read by anything. Migration `20260803120000_consolidate_branding_defaults.sql` retires the unused names and seeds the ones the form actually uses, plus `email_footer_text`, all with neutral values; `logo_url`/`logo_light_url` are deliberately left unseeded, since an absent row is the correct "no logo configured" state the header already handles.
+- **Location Manager was not organisation-scoped.** `fetchLocationData` (`js/api.js`, backing `location_admin.html`) filtered only by the legacy `dataset` (DEV/LIVE) flag — `org_id` exists on both `locations` and the bookings it queries but was never filtered on, so a second organisation's Location Manager would show the first organisation's real pitches and confirmed bookings. Fixed with the same `orgId` parameter (defaulting to `getCurrentOrgId()`) `fetchKanbanData`/`fetchPayments` already use — deliberately *not* extended to `fetchMapData`, which backs the public visitor map and has no organisation concept yet (that's Epic 4's public-routing work, not this fix's to reach into).
+
+### Testing
+
+- **Replaced `e2e/provisioning.spec.mjs`.** It only ever loaded `/admin.html` and asserted the page title — and turned out not to be matched by any Playwright project's `testMatch` pattern at all, so it had never actually run in CI despite existing since Epic 3 shipped. Now drives the real wizard end to end (all 5 steps, through `admin.html`'s Provisioning tab) and verifies the resulting organisation/event/settings/template rows directly in the database, then cleans up. Wired into the `admin` Playwright project so it actually executes going forward.
+- Running the full suite after these fixes caught two pre-existing issues the branding-key rename and an earlier manual review session had left behind, not introduced by this sprint: `tests/phase3-provisioning.test.mjs`'s multi-tenant isolation test still asserted the old `primary_color` key (updated), and the disposable test project's shared admin account had accumulated stray `organisation_members` rows from earlier manual provisioning that made `get_current_org_id()`'s tie-break non-deterministic for that account, intermittently failing an unrelated Phase 2 test. Both fixed; see HANDOVER.md's Gotchas for the reusable lesson on manual-test-org cleanup.
+
 ## [7.20.1] - 2026-08-03
 
 ### Fixed

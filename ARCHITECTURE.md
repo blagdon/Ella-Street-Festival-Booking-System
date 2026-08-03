@@ -175,11 +175,11 @@ Multiple booking types live in one database, separated by an `instance_prefix` c
 | `GENERAL` | `ESF26-NONFOOD-` | General/non-food trader applications |
 | `MISC` | `ESF26-MISC-` | Non-bookable facilities (barriers, first aid…) |
 
-The `ESF26` part is **not hardcoded** — it comes from the `booking_prefix` setting (falling back to `ESF26`), so the festival year can be rolled over without a code change.
+The `ESF26` part is **not hardcoded** — it comes from the active organisation's active **event** (`events.booking_prefix`, resolved via `js/config.js → getActiveBookingPrefix()`), so the festival year — or a second organisation's own prefix entirely — can change without a code change. (`js/config.js`'s `getActiveBookingPrefix()` checks the cached active event first, falling back to the `settings` table's `booking_prefix` row only if no event is cached, and finally to the literal `"ESF26"`.)
 
-The active instance is stored in `localStorage` under `ESF_INSTANCE`; the nav header switches it and reloads.
+The active instance is stored in `localStorage` under `ESF_INSTANCE`; the nav header switches it and reloads. The active **organisation** and **event** are separate context, also `localStorage`-backed (`ESF_ORG_ID`/`ESF_ACTIVE_EVENT`) — see HANDOVER.md's Gotchas for the operational failure mode this creates if the two ever disagree, and for the multi-tenant `organisations`/`events` model this section predates.
 
-> **Key rule:** booking IDs are `{PREFIX}-{TYPE}-{NNNN}` (e.g. `ESF26-FOOD-0042`), enforced by `utils.js → validateBookingId()`. IDs are allocated server-side by the `get_next_booking_id` RPC, with retry-on-conflict in `submit-booking` — see that function's comments for why the lock alone isn't enough.
+> **Key rule:** booking IDs are `{PREFIX}-{TYPE}-{NNNN}` (e.g. `ESF26-FOOD-0042`), enforced by `utils.js → validateBookingId()`, which resolves `{PREFIX}` the same event-aware way `CONFIG.INSTANCE_MAP` does — not from the settings table directly, so it can't reject a valid ID for an organisation whose event uses a different prefix. IDs are allocated server-side by the `get_next_booking_id` RPC, with retry-on-conflict in `submit-booking` — see that function's comments for why the lock alone isn't enough.
 
 ---
 
@@ -271,7 +271,7 @@ page-*.js            (entry points — one per HTML page)
 | Audit Log | `page-audit-log.js` | Browse the audit trail |
 | Manage Users | `page-manage-users.js` | Assign admin/steward roles |
 | Workspace | `page-admin.js` | Single-page Platform Administration Workspace |
-| Provisioning Wizard | `page-provisioning.js` | Self-service tenant organisation onboarding & dry-run validation |
+| Provisioning Wizard | `page-provisioning.js` (rendered inside `admin.html`'s Workspace — Provisioning tab in the sidebar, not its own page; there is no `provisioning.html`) | Admin-run tenant onboarding: creates the organisation, its primary event, and clones platform defaults, with a pre-flight check before committing |
 | Steward App | `page-steward.js` | **Offline-capable** — works from `localStorage` with a sync queue, for on-site use with poor signal. The only page using `sw.js`/`manifest.json` (installable as a PWA) |
 
 ### Public pages (no login)
@@ -458,6 +458,8 @@ Configuration lives in three places, in order of authority:
 **3. `js/config.js` (derived)** — imports `ESF_PUBLIC_CONFIG` and layers the settings table on top. It holds **no** hardcoded prices or bank details; `getStallCost()` reads from settings and falls back to 0 with a console warning.
 
 Anon can read only an **allow-listed subset** of settings keys — credentials are not in that list.
+
+**Organisation branding** (`logo_url`, `logo_light_url`, `brand_primary_color`, `brand_accent_color`, `org_support_email`, `email_footer_text`) is a `settings` sub-category, scoped by `org_id` like every other row in the table, edited from the Platform Administration Workspace's Branding tab (`js/page-admin.js`). `logo_url` is rendered in the shared admin header (`js/nav.js`) via the same per-org settings fetch every admin page already performs on load (`loadStallCosts()` → `applySettingsToConfig()` → `CONFIG.BRANDING`) — no separate branding request. Newly provisioned organisations get neutral values cloned from `platform_defaults_settings` (never the original organisation's own configured brand); `logo_url`/`logo_light_url` are deliberately left unseeded, and the header falls back to plain text when empty.
 
 ---
 

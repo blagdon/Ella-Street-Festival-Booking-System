@@ -50,7 +50,10 @@ export async function initNavigation() {
             <!-- Title -->
             <div class="flex items-center flex-1 min-w-0">
                 ${backBtnDesktop}
-                <a href="index.html" class="flex items-center hover:opacity-80 transition">
+                <a href="index.html" class="flex items-center hover:opacity-80 transition min-w-0">
+                    ${CONFIG.BRANDING.LOGO_URL ? `
+                    <img src="${escapeHtml(CONFIG.BRANDING.LOGO_URL)}" alt="${escapeHtml(CONFIG.FESTIVAL_DISPLAY_NAME)}" class="h-7 md:h-8 w-auto max-w-[140px] object-contain mr-2 shrink-0" onerror="this.remove()">
+                    ` : ''}
                     <h1 class="text-base md:text-xl font-bold tracking-wide truncate">
                         ${escapeHtml(CONFIG.FESTIVAL_DISPLAY_NAME)}
                         <span class="hidden sm:inline font-normal text-sm md:text-lg text-gray-600">| ${year} Admin</span>

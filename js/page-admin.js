@@ -769,20 +769,20 @@ async function renderBrandingSection(container) {
     const formContentHtml = `
     <form id="brandingForm">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            ${renderInputField({ id: 'logoUrl', label: 'Primary Logo URL', value: brandingSettings.logo_url || 'https://ellastreetfestival.co.uk/logo.png', placeholder: 'https://example.com/logo.png' })}
+            ${renderInputField({ id: 'logoUrl', label: 'Primary Logo URL', value: brandingSettings.logo_url || '', placeholder: 'https://example.com/logo.png' })}
             ${renderInputField({ id: 'logoLightUrl', label: 'Light Logo URL', value: brandingSettings.logo_light_url || '', placeholder: 'https://example.com/logo-light.png' })}
         </div>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
-            ${renderInputField({ id: 'brandPrimaryColor', label: 'Primary Accent Color', value: brandingSettings.brand_primary_color || '#1d4ed8', placeholder: '#1d4ed8' })}
-            ${renderInputField({ id: 'brandAccentColor', label: 'Secondary Color', value: brandingSettings.brand_accent_color || '#047857', placeholder: '#047857' })}
+            ${renderInputField({ id: 'brandPrimaryColor', label: 'Primary Accent Color', value: brandingSettings.brand_primary_color || '', placeholder: '#2563EB' })}
+            ${renderInputField({ id: 'brandAccentColor', label: 'Secondary Color', value: brandingSettings.brand_accent_color || '', placeholder: '#64748B' })}
         </div>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
-            ${renderInputField({ id: 'smsSenderId', label: 'SMS Sender Name (Alphanumeric)', value: brandingSettings.sms_sender_id || 'EllaFestival', helpText: '3-11 characters displayed on mobile phones' })}
-            ${renderInputField({ id: 'orgSupportEmail', label: 'Public Support Email', value: brandingSettings.org_support_email || 'info@ellastreetfestival.co.uk', type: 'email' })}
+            ${renderInputField({ id: 'smsSenderId', label: 'SMS Sender Name (Alphanumeric)', value: brandingSettings.sms_sender_id || '', placeholder: 'YOURORG', helpText: '3-11 characters displayed on mobile phones' })}
+            ${renderInputField({ id: 'orgSupportEmail', label: 'Public Support Email', value: brandingSettings.org_support_email || '', placeholder: 'support@example.com', type: 'email' })}
         </div>
         <div class="mt-4">
             <label for="emailFooterText" class="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">Email Signature / Footer Text</label>
-            <textarea id="emailFooterText" rows="3" class="w-full px-3.5 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500">${escapeHtml(brandingSettings.email_footer_text || 'Ella Street Festival Organising Committee | Registered Community Group')}</textarea>
+            <textarea id="emailFooterText" rows="3" placeholder="Your Organisation Name | Registered status" class="w-full px-3.5 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500">${escapeHtml(brandingSettings.email_footer_text || '')}</textarea>
         </div>
         ${renderFormSaveBar({ submitId: 'btnSaveBranding', submitLabel: 'Save Branding Settings' })}
     </form>`;
