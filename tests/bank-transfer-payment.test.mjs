@@ -23,7 +23,7 @@ async function insertBooking(id, overrides = {}) {
     status: 'Pending',
     business_name: `Bank Transfer Test ${id}`,
     owner_name: 'Test Owner',
-    email: 'bank-transfer-test@example.test',
+    email: `${id.toLowerCase()}@example.test`,
     instance_prefix: 'ESF26-DEV-',
     stall_type: 'Food',
     ...overrides,
@@ -170,7 +170,7 @@ describe('payment_requested email includes bank-transfer instructions', () => {
     const { data: emailRow } = await service
       .from('email_queue')
       .select('body')
-      .eq('recipient', 'bank-transfer-test@example.test')
+      .eq('recipient', `${id.toLowerCase()}@example.test`)
       .order('id', { ascending: false })
       .limit(1)
       .single();
