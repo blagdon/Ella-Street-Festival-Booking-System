@@ -52,7 +52,7 @@ export async function initNavigation() {
                 ${backBtnDesktop}
                 <a href="index.html" class="flex items-center hover:opacity-80 transition min-w-0">
                     ${CONFIG.BRANDING.LOGO_URL ? `
-                    <img src="${escapeHtml(CONFIG.BRANDING.LOGO_URL)}" alt="${escapeHtml(CONFIG.FESTIVAL_DISPLAY_NAME)}" class="h-7 md:h-8 w-auto max-w-[140px] object-contain mr-2 shrink-0" onerror="this.remove()">
+                    <img id="navOrgLogo" src="${escapeHtml(CONFIG.BRANDING.LOGO_URL)}" alt="${escapeHtml(CONFIG.FESTIVAL_DISPLAY_NAME)}" class="h-7 md:h-8 w-auto max-w-[140px] object-contain mr-2 shrink-0">
                     ` : ''}
                     <h1 class="text-base md:text-xl font-bold tracking-wide truncate">
                         ${escapeHtml(CONFIG.FESTIVAL_DISPLAY_NAME)}
@@ -141,6 +141,15 @@ export async function initNavigation() {
     `;
 
     container.innerHTML = headerHTML; // innerhtml-safe: component HTML built with internal escapeHtml calls
+
+    // Remove the logo on a broken/unreachable URL rather than showing the
+    // browser's default broken-image icon. Must be addEventListener, not an
+    // inline onerror= attribute — this app's CSP has no 'unsafe-inline' for
+    // script-src, so an inline handler is silently blocked, not just
+    // discouraged (see HANDOVER.md's "No inline event handlers" gotcha).
+    document.getElementById('navOrgLogo')?.addEventListener('error', function () {
+        this.remove();
+    });
 
     // Switch back to the primary organisation from any admin page — mirrors
     // js/page-admin.js's own btnSwitchPrimaryOrg, but available everywhere
