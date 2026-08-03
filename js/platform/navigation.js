@@ -40,7 +40,7 @@ export function renderAdminSidebar(activeSectionId) {
 
     return `
     <nav class="space-y-1 pr-2" aria-label="Platform Administration Sections">
-        <div class="px-4 py-2 text-xs font-bold text-gray-400 uppercase tracking-wider">Workspace</div>
+        <div class="px-4 py-2 text-xs font-bold text-gray-500 uppercase tracking-wider">Workspace</div>
         ${navItems}
     </nav>`;
 }
