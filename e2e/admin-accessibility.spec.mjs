@@ -29,6 +29,7 @@ const PAGES = [
   'steward.html',
   'summary.html',
   'update_details.html',
+  'provisioning.html',
 ];
 
 function formatViolations(violations) {

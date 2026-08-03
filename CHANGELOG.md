@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented in this file.
 
+## [7.20.0] - 2026-08-03
+
+### Added
+
+- **Epic 3 Platform Provisioning Suite**: Completed self-service organisation onboarding (`provisioning.html` and `js/page-provisioning.js`) backed by the `provision-organisation` Edge Function and `rpc_initialise_tenant_defaults` database RPC.
+- **Event Lifecycle Status Constraints**: Added `events.status` constraint (`draft`, `ready`, `open`, `closed`, `archived`) and public booking submission guards in `submit-booking` Edge Function.
+- **Automated Rollback Cleanup**: Added rollback cleanup handling in `provision-organisation` to purge partially created tenant data if provisioning fails mid-pipeline.
+- **Runtime Active Event Resolution**: Dynamic event context resolution via `js/event-service.js` with active organisation and event header dropdown selectors (`js/nav.js`).
+- **Comprehensive Epic 3 Testing Suite**: Expanded `tests/phase3-provisioning.test.mjs` integration tests and Playwright E2E suite (`e2e/provisioning.spec.mjs`).
+
 ## [7.19.0] - 2026-08-01
 
 ### Added

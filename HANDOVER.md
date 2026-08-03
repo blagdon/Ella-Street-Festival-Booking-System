@@ -8,8 +8,8 @@
 > including applying additive migrations to production), which require specific
 > verification first, and the short list that needs an explicit instruction every
 > time. Default to acting.
-> Last updated: 2026-08-01.
-> Current release: **v7.19.0** (Epic 2 Platform Administration Workspace; prepared 2026-08-01). Adds single-page Platform Administration Workspace (`admin.html`), modular ESM platform UI component system (`js/platform/`), categorised settings hub (General, Bookings, Comms, Payments, Advanced), branding customization, member management, Current Event Service (`js/event-service.js`), and header event selector.
+> Last updated: 2026-08-03.
+> Current release: **v7.20.0** (Epic 3 Platform Provisioning & Multi-Tenant Isolation; prepared 2026-08-03). Introduces self-service organisation onboarding (`provisioning.html`), `provision-organisation` Edge Function, platform defaults cloning (`rpc_initialise_tenant_defaults`), event status lifecycle constraints (`draft`/`ready`/`open`/`closed`/`archived`), event lifecycle submission guards, and automatic rollback cleanup.
 > **It ships inert**: the seeded `sms_provider` setting is `mock`, a no-op
 > adapter that logs instead of sending, so nothing is texted or billed until
 > someone deliberately configures a real provider from the Settings page. That
