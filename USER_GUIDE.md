@@ -27,6 +27,7 @@
 18. [Managing Admin Users](#18-managing-admin-users)
 19. [Steward Accounts](#19-steward-accounts)
 20. [Frequently Asked Questions](#20-frequently-asked-questions)
+21. [Setting Up a New Organisation & Branding](#21-setting-up-a-new-organisation--branding)
 
 ---
 
@@ -391,6 +392,35 @@ A: Trader documents (insurance certificates, food hygiene certs, etc.) are uploa
 
 **Q: What does the cancel token do?**  
 A: Every confirmation email includes a unique self-cancellation link. When the trader clicks it, it takes them to `cancel_booking.html` where they can cancel without needing admin access. The booking status is then updated to `Cancelled` automatically.
+
+---
+
+## 21. Setting Up a New Organisation & Branding
+
+> This section covers the Platform Administration Workspace's Provisioning and Branding tools —
+> most organisers running a single festival will never need them. They matter if the platform is
+> being set up to run more than one organisation's events.
+
+**Setting up a new organisation.** From the Admin Hub, click **Workspace**, then choose
+**Provisioning** from the sidebar. There is no separate provisioning page or public sign-up form —
+this wizard, reachable only to a signed-in admin, is the only way a new organisation gets created.
+Walk through its five steps (Organisation details → Primary Event → a summary of what will be
+cloned → a pre-flight check → the final report) and click **Provision Organisation**. This creates
+the organisation, its first event, and a starter set of settings/email/SMS templates it can then
+customise.
+
+**Switching which organisation you're viewing.** The header's **Org** dropdown (and, on the Platform
+Administration Workspace, the Organisation selector) changes which organisation's data every admin
+page shows. If you're ever looking at a Kanban board or Payments page that seems unexpectedly
+empty, check this — the header badge next to it turns **amber** and shows an **↩ Primary org**
+button whenever you're not viewing the main organisation, precisely so this is easy to notice and
+easy to undo with one click.
+
+**Branding.** From the Workspace sidebar, **Branding** lets you set a logo URL, accent colours, an
+SMS sender name, a support email, and an email footer for the organisation you're currently viewing.
+The logo appears in that organisation's admin header once saved and the page is reloaded. A newly
+created organisation starts with everything blank — it will never show a previous organisation's
+logo or contact details as if they were its own.
 
 ---
 

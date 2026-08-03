@@ -735,6 +735,9 @@
   .w-64 {
     width: calc(var(--spacing) * 64);
   }
+  .w-auto {
+    width: auto;
+  }
   .w-full {
     width: 100%;
   }
@@ -755,6 +758,9 @@
   }
   .max-w-\[85\%\] {
     max-width: 85%;
+  }
+  .max-w-\[140px\] {
+    max-width: 140px;
   }
   .max-w-\[150px\] {
     max-width: 150px;
@@ -1510,6 +1516,9 @@
   }
   .bg-no-repeat {
     background-repeat: no-repeat;
+  }
+  .object-contain {
+    object-fit: contain;
   }
   .object-cover {
     object-fit: cover;
@@ -2699,6 +2708,9 @@
     }
     .md\:h-4 {
       height: calc(var(--spacing) * 4);
+    }
+    .md\:h-8 {
+      height: calc(var(--spacing) * 8);
     }
     .md\:h-16 {
       height: calc(var(--spacing) * 16);

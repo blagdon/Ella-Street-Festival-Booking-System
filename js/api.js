@@ -629,14 +629,15 @@ export async function refundStripePayment(payload) {
 /**
  * Fetches location data including bookings, locations, and global occupancy.
  * @param {string} currentInstance
+ * @param {string} [orgId] defaults to the active Platform Context organisation
  */
-export async function fetchLocationData(currentInstance) {
+export async function fetchLocationData(currentInstance, orgId = getCurrentOrgId()) {
     const sb = getSupabaseClient();
     const currentPrefix = CONFIG.INSTANCE_MAP[currentInstance] || CONFIG.INSTANCE_MAP['DEV'];
 
     // 1. Fetch bookings to DISPLAY (Current Instance Only)
     const bLocs = await fetchCapped(
-        sb.from(TBL_BOOKINGS).select('*').eq('status', 'Confirmed').eq('instance_prefix', currentPrefix),
+        sb.from(TBL_BOOKINGS).select('*').eq('org_id', orgId).eq('status', 'Confirmed').eq('instance_prefix', currentPrefix),
         LIST_CAP
     );
 
@@ -656,7 +657,7 @@ export async function fetchLocationData(currentInstance) {
     // then the trigger rejects the assignment) rather than an actual
     // double-booking.
     const occupantBookings = await fetchCapped(
-        sb.from(TBL_BOOKINGS).select('id').eq('status', 'Confirmed').in('instance_prefix', occupancyFilter),
+        sb.from(TBL_BOOKINGS).select('id').eq('org_id', orgId).eq('status', 'Confirmed').in('instance_prefix', occupancyFilter),
         LIST_CAP
     );
 
@@ -666,12 +667,13 @@ export async function fetchLocationData(currentInstance) {
         : { data: [], error: null };
     if (occErr) throw occErr;
 
-    // 3. Get Locations Reference
+    // 3. Get Locations Reference — org-scoped like every other domain table;
+    // dataset (DEV/LIVE) narrows further within the organisation's own pitches.
     const dataset = (currentInstance === 'DEV') ? 'DEV' : 'LIVE';
 
     let locs = [];
     try {
-        const { data: lData } = await sb.from(TBL_LOCATIONS).select('*').eq('dataset', dataset).limit(LIST_CAP);
+        const { data: lData } = await sb.from(TBL_LOCATIONS).select('*').eq('org_id', orgId).eq('dataset', dataset).limit(LIST_CAP);
         if (lData) locs = normalizeLocationIds(lData);
     } catch (e) {
         console.warn('Failed to fetch locations reference data:', e.message);

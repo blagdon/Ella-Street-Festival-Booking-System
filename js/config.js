@@ -64,6 +64,17 @@ export const CONFIG = {
     // it via settings.html, same as every other integration here.
     SENTRY_BROWSER_LOADER_URL: '',
 
+    // Organisation branding — empty until loaded from the org-scoped settings
+    // table (logo_url/logo_light_url) via applySettingsToConfig(), the same
+    // per-org settings fetch loadStallCosts() already performs on every admin
+    // page load. No hardcoded default: js/nav.js falls back to the plain text
+    // FESTIVAL_DISPLAY_NAME header when LOGO_URL is empty, exactly as it did
+    // before any organisation had a logo configured.
+    BRANDING: {
+        LOGO_URL: '',
+        LOGO_LIGHT_URL: ''
+    },
+
     // UI Configuration
     UI: {
         // No hardcoded defaults — populated entirely from the settings table
@@ -252,6 +263,10 @@ export function applySettingsToConfig(data) {
             ESF_PUBLIC_CONFIG.BOOKING_PREFIX = val;
         } else if (item.key === 'sentry_browser_loader_url') {
             CONFIG.SENTRY_BROWSER_LOADER_URL = val;
+        } else if (item.key === 'logo_url') {
+            CONFIG.BRANDING.LOGO_URL = val;
+        } else if (item.key === 'logo_light_url') {
+            CONFIG.BRANDING.LOGO_LIGHT_URL = val;
         }
     });
 }

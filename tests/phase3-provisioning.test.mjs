@@ -94,10 +94,14 @@ test('Epic 3 — Platform Provisioning Suite', async (t) => {
         await supabaseAdmin.rpc('rpc_initialise_tenant_defaults', { p_org_id: tenantB });
 
         // Update setting in Tenant A
-        await supabaseAdmin.from('settings').update({ value: '#FF0000' }).eq('org_id', tenantA).eq('key', 'primary_color');
+        await supabaseAdmin.from('settings').update({ value: '#FF0000' }).eq('org_id', tenantA).eq('key', 'brand_primary_color');
 
-        // Verify Tenant B's primary_color remains unchanged (#2563EB)
-        const { data: bSetting } = await supabaseAdmin.from('settings').select('value').eq('org_id', tenantB).eq('key', 'primary_color').single();
+        // Verify Tenant B's brand_primary_color remains unchanged (#2563EB) —
+        // key renamed from 'primary_color' (EP3-02): the Branding form reads/
+        // writes 'brand_primary_color', so the old name was never actually
+        // displayed anywhere and platform_defaults_settings now seeds the one
+        // that is.
+        const { data: bSetting } = await supabaseAdmin.from('settings').select('value').eq('org_id', tenantB).eq('key', 'brand_primary_color').single();
         assert.equal(bSetting.value, '#2563EB', 'Mutating Tenant A settings should not affect Tenant B');
 
         // Cleanup

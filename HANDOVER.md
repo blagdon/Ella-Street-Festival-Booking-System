@@ -54,7 +54,45 @@
 > A follow-up audit (PR #154) found two bookings (`ESF28-NONFOOD-0001`/`0002`) that had actually been
 > created under the wrong prefix while it was misconfigured — both confirmed as the admin's own test
 > data (not real trader applications) before deleting.
-> Prior release, unchanged by the above: **v7.20.0** (Epic 3 Platform Provisioning & Multi-Tenant Isolation; prepared 2026-08-03). Introduces self-service organisation onboarding (`provisioning.html`), `provision-organisation` Edge Function, platform defaults cloning (`rpc_initialise_tenant_defaults`), event status lifecycle constraints (`draft`/`ready`/`open`/`closed`/`archived`), event lifecycle submission guards, and automatic rollback cleanup.
+> **Epic 3 final hardening sprint** (2026-08-03), closing out the defects an operational readiness
+> review found while actually running a second, freshly provisioned organisation through the full
+> onboarding-to-close-out journey (see that review for the full findings and classification):
+> the organisation **logo now renders** in the shared admin header (`js/nav.js`), reusing the exact
+> settings fetch every admin page already performs on load (`loadStallCosts()` →
+> `applySettingsToConfig()` → new `CONFIG.BRANDING` — no separate request), falling back to the plain
+> text header exactly as before when no logo is set, and removing itself on a broken URL rather than
+> showing a broken-image icon. The Branding form's hard-coded fallback values (Ella Street's own logo
+> URL, SMS sender ID, support email, footer text) are gone — new organisations now see genuinely empty
+> fields, not the previous customer's brand. This also surfaced a real key-namespace split:
+> `platform_defaults_settings` seeded `primary_color`/`accent_color`/`support_email`, but the Branding
+> form has only ever read/written `brand_primary_color`/`brand_accent_color`/`org_support_email` — so
+> those seeded rows were silently dead on every organisation provisioned since Epic 3 shipped.
+> Migration `20260803120000_consolidate_branding_defaults.sql` retires the unused names and seeds the
+> ones actually read, with neutral values (`logo_url`/`logo_light_url` deliberately left unseeded — an
+> empty logo is the correct "not configured" state, not a placeholder image). Separately,
+> `fetchLocationData` (`js/api.js`, backing `location_admin.html`) was scoped by the legacy `dataset`
+> (DEV/LIVE) flag only — `org_id` exists on `locations`/`bookings` but was never filtered on, so a
+> second organisation's Location Manager would have shown the *first* organisation's real pitch
+> layout and booking data. Fixed the same way `fetchKanbanData`/`fetchPayments` already were (an
+> `orgId` parameter defaulting to `getCurrentOrgId()`) — deliberately **not** extended to
+> `fetchMapData`, which backs the public, still-single-tenant visitor map; giving that one an `org_id`
+> filter would be solving an Epic 4 problem (public org resolution) inside an Epic 3 fix. Finally,
+> `e2e/provisioning.spec.mjs` — despite its name — only ever loaded `/admin.html` and asserted the
+> page title; worse, it turned out **not to be matched by any Playwright project's `testMatch`
+> pattern at all**, so it had never actually run in CI. Replaced with a real spec that opens the
+> Provisioning tab, completes all 5 wizard steps, and verifies the resulting organisation/event/
+> settings/template rows directly in the database — and wired it into the `admin` project's
+> `testMatch` so it actually executes. Running the full suite afterward caught two more real,
+> pre-existing issues this work exposed rather than caused: `tests/phase3-provisioning.test.mjs`'s
+> multi-tenant isolation test still asserted the old `primary_color` key (updated to
+> `brand_primary_color`), and the test-admin account had accumulated `organisation_members` rows for
+> two orgs from an earlier manual review session that were never cleaned up — since
+> `get_current_org_id()`'s `organisation_members` fallback does `LIMIT 1` with no `ORDER BY`, this
+> made org resolution for that account non-deterministic and intermittently broke an unrelated
+> Phase 2 tenant-isolation test. Cleaned up; the general lesson repeats one already in this file's
+> Gotchas — any organisation created for manual testing needs the same cleanup discipline as a
+> written test's own `afterEach`, or it becomes a live trap for the next person's unrelated test run.
+> Prior release, unchanged by the above: **v7.20.0** (Epic 3 Platform Provisioning & Multi-Tenant Isolation; prepared 2026-08-03). Introduces organisation onboarding — an admin-run wizard on the Platform Administration Workspace's **Provisioning tab** (`admin.html`, not a standalone `provisioning.html` — see the Epic 3 final hardening sprint entry below for why that distinction now matters), `provision-organisation` Edge Function, platform defaults cloning (`rpc_initialise_tenant_defaults`), event status lifecycle constraints (`draft`/`ready`/`open`/`closed`/`archived`), event lifecycle submission guards, and automatic rollback cleanup.
 > **It ships inert**: the seeded `sms_provider` setting is `mock`, a no-op
 > adapter that logs instead of sending, so nothing is texted or billed until
 > someone deliberately configures a real provider from the Settings page. That
@@ -1391,8 +1429,11 @@ review had reason to look at.
 **The lesson generalises past modals.** Any UI pattern implemented independently in more than
 one file (this repo has several: the `data-action="..."` delegated-listener convention, the
 SMS-opt-in-tickbox pattern on every send flow, the `sr-only`-labelled icon button pattern, the
-`text-gray-400`-contrast mistake fixed identically ~15 times across two audit rounds) is a
-sweep candidate. Before calling that class of work done, grep for every occurrence across the
+`text-gray-400`-contrast mistake fixed identically ~15 times across two audit rounds, and —
+found the same way, 2026-08-03 — the `orgId` parameter `js/api.js`'s `fetch*` functions each add
+independently: `fetchKanbanData`/`fetchPayments` had already been scoped by `org_id` in an
+earlier pass, but `fetchLocationData` hadn't, and nothing caught the gap until an operational
+review actually ran a second organisation through the Location Manager) is a sweep candidate. Before calling that class of work done, grep for every occurrence across the
 **whole** codebase — not just the files already in scope — using whatever's mechanical and
 exhaustive for that pattern: an element-id grep (`grep -rhoE 'id="[A-Za-z-]*Foo[A-Za-z-]*"' *.html`),
 a function-name grep, a shared-CSS-class grep. Do this as the default closing step for this
@@ -3822,6 +3863,23 @@ stay in the separate `ellafestperformersadmin.vercel.app` codebase.
   anything with an obvious "current value") is editable from two different UI surfaces writing to
   two different tables, every reader has to agree on which one is authoritative — grep for every
   reader of the *other* one before trusting either.
+
+- **A manually-provisioned test organisation left in `organisation_members` can silently make
+  `get_current_org_id()` non-deterministic for whatever account owns it.** The function's fallback
+  path is `SELECT org_id FROM organisation_members WHERE user_id = auth.uid() LIMIT 1` — no
+  `ORDER BY`, so once an account belongs to more than one organisation, which one it resolves to on
+  any given call is unspecified. An operational readiness review (2026-08-03) provisioned two
+  organisations through the wizard using the disposable test project's own admin account as the
+  owner email, then moved on without deleting them — days (well, the same day) later, this broke
+  `tests/phase2-tenant-isolation.test.mjs`'s "resolves org_default for active session" assertion and
+  made `check_user_role()` intermittently resolve against the wrong tenant for that account,
+  depending on row order. Not caused by any code change — caused entirely by leftover data.
+  **The rule this earns**: any organisation created for manual testing/review (not through a test
+  file's own `afterEach`) needs the exact same cleanup discipline before moving on — delete
+  `events`/`settings`/`email_templates`/`sms_templates`/`organisation_members` then `organisations`
+  for it, the same FK-safe order `provision-organisation`'s own rollback and
+  `tests/phase3-provisioning.test.mjs` already use — especially when the owner email is a shared
+  fixture account other tests also authenticate as, not a one-off address.
 
 ---
 
