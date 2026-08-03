@@ -189,7 +189,7 @@ describe('payment_requested email includes bank-transfer instructions', () => {
     // scripts/seed-test-project.mjs's ensureSettings() — asserting the
     // literal seeded values proves they were actually substituted, not
     // just that the placeholder text survived unreplaced.
-    const { data: settingsRows } = await service.from('settings').select('key, value').in('key', ['bank_account_name', 'bank_sort_code', 'bank_account_number']);
+    const { data: settingsRows } = await service.from('settings').select('key, value').eq('org_id', 'org_default').in('key', ['bank_account_name', 'bank_sort_code', 'bank_account_number']);
     const settingsMap = Object.fromEntries((settingsRows || []).map((r) => [r.key, r.value]));
     for (const key of ['bank_account_name', 'bank_sort_code', 'bank_account_number']) {
       assert.ok(settingsMap[key], `expected ${key} to be seeded in settings (run scripts/seed-test-project.mjs)`);
