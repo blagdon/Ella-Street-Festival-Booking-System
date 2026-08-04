@@ -3,6 +3,7 @@ import { getSupabaseClient } from '../supabase.js';
 import { showToast } from '../ui.js';
 import { auditLog } from '../audit.js';
 import { parseEdgeFunctionError } from '../utils.js';
+import { clearSettingsCache } from '../config.js';
 
 const sb = getSupabaseClient();
 
@@ -92,9 +93,7 @@ export async function initZohoSettings() {
             if (error) throw error;
 
             showToast("Zoho Mail API settings saved successfully!");
-            if (typeof sessionStorage !== 'undefined') {
-                sessionStorage.removeItem('ESF_SETTINGS_CACHE');
-            }
+            clearSettingsCache();
             await auditLog('update_zoho_settings', 'system', {
                 from_address: valFromAddress,
                 api_domain: valApiDomain

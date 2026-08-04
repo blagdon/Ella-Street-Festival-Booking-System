@@ -29,7 +29,7 @@ const corsHeaders = {
 async function sendCancellationEmail(supabaseAdmin: ReturnType<typeof createClient>, bookingId: string) {
   const { data: booking, error: bookingErr } = await supabaseAdmin
     .from('bookings')
-    .select('email, owner_name, business_name, instance_prefix, rejection_reason')
+    .select('org_id, email, owner_name, business_name, instance_prefix, rejection_reason')
     .eq('id', bookingId)
     .single()
 
@@ -40,7 +40,7 @@ async function sendCancellationEmail(supabaseAdmin: ReturnType<typeof createClie
   const { data: templateData, error: templateErr } = await supabaseAdmin
     .from('email_templates')
     .select('subject, body_html')
-    .eq('org_id', 'org_default')
+    .eq('org_id', booking.org_id)
     .eq('id', 'cancellation_confirmed')
     .single()
 
@@ -68,7 +68,7 @@ async function sendCancellationEmail(supabaseAdmin: ReturnType<typeof createClie
   let errorMessage: string | null = null
 
   try {
-    await sendViaZoho(supabaseAdmin, { recipient: booking.email, subject, body })
+    await sendViaZoho(supabaseAdmin, { recipient: booking.email, subject, body }, booking.org_id)
   } catch (e: any) {
     status = 'Error'
     errorMessage = e.message
@@ -103,7 +103,7 @@ async function sendCancellationEmail(supabaseAdmin: ReturnType<typeof createClie
 async function sendCancellationSms(supabaseAdmin: ReturnType<typeof createClient>, bookingId: string) {
   const { data: booking, error: bookingErr } = await supabaseAdmin
     .from('bookings')
-    .select('phone, owner_name, business_name, instance_prefix')
+    .select('org_id, phone, owner_name, business_name, instance_prefix')
     .eq('id', bookingId)
     .single()
 
@@ -115,7 +115,7 @@ async function sendCancellationSms(supabaseAdmin: ReturnType<typeof createClient
   const { data: templateData, error: templateErr } = await supabaseAdmin
     .from('sms_templates')
     .select('body')
-    .eq('org_id', 'org_default')
+    .eq('org_id', booking.org_id)
     .eq('id', 'booking_cancelled')
     .single()
 
@@ -148,7 +148,7 @@ async function sendCancellationSms(supabaseAdmin: ReturnType<typeof createClient
   let providerMessageId: string | null = null
   let segments: number | null = null
   try {
-    const result = await sendViaSms(supabaseAdmin, { recipient, body })
+    const result = await sendViaSms(supabaseAdmin, { recipient, body }, booking.org_id)
     providerMessageId = result.providerMessageId
     segments = result.segments
   } catch (e: any) {

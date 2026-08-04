@@ -152,9 +152,23 @@ if (typeof window !== 'undefined') {
 }
 
 // Console helpers, defined only on localhost. Both clear the settings cache:
-// ESF_SETTINGS_CACHE holds values fetched from whichever project was active
-// before, and applying another project's settings over the new one is a
-// genuinely confusing failure (wrong bucket, wrong Turnstile key).
+// ESF_SETTINGS_CACHE_* (one key per org, both this file's and js/config.js's
+// admin-side loadStallCosts()) holds values fetched from whichever project
+// was active before, and applying another project's settings over the new
+// one is a genuinely confusing failure (wrong bucket, wrong Turnstile key).
+function esfClearSettingsCache() {
+    if (typeof sessionStorage === 'undefined') return;
+    try {
+        // Every settings cache key in this app is prefixed ESF_SETTINGS_CACHE_
+        // (org-scoped, and admin's is further event-scoped) - swept by prefix
+        // rather than one literal key, so switching projects invalidates both
+        // this file's public cache and js/config.js's admin cache in one go.
+        Object.keys(sessionStorage)
+            .filter((k) => k.startsWith('ESF_SETTINGS_CACHE_'))
+            .forEach((k) => sessionStorage.removeItem(k));
+    } catch (e) { /* private-browsing/quota edge case - ignore */ }
+}
+
 if (esfIsLocalHost()) {
     /**
      * Point this browser at the dev server's proxied test project.
@@ -170,12 +184,12 @@ if (esfIsLocalHost()) {
         localStorage.setItem(ESF_OVERRIDE_KEY, JSON.stringify(
             Object.assign({ SUPABASE_KEY: key, PROJECT_LABEL: label || '' }, extra || {})
         ));
-        try { sessionStorage.removeItem('ESF_SETTINGS_CACHE'); } catch (e) { /* private-browsing/quota edge case - ignore */ }
+        esfClearSettingsCache();
         console.warn('[ESF] Local override set. Reload the page to apply.');
     };
     window.esfUseProduction = function () {
         localStorage.removeItem(ESF_OVERRIDE_KEY);
-        try { sessionStorage.removeItem('ESF_SETTINGS_CACHE'); } catch (e) { /* private-browsing/quota edge case - ignore */ }
+        esfClearSettingsCache();
         console.warn('[ESF] Local override cleared. Reload the page to return to production.');
     };
 }
@@ -262,15 +276,35 @@ export function applyPublicSettings(data) {
 }
 
 // Same TTL and {data, timestamp} cache shape as js/config.js's
-// loadStallCosts - both read/write this SAME sessionStorage key, so must
-// agree on the same cache-freshness policy. See that file's comment for why
-// a TTL is needed at all (sessionStorage outlives a reload, and a settings
-// edit only clears the SAME tab's own cache, not other open tabs').
+// loadStallCosts - both read/write sessionStorage keys with this same
+// prefix, so must agree on the same cache-freshness policy. See that file's
+// comment for why a TTL is needed at all (sessionStorage outlives a reload,
+// and a settings edit only clears the SAME tab's own cache, not other open
+// tabs').
 const SETTINGS_CACHE_TTL_MS = 5 * 60 * 1000;
 
-export async function loadPublicSettings() {
+/**
+ * Fetches the anon-readable settings row for one organisation and applies
+ * them to ESF_PUBLIC_CONFIG. Defaults to 'org_default' - every existing
+ * caller (login.html, cancel_booking.html, pay.html, etc.) that doesn't pass
+ * an orgId keeps reading exactly the rows it always has, byte for byte.
+ * Public booking forms (Phase 4D) pass the org resolved from the page's
+ * own org/event slug instead, once resolveBookingFormContext() (see
+ * public-context.js) has determined it - this function has no slug-
+ * resolution logic of its own, it only ever takes an already-resolved id.
+ *
+ * Previously ran with NO org_id filter at all, returning every
+ * organisation's rows for these keys indiscriminately - harmless while only
+ * one real organisation existed, but ambiguous the moment a second
+ * organisation has its own turnstile_site_key/bucket_name/etc. row (which
+ * provisioning creates immediately, cloned from platform_defaults_settings).
+ * @param {string} [orgId]
+ */
+export async function loadPublicSettings(orgId = 'org_default') {
+    const cacheKey = `ESF_SETTINGS_CACHE_${orgId}`;
+
     if (typeof sessionStorage !== 'undefined') {
-        const cached = sessionStorage.getItem('ESF_SETTINGS_CACHE');
+        const cached = sessionStorage.getItem(cacheKey);
         if (cached) {
             try {
                 const { data, timestamp } = JSON.parse(cached);
@@ -287,12 +321,12 @@ export async function loadPublicSettings() {
 
     try {
         const sb = getPublicSupabaseClient();
-        const { data, error } = await sb.from('settings').select('key, value');
+        const { data, error } = await sb.from('settings').select('key, value').eq('org_id', orgId);
         if (error) throw error;
         if (data) {
             applyPublicSettings(data);
             if (typeof sessionStorage !== 'undefined') {
-                sessionStorage.setItem('ESF_SETTINGS_CACHE', JSON.stringify({ data, timestamp: Date.now() }));
+                sessionStorage.setItem(cacheKey, JSON.stringify({ data, timestamp: Date.now() }));
             }
         }
     } catch (e) {
@@ -300,9 +334,9 @@ export async function loadPublicSettings() {
     }
 }
 
-export function initPublicSettingsSync() {
+export function initPublicSettingsSync(orgId = 'org_default') {
     if (typeof sessionStorage !== 'undefined') {
-        const cached = sessionStorage.getItem('ESF_SETTINGS_CACHE');
+        const cached = sessionStorage.getItem(`ESF_SETTINGS_CACHE_${orgId}`);
         if (cached) {
             try {
                 const { data, timestamp } = JSON.parse(cached);

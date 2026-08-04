@@ -1,10 +1,42 @@
 // @ts-check
-import { getPublicSupabaseClient, initPublicPage, ESF_PUBLIC_CONFIG } from '../supabase-public.js';
+import { getPublicSupabaseClient, initPublicPage } from '../supabase-public.js';
+import { initPublicBookingForm } from './public-context.js';
 import { escapeHtml, parseEdgeFunctionError, guardUnsavedForm } from './utils.js';
 
-// initPublicPage has already awaited loadPublicSettings() (cache-first,
-// DB on cold cache) before this callback runs.
+/**
+ * Shows the closed-section with a reason-specific message, replacing its
+ * default "Bookings Closed / ran out of space" copy only when the reason is
+ * something other than the plain org-level toggle being off (that case's
+ * default HTML copy is still accurate as-is).
+ * @param {'not_found' | 'event_not_open' | 'toggle_closed'} reason
+ * @param {string} [eventStatus]
+ */
+function showClosed(reason, eventStatus) {
+    document.getElementById('form-section')?.classList.add('hidden');
+    const heading = document.getElementById('closed-section-heading');
+    const body = document.getElementById('closed-section-body');
+    if (reason === 'not_found') {
+        if (heading) heading.textContent = 'Booking Link Not Found';
+        if (body) body.textContent = "This booking link is no longer valid. Check the address, or contact the organiser who sent it to you.";
+    } else if (reason === 'event_not_open') {
+        if (heading) heading.textContent = 'Not Currently Accepting Applications';
+        if (body) body.textContent = `This event is currently in '${(eventStatus || '').toUpperCase()}' mode and isn't open for applications yet. Please check back later.`;
+    }
+    document.getElementById('closed-section')?.classList.remove('hidden');
+}
+
+// initPublicPage runs with { loadSettings: false } here: this page resolves
+// its own org/event context from the URL first (initPublicBookingForm), and
+// loads that organisation's settings itself - the auto-loaded default
+// org_default settings initPublicPage would otherwise fetch are the wrong
+// organisation's the moment a real org/event slug is present.
 initPublicPage(async function () {
+    const boot = await initPublicBookingForm('food_bookings_open');
+    if (boot.ok === false) {
+        showClosed(boot.reason, /** @type {any} */ (boot).eventStatus);
+        return;
+    }
+
     const sb = getPublicSupabaseClient();
 
     // Bind Turnstile Key from database dynamically
@@ -23,26 +55,7 @@ initPublicPage(async function () {
     document.head.appendChild(script);
 
     // --- CONFIGURATION ---
-    const PREFIX = (ESF_PUBLIC_CONFIG?.BOOKING_PREFIX || "ESF26") + "-FOOD-";
-
-    // Check if bookings are open dynamically from Supabase
-    async function checkBookingsOpen() {
-        try {
-            const { data, error } = await sb
-                .from('settings')
-                .select('value')
-                .eq('key', 'food_bookings_open')
-                .single();
-            if (error) throw error;
-            if (data && data.value !== 'true') {
-                document.getElementById('form-section')?.classList.add('hidden');
-                document.getElementById('closed-section')?.classList.remove('hidden');
-            }
-        } catch (err) {
-            console.warn("Failed to check if bookings are open:", err?.message || err);
-        }
-    }
-    checkBookingsOpen();
+    const PREFIX = boot.bookingPrefix + "-FOOD-";
 
     // --- BTN START NEW ---
     const btnStartNew = document.getElementById('btn-start-new');
@@ -225,7 +238,12 @@ initPublicPage(async function () {
                         token: captchaToken.value, // Pass the Turnstile token to the backend
                         bookingData: sbData,       // Pass the booking object
                         tempUuid: tempUuid,
-                        fileNames: fileNames
+                        fileNames: fileNames,
+                        // Server re-resolves org/event from these slugs itself -
+                        // never trusted as an id. undefined for the legacy
+                        // default-event case, same as submit-booking's own default.
+                        orgSlug: boot.orgSlug,
+                        eventSlug: boot.eventSlug
                     }
                 });
 
@@ -290,4 +308,4 @@ initPublicPage(async function () {
             }
         });
     }
-});
+}, { loadSettings: false });

@@ -283,10 +283,27 @@ export function applySettingsToConfig(data) {
 // TTL bounds that: worst case, a settings edit reaches every open tab within
 // SETTINGS_CACHE_TTL_MS, not "whenever that tab happens to be closed".
 // NOTE: supabase-public.js's loadPublicSettings/initPublicSettingsSync use
-// their own unparameterized 'ESF_SETTINGS_CACHE' key for pre-auth public
-// pages - despite the similar name/shape this is a SEPARATE cache with a
-// separate consumer, not the same key this function reads/writes.
+// their own ESF_SETTINGS_CACHE_<orgId> keys for pre-auth public pages -
+// despite the similar name/shape this is a SEPARATE cache with a separate
+// consumer, not the same key this function reads/writes. Both share the
+// ESF_SETTINGS_CACHE_ prefix, though, which is what clearSettingsCache()
+// below sweeps by.
 const SETTINGS_CACHE_TTL_MS = 5 * 60 * 1000;
+
+/**
+ * Clears every settings cache entry this browser tab holds - this file's own
+ * ESF_SETTINGS_CACHE_<org>_<event> keys and supabase-public.js's
+ * ESF_SETTINGS_CACHE_<org> keys, both under the same prefix. Call after
+ * saving a settings change so the SAME tab reflects it immediately, rather
+ * than waiting out SETTINGS_CACHE_TTL_MS (other already-open tabs still
+ * wait out the TTL, same as before - see the comment above).
+ */
+export function clearSettingsCache() {
+    if (typeof sessionStorage === 'undefined') return;
+    Object.keys(sessionStorage)
+        .filter((k) => k.startsWith('ESF_SETTINGS_CACHE_'))
+        .forEach((k) => sessionStorage.removeItem(k));
+}
 
 export async function loadStallCosts(sb, orgId = getCurrentOrgId(), eventId = getCurrentEventId()) {
     const cacheKey = `ESF_SETTINGS_CACHE_${orgId}_${eventId}`;

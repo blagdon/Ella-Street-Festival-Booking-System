@@ -295,7 +295,7 @@ All under `supabase/functions/`. Shared helpers live in `_shared/`.
 | Function | Auth | Purpose |
 |---|---|---|
 | `provision-organisation` | Admin JWT / Service Role | Self-service tenant provisioning: validates org/event slug format + reserved words (`_shared/slugs.ts`, Epic 4 Phase 4A) and prefix uniqueness, creates organisation, assigns admin owner member, creates primary event, and invokes `rpc_initialise_tenant_defaults` |
-| `submit-booking` | Public (Turnstile) | Validates CAPTCHA and event `open` status guard, builds booking row from allow-list, allocates ID, handles documents, sends email |
+| `submit-booking` | Public (Turnstile) | Resolves org/event from a trusted slug pair (Epic 4 Phase 4D — defaults to `org_default`/`event_default` if none given), enforces the event `open` status guard against that resolved event, builds booking row from allow-list, allocates ID, handles documents, sends email |
 | `cancel-booking` | Public — Turnstile **and** `cancel_token` | Self-service cancellation (via `cancel_booking_secure`) + confirmation email |
 | `create-checkout-session` | Admin JWT | Creates a Stripe Checkout Session, emails payment request, moves booking to `Payment Requested` |
 | `stripe-webhook` | Stripe signature | Finalises payments, records refunds (§11) |
@@ -452,6 +452,14 @@ Both modes' credentials live in the `settings` table. DEV-instance bookings alwa
 > ⚠️ The anon key is intentionally public. Security is enforced entirely by **RLS**, not by hiding the key.
 >
 > ⚠️ Turnstile proves *a human made a request* — not that the request body matches what the form would have sent. `submit-booking` therefore builds its insert from an explicit field allow-list and re-validates filenames server-side. Never insert a public request body as-is.
+
+### Public routing (Epic 4 Phase 4D)
+
+`General_Booking.html`/`Food_Stall_booking.html` resolve which organisation/event they belong to from `?org=&event=` slugs in the URL (`js/public-context.js`'s `initPublicBookingForm()`, reusing `resolvePublicContext()` — the same resolver `event.html` uses), defaulting to the legacy `org_default`/`event_default` pair when no slug is present so every existing bookmarked/shared link keeps working unchanged. That resolution is **UX only** — it loads the right organisation's settings/branding and shows an accurate "not yet accepting applications" or "link not found" state instead of a generic error, but the client never sends an org/event **id** to the server, only the slug (or nothing, for the default case).
+
+`submit-booking` re-resolves the same slug pair itself, server-side, against the base `organisations`/`events` tables (service role, independent of anything the client claims) via its own `resolvePublicBookingContext()` — the one place that decides which organisation/event a submission actually belongs to. This is also where the **event lifecycle guard** lives: a resolved event whose `status` isn't `'open'` is rejected with a message naming its actual status, whether that's the legacy default event or a slug-routed one. `cancel-booking`, `stripe-webhook`, and `create-checkout-session` never re-resolve anything — they read `org_id` straight off the booking row that submission already persisted, and thread it into `sendViaZoho()`/`sendViaSms()` (both already accepted an `orgId` parameter; only the callers were omitting it) so confirmation/cancellation/payment-request sends use the right organisation's templates.
+
+A slug that resolves to a **draft** event is indistinguishable from a nonexistent one on the public path — `public_events_info` excludes `draft` rows entirely (Phase 4A), so a visitor can't discover a still-being-configured event by guessing its slug. `submit-booking`'s own resolver bypasses that view (service role, no RLS to route around) and so *can* tell the difference, which is why its rejection message names the real status while the client-side one can only say "not found."
 
 ---
 

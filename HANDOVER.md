@@ -78,8 +78,8 @@
 > are seed/migration-only)" encoded exactly the assumption Phase 4C deliberately reverses; updated to
 > assert the new, intended behaviour (an admin *can* write; RLS still blocks non-admins) rather than
 > deleting or skipping it.
-> **Epic 4, Phase 4B (Event Configuration) + Phase 4B.1 — on `feat/epic4-phase-4b1-event-configuration`,
-> not yet released or merged.** Phase 4B adds the missing Event layer to the existing
+> **Epic 4, Phase 4B (Event Configuration) + Phase 4B.1 — merged 2026-08-04 as PR #161.**
+> Phase 4B adds the missing Event layer to the existing
 > Platform Defaults → Organisation Settings inheritance chain: a new `event_settings` table
 > (`20260804110000_create_event_settings.sql`), same key/value shape and RLS pattern as `settings`
 > (event-scoped instead of org-scoped). `js/config.js`'s `loadStallCosts()` applies organisation rows
@@ -114,6 +114,73 @@
 > the test project and verifies the resulting `event_settings` rows directly, plus an accessibility
 > check via the existing admin suite. Full regression (329 integration tests, 28 Playwright tests) ran
 > clean after the grant fix.
+> **Epic 4, Phase 4D (Public Booking Routing) — on `feat/epic4-phase-4d-public-booking-routing`,
+> not yet released or merged.** Replaces the last places public bookings assumed `org_default`/
+> `event_default`, framed (per the owner's own instruction) as "resolve once, persist once, reuse
+> everywhere" rather than "booking routing": every public request resolves its organisation/event
+> exactly once, from a trusted slug pair, and everything downstream — persistence, confirmation
+> emails, SMS, payments — reads that already-resolved value instead of re-deriving or trusting
+> anything client-supplied. **`submit-booking`** gained `resolvePublicBookingContext()`: given an
+> `orgSlug`/`eventSlug` in the request body, it looks up the real `organisations`/`events` rows
+> itself (service role, independent of anything the client claims) and enforces the event lifecycle
+> guard against the result — a resolved event whose `status` isn't `'open'` is rejected with a
+> message naming its actual status. No slug at all resolves the legacy `org_default`/`event_default`
+> pair through this exact same path, not a bypass — every existing bookmarked/shared booking-form
+> link keeps working unchanged. **Two real, previously-dormant pieces of code turned out to already
+> exist for most of this**: the event lifecycle guard itself was already written (a previous session
+> added it to `submit-booking`), but checked the client's raw, untrusted `bookingData.event_id` while
+> `sanitizeBookingInput()` hardcoded `org_id`/`event_id` to the defaults regardless of what the guard
+> found — so the guard and the persisted row disagreed, invisibly, because no booking form had ever
+> sent an `event_id` at all. And `_shared/zoho.ts`/`_shared/sms.ts`'s `sendViaZoho()`/`sendViaSms()`
+> already accepted an optional `orgId` parameter (defaulting to `'org_default'`) — every call site in
+> `submit-booking`, `cancel-booking`, `stripe-webhook`, and `create-checkout-session` was just never
+> passing it. All four now thread the booking's real `org_id` (read straight off the row those
+> functions already fetch, never re-resolved) into every `sendViaZoho`/`sendViaSms` call and every
+> `email_templates`/`sms_templates`/`settings` lookup that was hardcoded `.eq('org_id', 'org_default')`
+> — `v7.20.1` had added that exact filter deliberately as a stopgap "public forms aren't tenant-
+> routed yet — a later epic" (see this file's Phase 2 entry); this is that epic. `create-checkout-
+> session`'s `settings` lookup for `base_url`/`cancel_url`/bank details had **no org filter at all**
+> before this — same latent multi-tenant ambiguity as `supabase-public.js`'s `loadPublicSettings()`
+> below, just not yet triggered because only one organisation has ever had real rows for those keys.
+> **A production data fix was required before any of this could ship**: `event_default`'s `status`
+> had been `'draft'` (the column default) since Epic 4 introduced the column — nobody had ever
+> touched it, and the old guard's dormancy meant it never mattered. Making the guard unconditional
+> without first fixing this would have rejected every real public booking the moment it deployed.
+> Confirmed live against production data (not assumed) before writing
+> `20260804140000_open_default_event.sql`, which sets `event_default` to `'open'` and leaves the two
+> other (genuinely non-live) events in the database untouched. **Client side**: `General_Booking.html`/
+> `Food_Stall_booking.html` resolve `?org=&event=` slugs via a new `initPublicBookingForm()`
+> (`js/public-context.js`, reusing `resolvePublicContext()`/`readSlugsFromLocation()` rather than a
+> second resolution path) that gates the form on the same two conditions the server enforces — org-
+> level toggle and event status — purely for UX; the server re-checks independently regardless.
+> **A draft event's slug is indistinguishable from a nonexistent one on this path, by design**:
+> `public_events_info` excludes `draft` rows entirely (Phase 4A's anti-probing measure), so the
+> client-side resolver can only ever show "not found" for one, never "not open yet" — that message is
+> reserved for a real, already-non-draft status (`ready`/`closed`/`archived`) the anon-safe view does
+> expose. `submit-booking`'s own resolver bypasses that view (service role) and so gives the precise
+> status in its rejection message — the two are deliberately asymmetric, not inconsistent: the client
+> check is a UX nicety for legitimate links, the server is the actual boundary and isn't exposed to
+> anonymous slug-guessing the same way. **`supabase-public.js`'s `loadPublicSettings()` was unscoped**
+> (`sb.from('settings').select('key, value')`, no `org_id` filter at all) before this — harmless with
+> one real organisation, ambiguous the moment a second organisation has its own `turnstile_site_key`/
+> `bucket_name`/etc. row, which provisioning creates immediately. Now takes an `orgId` parameter
+> (defaulting to `'org_default'`, so every existing caller — `login.html`, `cancel_booking.html`,
+> `pay.html`, etc. — is unaffected), with its sessionStorage cache key becoming org-scoped the same
+> way `js/config.js`'s admin-side cache already is. Found and fixed the same stale-cache-key bug in
+> both places while in this code: `js/settings/costs.js`/`system.js`/`zoho.js` still called
+> `sessionStorage.removeItem('ESF_SETTINGS_CACHE')` — a literal key that stopped matching anything the
+> moment the admin cache became org/event-scoped — and `supabase-public.js`'s own `esfUseTestProject`/
+> `esfUseProduction` console helpers had the identical problem. Both now sweep every
+> `ESF_SETTINGS_CACHE_`-prefixed key via a new shared `clearSettingsCache()` (`js/config.js`), not a
+> literal removeItem. **Testing**: `tests/phase4d-public-booking-routing.test.mjs` covers slug
+> resolution (real org/event persisted, not the defaults), the lifecycle guard (rejects a resolved-
+> but-not-open event, rejects an unresolvable slug pair), that client-supplied `org_id`/`event_id` in
+> `bookingData` are ignored outright, the legacy no-slug fallback, and that a booking's downstream
+> "received" email uses its own organisation's template rather than `org_default`'s.
+> `e2e/public-booking-routing.spec.mjs` drives the real client-side gating states (not-found,
+> not-open-naming-its-status, the open-event happy path, and the draft-collapses-to-not-found
+> behaviour) in both booking forms. Full regression (329 integration tests, 33 Playwright tests) ran
+> clean after deploying the four changed Edge Functions to the test project.
 > **v7.20.1** (Epic 3 hardening sprint; merged 2026-08-03 as PR #152, plus two same-day
 > follow-on PRs, #153–#154, and a direct Edge Function redeploy with no PR of its own — see below).
 > v7.20.1 itself scoped several Edge Function
@@ -872,6 +939,12 @@ the direct query path (`locations` + `public_bookings_info`).
 - Event Configuration (`event_settings.html`, Epic 4 Phase 4B/4B.1) — override
   Festival Display Name, the three stall prices, and Allowed Stall Types for just
   the active event, inheriting from the organisation default otherwise; see item 75
+- Public booking routing (Epic 4 Phase 4D) — `General_Booking.html`/
+  `Food_Stall_booking.html` resolve their organisation/event from `?org=&event=`
+  URL slugs, defaulting to `org_default`/`event_default` when absent; `submit-booking`
+  re-resolves the same pair server-side and enforces the event lifecycle guard
+  against it; downstream confirmation email/SMS/payment sends use that booking's
+  real `org_id`, not a hardcoded default; see item 76
 
 ### Partially built / not integrated into this repo
 - **Performer booking feature**: `performers` and `schedules` tables exist in the same
@@ -967,6 +1040,12 @@ demand by the `get-booking-documents` Edge Function. **Anon has zero direct acce
 this table** (no RLS policy, no column grants) — public/unauthenticated consumers must
 go through the `public_bookings_info` view instead, see
 [Public visitor-facing data access](#public-visitor-facing-data-access-bookings).
+`org_id`/`event_id` (Phase 1, defaults `org_default`/`event_default`) only ever held
+those defaults in practice until Epic 4 Phase 4D — `submit-booking` now resolves and
+persists the real values from the booking form's URL slug (or the same defaults,
+resolved through the identical path, when no slug is present). Every consumer of a
+booking's own organisation (`cancel-booking`, `stripe-webhook`, `create-checkout-session`
+email/SMS sends) reads these columns off the row rather than re-resolving anything.
 
 ### `booking_locations` — replaces the old CSV location column
 Join table: `(booking_id, location_id)`. Superseded `bookings.location_id` (which used
@@ -3571,6 +3650,39 @@ stay in the separate `ellafestperformersadmin.vercel.app` codebase.
       needed `DELETE`; `event_settings` does. Caught only because the integration
       tests actually exercised the delete path, not by reading the migration. See
       the matching Gotchas entry.
+
+76. **Public Booking Routing (2026-08-04, Epic 4 Phase 4D, not yet released).**
+    Full detail in the Phase 4D narrative near the top of this file and in
+    CHANGELOG.md; what's worth knowing here:
+    - **Two pieces of this were already half-built and just needed connecting,
+      not designing.** The event lifecycle guard existed in `submit-booking`
+      already, and `sendViaZoho()`/`sendViaSms()` already took an `orgId`
+      parameter — both were simply never being fed real values. Before adding a
+      new mechanism anywhere in this codebase, check whether one already exists
+      half-wired; this file's own Gotchas below have more examples of that
+      pattern than this one.
+    - **A dormant guard becoming live is a data migration, not just a code
+      change.** `event_default`'s `status` had silently been `'draft'` since
+      Epic 4 introduced the column — nothing enforced it, so it never mattered.
+      Making the check unconditional without first checking (and fixing) live
+      data would have rejected every real public booking on deploy. Always check
+      what a newly-enforced constraint would do to *existing* rows before
+      shipping the enforcement, not just new ones.
+    - **A draft event's slug is deliberately indistinguishable from a broken one
+      on the public path, but not on the server.** `public_events_info` excludes
+      `draft` rows entirely (Phase 4A's anti-probing measure); `submit-booking`'s
+      own resolver queries the base tables with service role and sees
+      everything. If you add a third place that needs to know an event's status,
+      decide up front whether it's public-facing (use the anon-safe view, accept
+      that drafts are invisible) or a trusted server context (query the base
+      table directly) — mixing the two gives inconsistent "not found" vs.
+      "not open yet" messaging for the exact same event depending on which path
+      answered.
+    - **`loadPublicSettings()` had no `org_id` filter at all before this** —
+      same shape as the `event_settings` DELETE-grant gap above: harmless with
+      one real organisation, silently wrong the moment a second one has its own
+      row for the same key. Provisioning creates those rows immediately, so this
+      isn't a hypothetical — it's the very next organisation.
 
 ---
 
