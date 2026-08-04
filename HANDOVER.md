@@ -17,7 +17,7 @@
 > `'unsafe-inline'` for `script-src` — see the "No inline event handlers" gotcha — so it silently never
 > ran. A broken logo URL showed the browser's default broken-image icon instead of the intended clean
 > fallback. Fixed with `addEventListener('error', ...)`, matching every other listener in `js/nav.js`.
-> **Epic 4, Phases 4A + 4C — in progress on `feat/epic4-phase-4a-4c`, not yet released or merged.**
+> **Epic 4, Phases 4A + 4C — merged 2026-08-04 as PR #159.**
 > Explicitly scoped to just these two phases; 4B (Event Configuration), 4D (Public Booking), 4E
 > (Publishing workflow), and 4F (Public Experience polish) are deliberately untouched — see Next
 > Steps for the full phase breakdown. **Phase 4A (Public Identity & Event Resolution)**: a new
@@ -78,6 +78,42 @@
 > are seed/migration-only)" encoded exactly the assumption Phase 4C deliberately reverses; updated to
 > assert the new, intended behaviour (an admin *can* write; RLS still blocks non-admins) rather than
 > deleting or skipping it.
+> **Epic 4, Phase 4B (Event Configuration) + Phase 4B.1 — on `feat/epic4-phase-4b1-event-configuration`,
+> not yet released or merged.** Phase 4B adds the missing Event layer to the existing
+> Platform Defaults → Organisation Settings inheritance chain: a new `event_settings` table
+> (`20260804110000_create_event_settings.sql`), same key/value shape and RLS pattern as `settings`
+> (event-scoped instead of org-scoped). `js/config.js`'s `loadStallCosts()` applies organisation rows
+> then event rows through the same `applySettingsToConfig()` call, twice, with no key-specific
+> branching or second resolver — an event row for a key simply overwrites whatever the organisation
+> row set. `js/public-context.js`'s public event-page branding resolution got the identical treatment,
+> so an event override reaches `event.html` (Phase 4A), not just the admin dashboard. **Booking Prefix
+> was deliberately excluded** from this mechanism after checking `js/page-admin.js`'s existing event
+> editor: `booking_prefix` is already a typed column on `events`, edited there and resolved through
+> `getActiveBookingPrefix()` (`js/config.js`) via the cached active-event object in
+> `localStorage['ESF_ACTIVE_EVENT']`, checked *before* any settings-table value. Routing it through
+> `event_settings` too would have created a second, silently-ineffective place to set it — the value
+> would save and show an "Overridden" badge, but every real booking ID would keep using whatever's on
+> the `events` row instead. **Phase 4B.1** exposes this to organisers: a new Event Configuration page
+> (`event_settings.html`, `js/settings/event-config.js`, linked from `more.html`) covering the five
+> keys that survived that check — Festival Display Name, the three stall prices, Allowed Stall Types —
+> each showing "Inherited from Organisation" or "Overridden for this Event" plus a toggle (reusing the
+> existing Public-Form-Status/Stripe-Test-Mode toggle idiom) and a "Reset to Organisation Default" that
+> **deletes** the event row rather than copying the organisation's current value into it, so a reset
+> event keeps tracking the organisation default automatically if that default changes later. **A real
+> bug found while writing the integration tests, not by inspection**: the original migration copied
+> `settings`' table-level grants verbatim (`SELECT, INSERT, UPDATE` for `authenticated`) — but
+> `settings` never deletes a row, while Reset does exactly that. Every admin's first Reset click would
+> have failed with `permission denied for table event_settings` (RLS would have allowed it; the
+> coarser table-level grant blocked it first). Fixed via a follow-up migration
+> (`20260804120000_grant_event_settings_delete.sql`), applied to both the test and production
+> projects, confirmed by re-running the previously-failing test. **Testing**:
+> `tests/phase4b-event-configuration.test.mjs` covers inheritance, override create/remove,
+> organisation isolation, multiple events under one organisation, and RLS (admin write, anon
+> read-allowlist) at the DB level; `e2e/event-configuration.spec.mjs` drives the real page (override
+> creation, reset, a friendly-message validation rejection, and the stall-types chip editor) against
+> the test project and verifies the resulting `event_settings` rows directly, plus an accessibility
+> check via the existing admin suite. Full regression (329 integration tests, 28 Playwright tests) ran
+> clean after the grant fix.
 > **v7.20.1** (Epic 3 hardening sprint; merged 2026-08-03 as PR #152, plus two same-day
 > follow-on PRs, #153–#154, and a direct Edge Function redeploy with no PR of its own — see below).
 > v7.20.1 itself scoped several Edge Function
@@ -465,6 +501,14 @@ hardcoded default at all** — they're `null`/`[]` until the settings table load
   before the page callback runs — but verify that chain still holds before calling it
   from anywhere new.
 
+**Epic 4 Phase 4B** adds a fourth, event-scoped layer on top: `event_settings` (same
+key/value shape as `settings`, keyed by `event_id` instead of `org_id`). `loadStallCosts()`
+now fetches both and calls `applySettingsToConfig()` twice — organisation rows first,
+event rows second, so an event row wins for any key it sets. The resolver itself doesn't
+know or care which keys are "meant" to be event-overridable; that's a UI-layer decision
+(see the Event Configuration page, §5's `event_settings` entry, and the Phase 4B/4B.1
+narrative near the top of this file), not a resolver-level restriction.
+
 ### Edge Functions (Deno, `supabase/functions/`)
 
 | Function | Auth | Purpose |
@@ -825,6 +869,9 @@ the direct query path (`locations` + `public_bookings_info`).
   attempt with its error message, **and retry failed ones** (v7.1.0, item 55)
 - Google Maps ratings/reviews on the booking detail pane, server-side cached to
   keep SerpApi usage down (v5.1.13, item 53)
+- Event Configuration (`event_settings.html`, Epic 4 Phase 4B/4B.1) — override
+  Festival Display Name, the three stall prices, and Allowed Stall Types for just
+  the active event, inheriting from the organisation default otherwise; see item 75
 
 ### Partially built / not integrated into this repo
 - **Performer booking feature**: `performers` and `schedules` tables exist in the same
@@ -1065,6 +1112,27 @@ structured fields wherever it's used (`js/shared.js`'s `getEmailFromTemplate`,
 `stripe-webhook`'s post-payment confirmation email), rather than reading a
 separate freeform setting. The "BANK DETAILS FOR CONFIRMATIONS" field was
 removed from settings.html's System Constants card accordingly.
+
+### `event_settings` — the event-scoped layer on top of `settings`
+Added Epic 4 Phase 4B (`20260804110000_create_event_settings.sql`). Same key/value
+shape as `settings` (`key`, `value`, `updated_at`, `updated_by text` — matching
+`settings.updated_by`'s existing convention of storing the editor's email, not a
+`user_roles`/`auth.users` id), scoped by `event_id` instead of `org_id`, PK
+`(event_id, key)`. Resolved by the same `applySettingsToConfig()` function `settings`
+is, called a second time with event rows after organisation rows, so an event row wins
+for any key it happens to set — the table has no opinion on which keys "should" be
+overridable; that's entirely a UI-layer decision made by which fields the Event
+Configuration page (`event_settings.html`) exposes. RLS mirrors `settings`' policies
+exactly (admin-only write via `user_roles`, the same allow-listed-key anon read
+policy) — **with one deliberate difference found the hard way**: `authenticated` also
+has `DELETE` here (`20260804120000_grant_event_settings_delete.sql`, a follow-up
+migration), which `settings` has never needed because nothing ever deletes a settings
+row. `event_settings` does: resetting an event override is a real `DELETE`, not an
+`UPDATE` back to the organisation's value, so the row stops existing rather than
+becoming a redundant copy. **`event_id` has no foreign key to `events.id`** — same
+looseness as `settings.org_id` having none to `organisations.id` — so nothing stops an
+`event_settings` row existing for an event that's since been deleted; nothing currently
+cleans those up.
 
 ### `performers` / `schedules` — separate feature, same database
 `performers`: application data (`name`, `email`, `phone`, `cost_per_30min`, `status`
@@ -3473,6 +3541,37 @@ stay in the separate `ellafestperformersadmin.vercel.app` codebase.
       confirm path sends no SMS (it completes server-side in `stripe-webhook` /
       `saveBankTransferPayment`, so adding it there is a server-side change).
 
+75. **Event Configuration (2026-08-04, Epic 4 Phase 4B + 4B.1, not yet released).**
+    Full detail in the Phase 4B/4B.1 narrative near the top of this file and in
+    CHANGELOG.md; what's worth knowing here:
+    - **The resolver is deliberately generic, not an allowlist.** `event_settings`
+      can hold an override for any `settings` key — `applySettingsToConfig()` doesn't
+      branch on which key it's resolving, it just gets called twice (organisation
+      rows, then event rows). Which keys the *admin UI* actually lets someone
+      override is a separate, later decision (currently five, on
+      `event_settings.html`), not a resolver-level restriction — adding a sixth
+      later needs a UI change only, not a schema or resolver change.
+    - **Booking Prefix was checked against, and deliberately kept out of, this
+      mechanism.** It already had a working path (`events.booking_prefix` column,
+      edited in `js/page-admin.js`'s event editor, resolved by
+      `getActiveBookingPrefix()` via the cached active-event object) that predates
+      Phase 4B and takes priority over anything `event_settings` could set. Before
+      adding any *new* key to the Event Configuration page, check it isn't already
+      resolved through some other event-scoped path the same way — this is exactly
+      the mistake that would have shipped a second, silently-ineffective place to
+      set the same value.
+    - **Reset means delete, not "set to the organisation's current value".** Both
+      the UI copy and the code are explicit about this: copying the value would
+      desync the moment the organisation default changed again. If you add a new
+      overridable field, its Reset control must delete the `event_settings` row.
+    - **The DELETE-grant gap is a general lesson, not a one-off bug**: copying
+      another table's GRANT statements verbatim only carries over what *that*
+      table's existing write patterns needed, not what the new table will actually
+      need. `settings` never deletes a row, so its `authenticated` grant never
+      needed `DELETE`; `event_settings` does. Caught only because the integration
+      tests actually exercised the delete path, not by reading the migration. See
+      the matching Gotchas entry.
+
 ---
 
 ## 9. Gotchas
@@ -3497,6 +3596,26 @@ stay in the separate `ellafestperformersadmin.vercel.app` codebase.
   heading present at the target commit), and verify `state == MERGED` from the API
   rather than trusting a command's exit code. Full sequence in
   [Cutting a release](#cutting-a-release).
+
+- **Copying another table's GRANT statements only carries over what THAT table's
+  existing write patterns needed — not what the new table will actually need.**
+  `event_settings` (Epic 4 Phase 4B) mirrored `settings`' table-level grants verbatim:
+  `SELECT, INSERT, UPDATE` for `authenticated`. That was correct for `settings`, which
+  nothing has ever deleted a row from — but `event_settings`'s own "Reset to
+  Organisation Default" control (`js/settings/event-config.js`) does exactly that, on
+  purpose (see the Data Model entry on why reset is a delete, not an update). Without
+  `DELETE`, every admin's first Reset click would have failed with `permission denied
+  for table event_settings` — RLS would have allowed it (the policy has no `FOR`
+  clause, so it covers all commands); the coarser table-level grant blocked it first,
+  before RLS was ever evaluated. **Caught only because the integration tests actually
+  exercised the delete path** (`tests/phase4b-event-configuration.test.mjs`), not by
+  reading the migration or the RLS policy — both looked correct in isolation. Fixed via
+  a follow-up migration (`20260804120000_grant_event_settings_delete.sql`) rather than
+  editing the already-applied one, applied to both the test and production projects.
+  **The general lesson**: when copying grants/policies from an existing table as a
+  starting point for a new one, cross-check them against what the *new* table's actual
+  write patterns will be, not just what compiled and matched the source table — a
+  missing grant is invisible until the specific operation that needs it runs for real.
 
 - **`payments.paid = true` does NOT mean the money is held — every reader must
   subtract `refund_amount` itself.** `paid` deliberately stays `true` after a refund:

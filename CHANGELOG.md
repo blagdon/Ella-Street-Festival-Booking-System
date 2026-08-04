@@ -2,6 +2,24 @@
 
 All notable changes to this project are documented in this file.
 
+## [Unreleased]
+
+Epic 4, Phase 4B (Event Configuration) + Phase 4B.1 — not yet tagged as a release.
+
+### Added
+
+- **Event-scoped configuration overrides.** New `event_settings` table (same key/value shape as the org-scoped `settings` table) adds the missing Event layer to the existing Platform → Organisation → Event inheritance chain. `js/config.js`'s `loadStallCosts()` applies organisation rows then event rows through the same `applySettingsToConfig()` — no new resolver, no key-specific branching. `js/public-context.js`'s public event-page branding resolution gets the same treatment, so an event override actually reaches the public page it's meant for.
+- **Event Configuration page** (`event_settings.html`, `js/settings/event-config.js`). Lets an organiser override Festival Display Name, General/Food/Developer Stall Price, and Allowed Stall Types for just the active event, without touching the organisation default or any other event. Each field shows whether it's inherited or overridden; "Reset to Organisation Default" deletes the override row rather than copying the organisation's current value down, so it stays in sync with the organisation automatically from then on. Booking Prefix is deliberately **not** included — it's a typed `events.booking_prefix` column with its own resolution path (`getActiveBookingPrefix()`), not a settings key; routing it through `event_settings` too would have created a second, silently-ineffective place to set it.
+
+### Fixed
+
+- **`event_settings` was missing a `DELETE` grant for `authenticated`.** The original migration copied `settings`' grants verbatim (`SELECT, INSERT, UPDATE`) — but `settings` never deletes a row, while the new Reset control does exactly that. Every admin's first Reset click would have failed with `permission denied for table event_settings`. Found by the integration tests actually exercising the delete path, not by inspection. Fixed via a follow-up migration, applied to both the test and production projects.
+
+### Testing
+
+- `tests/phase4b-event-configuration.test.mjs` — inheritance, override creation/removal, organisation isolation, multiple events under one organisation, and `event_settings` RLS (admin write, anon read allow-list).
+- `e2e/event-configuration.spec.mjs` — the real override/reset/validation flow driven through the browser, verified against the database. `event_settings.html` added to the admin accessibility suite.
+
 ## [7.21.0] - 2026-08-03
 
 "Epic 3 Complete" — closing release for Epic 3 (Platform Provisioning & Multi-Tenant Isolation), bringing together v7.20.0's provisioning engine, v7.20.1's multi-tenant Edge Function fixes, and v7.20.2's operational-readiness hardening (logo rendering, neutral branding defaults, location tenant isolation, a real provisioning E2E test) into one tagged release. `package.json`'s version had drifted behind the last several entries here (stuck at 7.16.0 through v7.17.0–v7.20.2) — this release also catches it up.

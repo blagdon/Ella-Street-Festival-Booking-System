@@ -29,6 +29,7 @@
 20. [Frequently Asked Questions](#20-frequently-asked-questions)
 21. [Setting Up a New Organisation & Branding](#21-setting-up-a-new-organisation--branding)
 22. [Location Management — Adding & Editing Pitches](#22-location-management--adding--editing-pitches)
+23. [Event Configuration — Different Settings for One Event](#23-event-configuration--different-settings-for-one-event)
 
 ---
 
@@ -459,6 +460,55 @@ whichever organisation and event you're currently viewing.
 > exactly which IDs were changed, so nothing is silently renamed without you knowing. This can
 > happen because a generic code like `P1` may already be in use by a *different* organisation
 > entirely, not just within this one.
+
+---
+
+## 23. Event Configuration — Different Settings for One Event
+
+**More Tools → Event Configuration** lets you set a handful of values differently for
+just the event you're currently viewing, without changing anything for your other
+events or the rest of your organisation.
+
+### What you can override
+
+- **Festival Display Name**
+- **General Stall Price**
+- **Food Stall Price**
+- **Developer Stall Price**
+- **Allowed Stall Types**
+
+Everything else on this page — and every other setting in the system — still comes from
+your organisation's normal settings, the same as always.
+
+### How it works
+
+Each value on the page shows one of two labels:
+
+- **Inherited from Organisation** — this event is using your organisation's normal
+  setting. This is the default for everything, until you choose to change it.
+- **Overridden for this Event** — this event has its own value, set specifically here.
+
+To give a setting its own value for this event, turn on **Override for this event**,
+type the new value, and click **Save Event Configuration**.
+
+To go back to using your organisation's normal value, click **Reset to Organisation
+Default**. This removes the event's own value entirely — it doesn't just copy your
+organisation's current number over the top of it. That matters if you ever change your
+organisation's price later: an event you've reset will pick up that new organisation
+price automatically, the same as any event that was never overridden in the first
+place.
+
+### Booking Prefix isn't here
+
+Booking Prefix is set per event, but from the event's own details on the
+**Platform Administration** workspace (where you also set the event's name and dates)
+— not from this page. If you're trying to change a booking prefix, that's where to go.
+
+### A typical use
+
+If you run the same festival every year but prices go up, or a special one-off event
+needs its own name and pricing, turn on the overrides you need for just that event and
+leave everything else following your organisation's usual settings.
 
 ---
 
