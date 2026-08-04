@@ -6,6 +6,7 @@ import { ALLOWED_ORIGIN } from '../_shared/cors.ts'
 import { escapeHtml } from '../_shared/format.ts'
 import { PublicError, publicErrorResponse } from '../_shared/errors.ts'
 import { verifyTurnstile } from '../_shared/turnstile.ts'
+import { isFoodPrefix } from '../_shared/booking-type.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
@@ -141,7 +142,7 @@ function sanitizeBookingInput(raw: Record<string, any>, bookingPrefix: string, o
     throw new PublicError('Invalid stall_type.')
   }
 
-  const bookingType = instancePrefix.includes('FOOD') ? 'food' : 'general'
+  const bookingType = isFoodPrefix(instancePrefix) ? 'food' : 'general'
   return {
     instance_prefix: instancePrefix,
     booking_type: bookingType,
