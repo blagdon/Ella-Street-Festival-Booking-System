@@ -1,0 +1,4 @@
+{
+  "//": "Enables `deno check`/`deno run` to resolve _shared/sentry.ts's `npm:@sentry/deno@^8` specifier without erroring - without this, Deno (invoked from the repo root, which also has its own Node package.json) looks for an already-populated node_modules and fails instead of resolving the npm: specifier directly. Does not affect `supabase functions deploy`, which resolves npm: specifiers through Supabase's own build pipeline independent of this setting - these functions (including ones using @sentry/deno) have deployed successfully long before this file existed.",
+  "nodeModulesDir": "auto"
+}
