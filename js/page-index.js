@@ -8,24 +8,31 @@ import { fetchHubSummary } from './api.js';
 let sb;
 
 // ---------------------------------------------------------------------------
-// Password-recovery detection — MUST happen synchronously at module load,
-// before initAdminPage / requireAuth runs.
+// Password-recovery / invite-acceptance detection — MUST happen
+// synchronously at module load, before initAdminPage / requireAuth runs.
 //
-// When an admin clicks a Supabase password-reset link they are redirected to
-// index.html with a URL fragment like:
+// When an admin clicks a Supabase password-reset OR invite link they are
+// redirected to index.html with a URL fragment like:
 //   #access_token=...&refresh_token=...&type=recovery
+//   #access_token=...&refresh_token=...&type=invite
 //
-// The Supabase client auto-exchanges that token and creates a valid session,
-// so requireAuth() would pass even though the intent is only to set a new
-// password.  The PASSWORD_RECOVERY auth-state-change event fires
+// Both land here via the same mechanism (see js/page-login.js's
+// resetPasswordForEmail and provision-organisation/invite-organisation-
+// member's inviteUserByEmail, which both redirectTo this page) and both
+// need the same thing from the visitor: set a password, nothing else. The
+// Supabase client auto-exchanges that token and creates a valid session, so
+// requireAuth() would pass even though the intent is only to set a new
+// password.  The PASSWORD_RECOVERY/SIGNED_IN auth-state-change event fires
 // *asynchronously* (after the microtask queue), so any synchronous check
 // for it runs too late — the dashboard has already rendered.
 //
 // Solution: read `type` from the hash fragment right now, synchronously,
-// and skip the normal auth + dashboard flow entirely if it is "recovery".
+// and skip the normal auth + dashboard flow entirely for either type.
 // ---------------------------------------------------------------------------
 const _hashParams = new URLSearchParams(window.location.hash.slice(1));
-const IS_PASSWORD_RECOVERY = _hashParams.get('type') === 'recovery';
+const _authType = _hashParams.get('type');
+const IS_PASSWORD_RECOVERY = _authType === 'recovery' || _authType === 'invite';
+const IS_INVITE = _authType === 'invite';
 
 if (IS_PASSWORD_RECOVERY) {
     // --- RECOVERY PATH ---
@@ -60,6 +67,16 @@ if (IS_PASSWORD_RECOVERY) {
         if (modal) {
             modal.classList.remove('opacity-0', 'pointer-events-none');
             trapFocus(modal);
+        }
+
+        // First-time invitees get welcoming copy instead of "reset" wording -
+        // same modal, same updateUserPassword() flow, just a different
+        // reason they're here.
+        if (IS_INVITE) {
+            const title = document.getElementById('passwordResetModalTitle');
+            const desc = document.getElementById('passwordResetModalDesc');
+            if (title) title.textContent = 'Welcome — Set Your Password';
+            if (desc) desc.textContent = "You've been invited to join this organisation. Set a password to finish creating your account.";
         }
 
         // Wire up the button.

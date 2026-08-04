@@ -6,7 +6,7 @@
  */
 import { initAdminPage, getSupabaseClient } from './supabase.js';
 import { getPlatformContext, setCurrentOrgId, CONFIG } from './config.js';
-import { escapeHtml, validateSlug } from './utils.js';
+import { escapeHtml, validateSlug, parseEdgeFunctionError } from './utils.js';
 import { renderAdminSidebar } from './platform/navigation.js';
 import { renderPageHeader } from './platform/layout.js';
 import { renderStatCard, renderCard } from './platform/cards.js';
@@ -707,15 +707,28 @@ async function submitAddMember() {
     }
 
     try {
-        const { data, error } = await sb.rpc('rpc_add_organisation_member', {
-            p_email: email,
-            p_role: role
+        // Goes through invite-organisation-member (not sb.rpc directly) so a
+        // brand-new member gets a real Supabase invite email, not just a
+        // placeholder row nobody's ever told about. The Edge Function still
+        // calls rpc_add_organisation_member itself, as the caller, so the
+        // authorization/org-scoping there is unchanged.
+        const { data, error } = await sb.functions.invoke('invite-organisation-member', {
+            body: { email, role }
         });
 
-        if (error) throw error;
+        if (error) {
+            const msg = await parseEdgeFunctionError(error, 'Failed to add member');
+            throw new Error(msg);
+        }
+        if (data?.error) throw new Error(data.error);
 
-        await auditLog('add_member', 'organisation_members', { org_id: ctx.orgId, email, role, user_id: data?.user_id });
-        notify(`Member ${email} added as ${role}!`, 'success');
+        await auditLog('add_member', 'organisation_members', { org_id: ctx.orgId, email, role, user_id: data?.user_id, invite_sent: data?.invite_sent });
+        notify(
+            data?.invite_sent
+                ? `Invite email sent to ${email}!`
+                : `Member ${email} added as ${role}.`,
+            'success'
+        );
         document.getElementById('dialogAddMember')?.classList.add('hidden');
         await loadWorkspaceData();
         renderActiveSection();
