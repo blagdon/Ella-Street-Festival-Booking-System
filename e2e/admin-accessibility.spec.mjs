@@ -17,6 +17,7 @@ const PAGES = [
   'audit_log.html',
   'booking_forms.html',
   'comms_admin.html',
+  'event_settings.html',
   'hcc_dashboard.html',
   'kanban_m.html',
   'location_admin.html',
