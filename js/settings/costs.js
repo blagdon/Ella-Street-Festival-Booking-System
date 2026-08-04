@@ -2,7 +2,7 @@
 import { getSupabaseClient } from '../supabase.js';
 import { showToast } from '../ui.js';
 import { auditLog } from '../audit.js';
-import { CONFIG } from '../config.js';
+import { CONFIG, clearSettingsCache } from '../config.js';
 import { escapeHtml } from '../utils.js';
 
 const sb = getSupabaseClient();
@@ -54,9 +54,7 @@ export async function initStallCosts() {
             CONFIG.UI.STALL_COST.DEV = valDev;
 
             showToast("Stall costs saved successfully");
-            if (typeof sessionStorage !== 'undefined') {
-                sessionStorage.removeItem('ESF_SETTINGS_CACHE');
-            }
+            clearSettingsCache();
             await auditLog('update_stall_costs', 'system', { food: valFood, general: valGeneral, dev: valDev });
         } catch (err) {
             showToast(`Failed to save stall costs: ${err.message}`, 'error');
@@ -103,9 +101,7 @@ export function initStallTypes() {
             });
             if (error) throw error;
 
-            if (typeof sessionStorage !== 'undefined') {
-                sessionStorage.removeItem('ESF_SETTINGS_CACHE');
-            }
+            clearSettingsCache();
             await auditLog('update_stall_types', 'system', { types: newList });
         } catch (err) {
             CONFIG.UI.ALLOWED_TYPES = previous; // roll back on failure

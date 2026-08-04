@@ -30,6 +30,7 @@
 21. [Setting Up a New Organisation & Branding](#21-setting-up-a-new-organisation--branding)
 22. [Location Management — Adding & Editing Pitches](#22-location-management--adding--editing-pitches)
 23. [Event Configuration — Different Settings for One Event](#23-event-configuration--different-settings-for-one-event)
+24. [Sharing Your Event's Booking Forms](#24-sharing-your-events-booking-forms)
 
 ---
 
@@ -509,6 +510,34 @@ Booking Prefix is set per event, but from the event's own details on the
 If you run the same festival every year but prices go up, or a special one-off event
 needs its own name and pricing, turn on the overrides you need for just that event and
 leave everything else following your organisation's usual settings.
+
+---
+
+## 24. Sharing Your Event's Booking Forms
+
+If your organisation runs more than one event, the trader application forms can point at
+a specific one: share the General or Food Stall booking form link with `?org=your-org-slug&event=your-event-slug`
+added to the end (your organisation and event slugs are the ones you set up when you
+created them). A trader who applies through that link is applying to that event
+specifically — their application, and any email or text they receive about it, is kept
+with that event and organisation.
+
+If you only ever run one event, you don't need to do anything — the plain form links
+work exactly as they always have.
+
+### An event only accepts applications while it's Open
+
+A trader can only submit an application while the event they're applying to is set to
+**Open**. If it's still being set up (Draft), scheduled but not yet ready
+(Ready), or has finished (Closed/Archived), the booking form shows a message
+explaining that instead of the application form — traders never see a confusing error,
+and nothing they submit is lost, because there's nothing to submit yet. Set an event's
+status from its own details on the **Platform Administration** workspace, the same
+place you set its name and booking prefix.
+
+A booking link for an event that isn't real, or has been removed, shows the same
+message a Draft event's link does — "this link is no longer valid" — rather than
+revealing whether an event with that name almost exists.
 
 ---
 

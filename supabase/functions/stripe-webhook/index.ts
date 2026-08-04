@@ -21,7 +21,7 @@ import { captureAndFlush } from '../_shared/sentry.ts'
 async function sendConfirmationEmail(supabaseAdmin: ReturnType<typeof createClient>, bookingId: string) {
   const { data: booking, error: bookingErr } = await supabaseAdmin
     .from('bookings')
-    .select('email, owner_name, business_name, instance_prefix, cancel_token, stall_cost')
+    .select('org_id, email, owner_name, business_name, instance_prefix, cancel_token, stall_cost')
     .eq('id', bookingId)
     .single()
 
@@ -32,7 +32,7 @@ async function sendConfirmationEmail(supabaseAdmin: ReturnType<typeof createClie
   const { data: templateData, error: templateErr } = await supabaseAdmin
     .from('email_templates')
     .select('subject, body_html')
-    .eq('org_id', 'org_default')
+    .eq('org_id', booking.org_id)
     .eq('id', 'confirmed_chargeable')
     .single()
 
@@ -43,7 +43,7 @@ async function sendConfirmationEmail(supabaseAdmin: ReturnType<typeof createClie
   const { data: settingsRows } = await supabaseAdmin
     .from('settings')
     .select('key, value')
-    .eq('org_id', 'org_default')
+    .eq('org_id', booking.org_id)
     .in('key', ['cancel_url', 'bank_account_name', 'bank_sort_code', 'bank_account_number'])
   const settingsMap: Record<string, string> = {}
   ;(settingsRows || []).forEach((r: any) => { settingsMap[r.key] = r.value })
@@ -80,7 +80,7 @@ async function sendConfirmationEmail(supabaseAdmin: ReturnType<typeof createClie
   let status = 'Sent'
   let errorMessage: string | null = null
   try {
-    await sendViaZoho(supabaseAdmin, { recipient: booking.email, subject, body })
+    await sendViaZoho(supabaseAdmin, { recipient: booking.email, subject, body }, booking.org_id)
   } catch (e: any) {
     status = 'Error'
     errorMessage = e.message
@@ -120,7 +120,7 @@ async function sendConfirmationEmail(supabaseAdmin: ReturnType<typeof createClie
 async function sendConfirmationSms(supabaseAdmin: ReturnType<typeof createClient>, bookingId: string) {
   const { data: booking, error: bookingErr } = await supabaseAdmin
     .from('bookings')
-    .select('phone, owner_name, business_name, instance_prefix, cancel_token, stall_cost')
+    .select('org_id, phone, owner_name, business_name, instance_prefix, cancel_token, stall_cost')
     .eq('id', bookingId)
     .single()
 
@@ -132,7 +132,7 @@ async function sendConfirmationSms(supabaseAdmin: ReturnType<typeof createClient
   const { data: templateData, error: templateErr } = await supabaseAdmin
     .from('sms_templates')
     .select('body')
-    .eq('org_id', 'org_default')
+    .eq('org_id', booking.org_id)
     .eq('id', 'booking_confirmed')
     .single()
 
@@ -143,7 +143,7 @@ async function sendConfirmationSms(supabaseAdmin: ReturnType<typeof createClient
   const { data: settingsRows } = await supabaseAdmin
     .from('settings')
     .select('key, value')
-    .eq('org_id', 'org_default')
+    .eq('org_id', booking.org_id)
     .in('key', ['cancel_url', 'bank_account_name', 'bank_sort_code', 'bank_account_number'])
   const settingsMap: Record<string, string> = {}
   ;(settingsRows || []).forEach((r: any) => { settingsMap[r.key] = r.value })
@@ -186,7 +186,7 @@ async function sendConfirmationSms(supabaseAdmin: ReturnType<typeof createClient
   let providerMessageId: string | null = null
   let segments: number | null = null
   try {
-    const result = await sendViaSms(supabaseAdmin, { recipient, body })
+    const result = await sendViaSms(supabaseAdmin, { recipient, body }, booking.org_id)
     providerMessageId = result.providerMessageId
     segments = result.segments
   } catch (e: any) {

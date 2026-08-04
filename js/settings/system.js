@@ -2,7 +2,7 @@
 import { getSupabaseClient } from '../supabase.js';
 import { showToast } from '../ui.js';
 import { auditLog } from '../audit.js';
-import { CONFIG } from '../config.js';
+import { CONFIG, clearSettingsCache } from '../config.js';
 import { ESF_PUBLIC_CONFIG } from '../../supabase-public.js';
 
 const sb = getSupabaseClient();
@@ -177,9 +177,7 @@ export async function initSystemConstants() {
             CONFIG.FESTIVAL_DISPLAY_NAME = valFestivalName;
 
             showToast("System constants saved successfully");
-            if (typeof sessionStorage !== 'undefined') {
-                sessionStorage.removeItem('ESF_SETTINGS_CACHE');
-            }
+            clearSettingsCache();
             await auditLog('update_system_constants', 'system', {
                 festival_display_name: valFestivalName,
                 turnstile_key: valTurnstile,
@@ -247,9 +245,7 @@ export async function initSentrySettings() {
             // page's own init callback) - a change here takes effect on the
             // next admin page load, not retroactively on this one.
             showToast("Error Monitoring settings saved. Reload any open admin tabs to pick up a browser loader URL change.");
-            if (typeof sessionStorage !== 'undefined') {
-                sessionStorage.removeItem('ESF_SETTINGS_CACHE');
-            }
+            clearSettingsCache();
             await auditLog('update_sentry_settings', 'system', {
                 dsn_set: !!valDsn,
                 browser_loader_url_set: !!valLoaderUrl

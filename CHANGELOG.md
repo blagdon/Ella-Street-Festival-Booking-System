@@ -4,21 +4,30 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
-Epic 4, Phase 4B (Event Configuration) + Phase 4B.1 — not yet tagged as a release.
+Epic 4, Phase 4B (Event Configuration) + Phase 4B.1 + Phase 4D (Public Booking Routing) — not yet tagged as a release.
 
 ### Added
 
 - **Event-scoped configuration overrides.** New `event_settings` table (same key/value shape as the org-scoped `settings` table) adds the missing Event layer to the existing Platform → Organisation → Event inheritance chain. `js/config.js`'s `loadStallCosts()` applies organisation rows then event rows through the same `applySettingsToConfig()` — no new resolver, no key-specific branching. `js/public-context.js`'s public event-page branding resolution gets the same treatment, so an event override actually reaches the public page it's meant for.
 - **Event Configuration page** (`event_settings.html`, `js/settings/event-config.js`). Lets an organiser override Festival Display Name, General/Food/Developer Stall Price, and Allowed Stall Types for just the active event, without touching the organisation default or any other event. Each field shows whether it's inherited or overridden; "Reset to Organisation Default" deletes the override row rather than copying the organisation's current value down, so it stays in sync with the organisation automatically from then on. Booking Prefix is deliberately **not** included — it's a typed `events.booking_prefix` column with its own resolution path (`getActiveBookingPrefix()`), not a settings key; routing it through `event_settings` too would have created a second, silently-ineffective place to set it.
+- **Public booking forms now resolve their organisation/event from the URL.** `General_Booking.html`/`Food_Stall_booking.html` read `?org=&event=` slugs (`js/public-context.js`'s new `initPublicBookingForm()`, reusing `resolvePublicContext()`) and gate the form on that event's status, showing "Booking Link Not Found" or "Not Currently Accepting Applications — currently in 'X' mode" instead of a generic error. No slug at all falls back to the legacy `org_default`/`event_default` pair through the identical path, so every existing bookmarked/shared link keeps working unchanged.
+- **`submit-booking` resolves and persists the real organisation/event server-side**, never from client-supplied `org_id`/`event_id` (which are no longer even read off the request). Its event-lifecycle guard — rejecting a submission unless the resolved event's `status` is `'open'` — is now unconditional instead of dead code that only ever fired if a client happened to send an `event_id` (none ever did).
+- **`cancel-booking`, `stripe-webhook`, and `create-checkout-session` now send confirmation/cancellation/payment-request emails and texts using the booking's own organisation**, read off the row rather than hardcoded to `org_default`. `_shared/zoho.ts`/`_shared/sms.ts` already accepted an `orgId` parameter for this; the four call sites simply weren't passing it.
 
 ### Fixed
 
 - **`event_settings` was missing a `DELETE` grant for `authenticated`.** The original migration copied `settings`' grants verbatim (`SELECT, INSERT, UPDATE`) — but `settings` never deletes a row, while the new Reset control does exactly that. Every admin's first Reset click would have failed with `permission denied for table event_settings`. Found by the integration tests actually exercising the delete path, not by inspection. Fixed via a follow-up migration, applied to both the test and production projects.
+- **`event_default`'s `status` had been `'draft'` since Epic 4 introduced the column**, even though it's the real, currently-operating event with hundreds of live bookings — nothing had ever enforced it, so it never mattered until the lifecycle guard above became unconditional. A data migration sets it to `'open'`, confirmed against live production data first; the platform's other (non-live) test events are left untouched.
+- **`create-checkout-session`'s settings lookup (`base_url`, `cancel_url`, bank details) had no organisation filter at all**, same latent bug as `loadPublicSettings()` below — harmless with one real organisation, ambiguous the moment a second has its own rows for these keys.
+- **`supabase-public.js`'s `loadPublicSettings()` had no organisation filter at all**, returning every organisation's rows for the same anon-readable keys indiscriminately. Now takes an `orgId` parameter (default `'org_default'`, so every existing caller is unaffected), with an org-scoped session cache key to match.
+- **Three admin settings pages (`costs.js`, `system.js`, `zoho.js`) were clearing a stale, unprefixed settings-cache key that stopped matching anything once the real cache key became organisation/event-scoped** (pre-existing, not introduced by this change) — a saved setting wasn't reflected in the same tab until the cache TTL expired. Both this and `supabase-public.js`'s equivalent local-override cache-clearing helpers now sweep every `ESF_SETTINGS_CACHE_`-prefixed key via a shared `clearSettingsCache()`.
 
 ### Testing
 
 - `tests/phase4b-event-configuration.test.mjs` — inheritance, override creation/removal, organisation isolation, multiple events under one organisation, and `event_settings` RLS (admin write, anon read allow-list).
 - `e2e/event-configuration.spec.mjs` — the real override/reset/validation flow driven through the browser, verified against the database. `event_settings.html` added to the admin accessibility suite.
+- `tests/phase4d-public-booking-routing.test.mjs` — slug resolution persisting the real org/event, the lifecycle guard (both a resolved-but-not-open event and an unresolvable slug), client-supplied `org_id`/`event_id` being ignored outright, the legacy no-slug fallback, and that a booking's "received" email uses its own organisation's template.
+- `e2e/public-booking-routing.spec.mjs` — the real client-side gating states in both booking forms, including the deliberate not-found/not-open asymmetry between a draft event (indistinguishable from nonexistent, by design) and a real non-open one.
 
 ## [7.21.0] - 2026-08-03
 

@@ -1,0 +1,23 @@
+-- Migration: 20260804140000_open_default_event.sql
+-- Epic 4, Phase 4D — Public Booking Routing
+--
+-- event_default's status has been 'draft' (the column default) since Epic 4
+-- introduced events.status, even though it is the real, currently-operating
+-- event — hundreds of real ESF26-FOOD-/ESF26-NONFOOD- bookings already exist
+-- against it. The status column was simply never touched; nothing enforced
+-- it until now.
+--
+-- Phase 4D makes submit-booking's event lifecycle guard (event.status must
+-- be 'open') unconditional instead of the dead code it was before (it only
+-- ever fired if the client sent an event_id, which no booking form ever
+-- did). Left as 'draft', that guard would reject every real public booking
+-- submission the moment this deploys. This is a data fix reflecting
+-- operational reality, not a policy change: event_default is open for
+-- business today, the row just never said so.
+--
+-- The other two events currently in the database (a 2028 test event and a
+-- second organisation's test event, both under Epic 3/4 provisioning
+-- testing) are deliberately NOT touched here — they are not live and should
+-- stay 'draft' until their own organisers explicitly publish them.
+
+UPDATE "public"."events" SET status = 'open' WHERE id = 'event_default';

@@ -59,15 +59,77 @@ function sanitizeCharityStatus(val: unknown): string {
 }
 
 /**
+ * Resolves the org/event a booking submission belongs to, server-side and
+ * independent of anything the client claims — mirrors js/public-context.js's
+ * resolvePublicContext() (same slug -> row lookup shape), but can't literally
+ * import it: that's a browser ES module reaching for `window`, and this runs
+ * in Deno. Same reason _shared/slugs.ts mirrors js/utils.js's validateSlug
+ * rather than sharing the file. Queries the base organisations/events tables
+ * directly (service role, no RLS to route around) rather than the anon-safe
+ * public_organisations_info/public_events_info views those need — this
+ * function's own status==='open' check below is already stricter than
+ * those views' status<>'draft' filter, so routing through them first would
+ * be redundant.
+ *
+ * No org/event slug in the request is not an error — it's the legacy
+ * single-tenant case every booking form supported before Phase 4D — so it
+ * resolves the well-known org_default/event_default pair instead of
+ * rejecting. That pair goes through this exact same lookup and status
+ * check, not a bypass: event_default's status must be 'open' too.
+ */
+async function resolvePublicBookingContext(
+  supabaseAdmin: ReturnType<typeof createClient>,
+  orgSlug: unknown,
+  eventSlug: unknown
+): Promise<{ orgId: string; eventId: string; bookingPrefix: string }> {
+  let orgId: string
+  let event: { id: string; org_id: string; status: string; booking_prefix: string } | null
+
+  if (typeof orgSlug === 'string' && orgSlug && typeof eventSlug === 'string' && eventSlug) {
+    const { data: org } = await supabaseAdmin.from('organisations').select('id').eq('slug', orgSlug).maybeSingle()
+    if (!org) throw new PublicError('This booking link is no longer valid — the organisation could not be found.')
+    const { data: eventRow } = await supabaseAdmin
+      .from('events')
+      .select('id, org_id, status, booking_prefix')
+      .eq('org_id', org.id)
+      .eq('slug', eventSlug)
+      .maybeSingle()
+    if (!eventRow) throw new PublicError('This booking link is no longer valid — the event could not be found.')
+    orgId = org.id
+    event = eventRow
+  } else {
+    orgId = 'org_default'
+    const { data: eventRow } = await supabaseAdmin
+      .from('events')
+      .select('id, org_id, status, booking_prefix')
+      .eq('id', 'event_default')
+      .maybeSingle()
+    event = eventRow
+  }
+
+  if (!event) {
+    throw new PublicError('Booking is not currently available.')
+  }
+  if (event.status !== 'open') {
+    throw new PublicError(`Applications for this event are currently in '${event.status.toUpperCase()}' mode and closed for public submissions.`)
+  }
+
+  return { orgId, eventId: event.id, bookingPrefix: event.booking_prefix || 'ESF26' }
+}
+
+/**
  * Builds a safe booking row from raw, untrusted client input via an explicit
  * allow-list rather than inserting the request body as-is. This endpoint is
  * public and unauthenticated (Turnstile only proves a human made *a*
  * request, not that its JSON body matches what the form's own JS would have
  * sent) and runs under the service role, which bypasses RLS entirely — so
  * without this, a caller could set fields the UI never exposes (stall_cost,
- * admin_notes, date_confirmed, cancel_token, status, etc.) directly.
+ * admin_notes, date_confirmed, cancel_token, status, etc.) directly. org_id/
+ * event_id in particular are NEVER read from raw — they're the caller-
+ * supplied orgId/eventId already resolved server-side by
+ * resolvePublicBookingContext(), the one place tenant identity is decided.
  */
-function sanitizeBookingInput(raw: Record<string, any>, bookingPrefix: string): Record<string, any> {
+function sanitizeBookingInput(raw: Record<string, any>, bookingPrefix: string, orgId: string, eventId: string): Record<string, any> {
   const instancePrefix = String(raw.instance_prefix || '')
   const validPrefixes = [`${bookingPrefix}-FOOD-`, `${bookingPrefix}-NONFOOD-`, `${bookingPrefix}-DEV-`]
   if (!validPrefixes.includes(instancePrefix)) {
@@ -83,8 +145,8 @@ function sanitizeBookingInput(raw: Record<string, any>, bookingPrefix: string): 
   return {
     instance_prefix: instancePrefix,
     booking_type: bookingType,
-    org_id: 'org_default',
-    event_id: 'event_default',
+    org_id: orgId,
+    event_id: eventId,
     stall_type: stallType,
     business_name: sanitizeString(raw.business_name, MAX_FIELD_LENGTHS.business_name),
     registered_business_name: sanitizeString(raw.registered_business_name, MAX_FIELD_LENGTHS.registered_business_name),
@@ -116,8 +178,8 @@ function sanitizeBookingInput(raw: Record<string, any>, bookingPrefix: string): 
  */
 async function sendReceivedEmail(supabaseAdmin: ReturnType<typeof createClient>, booking: Record<string, any>) {
   const [{ data: templateData, error: templateErr }, { data: settingRows }] = await Promise.all([
-    supabaseAdmin.from('email_templates').select('subject, body_html').eq('org_id', 'org_default').eq('id', 'application_received').single(),
-    supabaseAdmin.from('settings').select('key, value').eq('org_id', 'org_default').eq('key', 'cancel_url')
+    supabaseAdmin.from('email_templates').select('subject, body_html').eq('org_id', booking.org_id).eq('id', 'application_received').single(),
+    supabaseAdmin.from('settings').select('key, value').eq('org_id', booking.org_id).eq('key', 'cancel_url')
   ])
 
   if (templateErr || !templateData) {
@@ -149,7 +211,7 @@ async function sendReceivedEmail(supabaseAdmin: ReturnType<typeof createClient>,
   let errorMessage: string | null = null
 
   try {
-    await sendViaZoho(supabaseAdmin, { recipient: booking.email, subject, body })
+    await sendViaZoho(supabaseAdmin, { recipient: booking.email, subject, body }, booking.org_id)
   } catch (e: any) {
     status = 'Error'
     errorMessage = e.message
@@ -193,8 +255,8 @@ async function sendReceivedSms(supabaseAdmin: ReturnType<typeof createClient>, b
   if (!booking.phone) return
 
   const [{ data: templateData, error: templateErr }, { data: settingRows }] = await Promise.all([
-    supabaseAdmin.from('sms_templates').select('body').eq('org_id', 'org_default').eq('id', 'booking_received').single(),
-    supabaseAdmin.from('settings').select('key, value').eq('org_id', 'org_default').eq('key', 'cancel_url')
+    supabaseAdmin.from('sms_templates').select('body').eq('org_id', booking.org_id).eq('id', 'booking_received').single(),
+    supabaseAdmin.from('settings').select('key, value').eq('org_id', booking.org_id).eq('key', 'cancel_url')
   ])
 
   if (templateErr || !templateData) {
@@ -233,7 +295,7 @@ async function sendReceivedSms(supabaseAdmin: ReturnType<typeof createClient>, b
   let segments: number | null = null
 
   try {
-    const result = await sendViaSms(supabaseAdmin, { recipient, body })
+    const result = await sendViaSms(supabaseAdmin, { recipient, body }, booking.org_id)
     providerMessageId = result.providerMessageId
     segments = result.segments
   } catch (e: any) {
@@ -262,7 +324,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { token, bookingData, tempUuid, fileNames } = await req.json()
+    const { token, bookingData, tempUuid, fileNames, orgSlug, eventSlug } = await req.json()
 
     if (!bookingData) {
       return new Response(JSON.stringify({ error: 'Missing booking data.' }), {
@@ -280,32 +342,15 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    // 2b. Enforce Event Lifecycle Guard: Rejection if event.status is not 'open'
-    if (bookingData.event_id) {
-      const { data: targetEvent } = await supabaseAdmin
-        .from('events')
-        .select('status, is_active')
-        .eq('id', bookingData.event_id)
-        .maybeSingle()
-
-      if (targetEvent && targetEvent.status && targetEvent.status !== 'open') {
-        return new Response(
-          JSON.stringify({ error: `Applications for this event are currently in '${targetEvent.status.toUpperCase()}' mode and closed for public submissions.` }),
-          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        )
-      }
-    }
+    // 2b. Resolve org/event from the trusted slug pair (never from
+    // bookingData, which sanitizeBookingInput never even reads org_id/
+    // event_id off of) and enforce the event lifecycle guard as part of
+    // that same resolution — see resolvePublicBookingContext()'s docstring.
+    const { orgId, eventId, bookingPrefix } = await resolvePublicBookingContext(supabaseAdmin, orgSlug, eventSlug)
 
     // 3. Build a safe row from an explicit allow-list — never insert the
     // raw request body (see sanitizeBookingInput's docstring).
-    const { data: prefixSetting } = await supabaseAdmin
-      .from('settings')
-      .select('value')
-      .eq('key', 'booking_prefix')
-      .single()
-    const bookingPrefix = prefixSetting?.value || 'ESF26'
-
-    const safeBookingData = sanitizeBookingInput(bookingData, bookingPrefix)
+    const safeBookingData = sanitizeBookingInput(bookingData, bookingPrefix, orgId, eventId)
     safeBookingData.status = 'Pending'
 
     // 4. Atomically generate the next sequential ID and insert the row.

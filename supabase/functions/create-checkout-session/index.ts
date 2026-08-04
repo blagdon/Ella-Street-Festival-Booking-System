@@ -85,7 +85,7 @@ Deno.serve(async (req) => {
 
     const { data: booking, error: bookingErr } = await supabaseClient
       .from('bookings')
-      .select('id, status, stall_cost, instance_prefix, business_name, owner_name, email, phone, stripe_payment_requested_at, stripe_checkout_session_id, cancel_token, payment_link_code')
+      .select('id, org_id, status, stall_cost, instance_prefix, business_name, owner_name, email, phone, stripe_payment_requested_at, stripe_checkout_session_id, cancel_token, payment_link_code')
       .eq('id', booking_id)
       .single()
 
@@ -158,6 +158,7 @@ Deno.serve(async (req) => {
     const { data: settingsRows } = await supabaseClient
       .from('settings')
       .select('key, value')
+      .eq('org_id', booking.org_id)
       .in('key', ['base_url', 'cancel_url', 'bank_account_name', 'bank_sort_code', 'bank_account_number'])
     const settingsMap: Record<string, string> = {}
     ;(settingsRows || []).forEach((r: any) => { settingsMap[r.key] = r.value })
@@ -222,7 +223,7 @@ Deno.serve(async (req) => {
       const { data: templateData, error: templateErr } = await supabaseClient
         .from('email_templates')
         .select('subject, body_html')
-        .eq('org_id', 'org_default')
+        .eq('org_id', booking.org_id)
         .eq('id', 'payment_requested')
         .single()
 
@@ -254,7 +255,7 @@ Deno.serve(async (req) => {
       let emailStatus = 'Sent'
       let emailError: string | null = null
       try {
-        await sendViaZoho(supabaseClient, { recipient: booking.email, subject, body })
+        await sendViaZoho(supabaseClient, { recipient: booking.email, subject, body }, booking.org_id)
       } catch (e: any) {
         emailStatus = 'Error'
         emailError = e.message
@@ -288,7 +289,7 @@ Deno.serve(async (req) => {
         const { data: smsTemplateData, error: smsTemplateErr } = await supabaseClient
           .from('sms_templates')
           .select('body')
-          .eq('org_id', 'org_default')
+          .eq('org_id', booking.org_id)
           .eq('id', 'payment_requested')
           .single()
 
@@ -310,7 +311,7 @@ Deno.serve(async (req) => {
         let providerMessageId: string | null = null
         let segments: number | null = null
         try {
-          const result = await sendViaSms(supabaseClient, { recipient, body: smsBody })
+          const result = await sendViaSms(supabaseClient, { recipient, body: smsBody }, booking.org_id)
           providerMessageId = result.providerMessageId
           segments = result.segments
         } catch (e: any) {
