@@ -267,6 +267,11 @@ export function applySettingsToConfig(data) {
             CONFIG.BRANDING.LOGO_URL = val;
         } else if (item.key === 'logo_light_url') {
             CONFIG.BRANDING.LOGO_LIGHT_URL = val;
+        } else {
+            // Not a silent no-op: settings/event_settings are free-form
+            // key/value rows, so a typo'd key (or a key not yet wired into
+            // CONFIG) would otherwise vanish with no signal at all.
+            console.warn(`applySettingsToConfig(): unrecognized settings key "${item.key}" — ignored.`);
         }
     });
 }
@@ -277,20 +282,23 @@ export function applySettingsToConfig(data) {
 // session) keeps serving whatever it first cached until it's closed. This
 // TTL bounds that: worst case, a settings edit reaches every open tab within
 // SETTINGS_CACHE_TTL_MS, not "whenever that tab happens to be closed".
-// supabase-public.js's loadPublicSettings/initPublicSettingsSync read and
-// write this SAME sessionStorage key for public pages - keep the constant
-// and the {data, timestamp} shape in sync with those.
+// NOTE: supabase-public.js's loadPublicSettings/initPublicSettingsSync use
+// their own unparameterized 'ESF_SETTINGS_CACHE' key for pre-auth public
+// pages - despite the similar name/shape this is a SEPARATE cache with a
+// separate consumer, not the same key this function reads/writes.
 const SETTINGS_CACHE_TTL_MS = 5 * 60 * 1000;
 
-export async function loadStallCosts(sb, orgId = getCurrentOrgId()) {
+export async function loadStallCosts(sb, orgId = getCurrentOrgId(), eventId = getCurrentEventId()) {
+    const cacheKey = `ESF_SETTINGS_CACHE_${orgId}_${eventId}`;
+
     if (typeof sessionStorage !== 'undefined') {
-        const cacheKey = `ESF_SETTINGS_CACHE_${orgId}`;
         const cached = sessionStorage.getItem(cacheKey);
         if (cached) {
             try {
-                const { data, timestamp } = JSON.parse(cached);
-                if (data && Date.now() - timestamp < SETTINGS_CACHE_TTL_MS) {
-                    applySettingsToConfig(data);
+                const { orgData, eventData, timestamp } = JSON.parse(cached);
+                if (orgData && Date.now() - timestamp < SETTINGS_CACHE_TTL_MS) {
+                    applySettingsToConfig(orgData);
+                    applySettingsToConfig(eventData);
                     return;
                 }
             } catch (e) {
@@ -301,14 +309,19 @@ export async function loadStallCosts(sb, orgId = getCurrentOrgId()) {
     }
 
     try {
-        const { data, error } = await sb.from('settings').select('key, value').eq('org_id', orgId);
-        if (error) throw error;
-        if (data) {
-            applySettingsToConfig(data);
-            if (typeof sessionStorage !== 'undefined') {
-                const cacheKey = `ESF_SETTINGS_CACHE_${orgId}`;
-                sessionStorage.setItem(cacheKey, JSON.stringify({ data, timestamp: Date.now() }));
-            }
+        const { data: orgData, error: orgError } = await sb.from('settings').select('key, value').eq('org_id', orgId);
+        if (orgError) throw orgError;
+        const { data: eventData, error: eventError } = await sb.from('event_settings').select('key, value').eq('event_id', eventId);
+        if (eventError) throw eventError;
+
+        // Org rows first, event rows second: an event row for the same key
+        // wins. applySettingsToConfig() doesn't know or care which layer a
+        // row came from - same function, called twice.
+        applySettingsToConfig(orgData);
+        applySettingsToConfig(eventData);
+
+        if (typeof sessionStorage !== 'undefined') {
+            sessionStorage.setItem(cacheKey, JSON.stringify({ orgData, eventData: eventData || [], timestamp: Date.now() }));
         }
     } catch (e) {
         console.warn("Failed to load settings from database, using defaults:", e);

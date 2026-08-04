@@ -56,8 +56,16 @@ export async function resolvePublicContext(orgSlug, eventSlug) {
         .select('key, value')
         .eq('org_id', org.id);
 
+    // Event rows override org rows for the same key, same precedence as
+    // js/config.js's loadStallCosts() — org applied first, event second.
+    const { data: eventSettingsRows } = await sb
+        .from('event_settings')
+        .select('key, value')
+        .eq('event_id', event.id);
+
     const branding = /** @type {Record<string, string>} */ ({});
     (settingsRows || []).forEach((r) => { branding[r.key] = r.value; });
+    (eventSettingsRows || []).forEach((r) => { branding[r.key] = r.value; });
 
     return { org, event, branding };
 }
