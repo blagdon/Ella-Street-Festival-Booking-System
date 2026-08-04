@@ -273,6 +273,7 @@ page-*.js            (entry points — one per HTML page)
 | Workspace | `page-admin.js` | Single-page Platform Administration Workspace |
 | Provisioning Wizard | `page-provisioning.js` (rendered inside `admin.html`'s Workspace — Provisioning tab in the sidebar, not its own page; there is no `provisioning.html`) | Admin-run tenant onboarding: creates the organisation, its primary event, and clones platform defaults, with a pre-flight check before committing |
 | Location Management | `page-admin-locations.js` (rendered inside `admin.html`'s Workspace — Locations tab; Epic 4 Phase 4C) | Add/Edit/Delete/Duplicate/Import-CSV/Export-CSV/Clone (same-event or cross-organisation) physical pitches, scoped to the active org+event, replacing manual SQL |
+| Event Configuration | `page-event-settings.js` (Epic 4 Phase 4B.1) | Override Festival Display Name, the three stall prices, and Allowed Stall Types for just the active event — see §13 |
 | Steward App | `page-steward.js` | **Offline-capable** — works from `localStorage` with a sync queue, for on-site use with poor signal. The only page using `sw.js`/`manifest.json` (installable as a PWA) |
 
 ### Public pages (no login)
@@ -332,7 +333,8 @@ All under `supabase/functions/`. Shared helpers live in `_shared/`.
 | `audit_logs` | Admin action trail |
 | `hcc_checks` | Council food-safety check entries |
 | `user_roles` | Role per Supabase Auth user (`admin` / `steward`) |
-| `settings` | Key/value runtime configuration (§13) |
+| `settings` | Key/value runtime configuration, organisation-scoped (§13) |
+| `event_settings` | Key/value runtime configuration, event-scoped — overrides `settings` for the same key (§13, Epic 4 Phase 4B) |
 | `stripe_webhook_events` | Processed Stripe event ledger — the email-send idempotency boundary |
 | `google_reviews_cache` | Cached Google reviews lookups |
 | `performers`, `schedules` | **Owned by a separate application** — see below |
@@ -468,6 +470,8 @@ Configuration lives in three places, in order of authority:
 Anon can read only an **allow-listed subset** of settings keys — credentials are not in that list.
 
 **Organisation branding** (`logo_url`, `logo_light_url`, `brand_primary_color`, `brand_accent_color`, `org_support_email`, `email_footer_text`) is a `settings` sub-category, scoped by `org_id` like every other row in the table, edited from the Platform Administration Workspace's Branding tab (`js/page-admin.js`). `logo_url` is rendered in the shared admin header (`js/nav.js`) via the same per-org settings fetch every admin page already performs on load (`loadStallCosts()` → `applySettingsToConfig()` → `CONFIG.BRANDING`) — no separate branding request. Newly provisioned organisations get neutral values cloned from `platform_defaults_settings` (never the original organisation's own configured brand); `logo_url`/`logo_light_url` are deliberately left unseeded, and the header falls back to plain text when empty.
+
+**Event-scoped overrides** (`event_settings`, Epic 4 Phase 4B/4B.1) add a fourth, more specific layer: `Platform Defaults → Organisation Settings (settings) → Event Settings (event_settings) → CONFIG`. `event_settings` mirrors `settings`' exact key/value shape (event-scoped instead of org-scoped), so `loadStallCosts()` resolves both through the same `applySettingsToConfig()` call — applied twice, org rows first and event rows second, with no key-specific branching. Any settings key can in principle gain an event override just by inserting a row; the [Event Configuration page](#7-page-catalogue) (`event_settings.html`) currently exposes exactly five — Festival Display Name, the three stall prices, and Allowed Stall Types — chosen because they're the keys that plausibly change between editions of the same festival. **Booking Prefix is deliberately excluded**: it's a typed `events.booking_prefix` column with its own resolution path (`getActiveBookingPrefix()` in `js/config.js`, consulted before `CONFIG`'s settings-derived fallback), not a `settings`/`event_settings` key — adding it here would create a second, silently-ineffective place to set it. Resetting an event override deletes the `event_settings` row rather than copying the organisation's value into it, so it keeps tracking the organisation default automatically once removed. `js/public-context.js`'s public event-page branding resolution layers `event_settings` over `settings` the same way, so an event override reaches the public page it's meant for, not just the admin dashboard.
 
 ---
 

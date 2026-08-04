@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>Event Configuration — ESF26 Admin</title>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://js-de.sentry-cdn.com https://browser.sentry-cdn.com https://cdnjs.cloudflare.com https://challenges.cloudflare.com https://vercel.live; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; connect-src 'self' https://rsnxhuhibglieofikkpo.supabase.co https://o4511817083977728.ingest.de.sentry.io https://challenges.cloudflare.com https://vercel.live https://cdn.jsdelivr.net https://unpkg.com; frame-src https://challenges.cloudflare.com https://vercel.live; img-src 'self' data: https:; font-src 'self' https://fonts.gstatic.com;">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="./css/output.css" rel="stylesheet">
+    <style>
+        .hover-card {
+            transition: all 0.2s ease-in-out;
+        }
+
+        .hover-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+        }
+
+        .icon-box {
+            transition: background-color 0.2s;
+        }
+    </style>
+
+    <script src="js/vendor/supabase.js"></script>
+    <script type="module" src="./js/page-event-settings.js"></script>
+
+    <link rel="icon"
+        href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎪</text></svg>">
+</head>
+
+<body class="bg-gray-50 min-h-screen font-sans text-gray-800">
+
+    <div id="nav-container"></div>
+
+    <div class="max-w-4xl mx-auto px-4 md:px-6 py-6 md:py-10">
+
+        <!-- Page Header with back button -->
+        <div class="mb-6 md:mb-8 flex items-center gap-3">
+            <a href="more.html"
+                class="inline-flex items-center text-gray-500 hover:text-blue-600 transition-colors group bg-white px-3 py-2 rounded-lg border border-gray-200 text-xs font-bold uppercase tracking-wide shadow-sm">
+                <svg class="w-3 h-3 mr-1.5 group-hover:-translate-x-0.5 transition-transform" fill="none"
+                    stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+                </svg>
+                Back to Tools
+            </a>
+            <div>
+                <h1 class="text-xl font-bold text-gray-800">Event Configuration</h1>
+                <p class="text-sm text-gray-500">
+                    Settings for <strong id="event-config-event-name">this event</strong> only — everything else
+                    keeps using the organisation's defaults.
+                </p>
+            </div>
+        </div>
+
+        <div class="bg-white p-6 rounded-xl border border-gray-200 shadow-sm hover-card">
+            <p class="text-xs text-gray-600 mb-4">
+                Every setting below normally follows the organisation's default. Turn on
+                <strong>Override for this event</strong> to set a different value just for this event — everything
+                else, and every other event, is unaffected. Turning an override back off (or pressing
+                <strong>Reset to Organisation Default</strong>) removes it entirely rather than copying the
+                organisation's current value, so it stays in sync with the organisation automatically from then on.
+            </p>
+
+            <div id="event-config-root" class="space-y-4 text-sm">
+                <p class="text-xs text-gray-500 italic">Loading event configuration…</p>
+            </div>
+
+            <button id="btn-save-event-config"
+                class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded transition text-xs tracking-wider uppercase mt-6 cursor-pointer shadow-sm">
+                Save Event Configuration
+            </button>
+        </div>
+
+        <div class="mt-12 text-center text-xs text-gray-600">
+            <p>Ella Street Festival Management System (Cloud Native)</p>
+        </div>
+    </div>
+
+</body>
+
+</html>
