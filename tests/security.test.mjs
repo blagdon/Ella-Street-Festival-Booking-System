@@ -394,6 +394,15 @@ describe('anon access to settings (booking open/closed flags)', () => {
       // turnstile_site_key, both designed for client-visible embedding.
       // sentry_dsn (the Edge Function backend DSN) is deliberately NOT here.
       'sentry_browser_loader_url',
+      // Organisation branding (20260803120000_consolidate_branding_defaults.sql,
+      // same PR that added public_organisations_info/public_events_info) -
+      // designed for client-visible embedding on public event/booking pages,
+      // same reasoning as turnstile_site_key above. This list itself wasn't
+      // updated when that migration shipped; caught by a full regression run
+      // during the Epic 4 Phase 4D operational review, not a live leak - the
+      // RLS policy has allow-listed these on purpose since that PR merged.
+      'logo_url', 'logo_light_url', 'brand_primary_color', 'brand_accent_color',
+      'org_support_email', 'email_footer_text',
       ...bookingOpenKeys,
     ];
     const { data: broad, error: broadErr } = await anon.from('settings').select('key');

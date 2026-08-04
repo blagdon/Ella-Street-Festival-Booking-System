@@ -37,6 +37,15 @@ initPublicPage(async function () {
         return;
     }
 
+    // Only touches the DOM when a real event was resolved from a slug -
+    // boot.orgName/eventName are undefined for the legacy default case, so
+    // the page's own static "Ella Street Festival 2026" copy is left alone.
+    if (boot.eventName) {
+        const subtitle = document.getElementById('event-context-subtitle');
+        if (subtitle) subtitle.textContent = `${boot.orgName} — ${boot.eventName}`;
+        document.title = `Food & Drink Trader Application — ${boot.eventName}`;
+    }
+
     const sb = getPublicSupabaseClient();
 
     // Bind Turnstile Key from database dynamically

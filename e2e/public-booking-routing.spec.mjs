@@ -77,6 +77,19 @@ test.describe('Public booking form routing (Phase 4D)', () => {
     await expect(page.locator('#closed-section')).toBeHidden();
   });
 
+  test('the resolved organisation/event name replaces the page\'s default branding, not just the gating state', async ({ page }) => {
+    // Found during the Epic 4 operational review: resolution/gating worked
+    // correctly from the very first version of this page, but the visible
+    // header still always said "Ella Street Festival 2026" regardless of
+    // which organisation's link a trader actually followed - the resolved
+    // context was never applied to the DOM. Locks in the fix.
+    await page.goto(`/General_Booking.html?org=${orgSlug}&event=${openEventSlug}`);
+    await expect(page.locator('#event-context-subtitle')).toContainText('E2E Phase 4D Org');
+    await expect(page.locator('#event-context-subtitle')).toContainText('E2E Open Event');
+    await expect(page.locator('#event-context-subtitle')).not.toContainText('Ella Street Festival');
+    await expect(page).toHaveTitle(/E2E Open Event/);
+  });
+
   test('the Food Stall booking form resolves the same way', async ({ page }) => {
     await page.goto(`/Food_Stall_booking.html?org=${orgSlug}&event=${readyEventSlug}`);
     await expect(page.locator('#closed-section-heading')).toHaveText('Not Currently Accepting Applications');

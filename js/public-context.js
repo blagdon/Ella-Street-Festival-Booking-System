@@ -111,7 +111,7 @@ export async function resolveBookingFormContext(loc = window.location) {
  * function returns.
  * @param {string} settingsKey - 'general_bookings_open' or 'food_bookings_open'
  * @returns {Promise<
- *   | { ok: true, orgSlug: string|undefined, eventSlug: string|undefined, bookingPrefix: string }
+ *   | { ok: true, orgSlug: string|undefined, eventSlug: string|undefined, bookingPrefix: string, orgName: string|undefined, eventName: string|undefined }
  *   | { ok: false, reason: 'not_found' }
  *   | { ok: false, reason: 'event_not_open', eventStatus: string }
  *   | { ok: false, reason: 'toggle_closed' }
@@ -143,6 +143,12 @@ export async function initPublicBookingForm(settingsKey) {
         // settings/event_settings entirely) - ESF_PUBLIC_CONFIG.BOOKING_PREFIX
         // (settings-derived) is only the legacy default-event fallback.
         bookingPrefix: (ctx.event ? ctx.event.booking_prefix : ESF_PUBLIC_CONFIG?.BOOKING_PREFIX) || 'ESF26',
+        // undefined (not a fallback string) for the legacy default case - the
+        // page's own static "Ella Street Festival 2026" copy is already
+        // correct for that case, so the caller only touches the DOM when
+        // there's a real resolved name to show instead of it.
+        orgName: ctx.org ? ctx.org.name : undefined,
+        eventName: ctx.event ? ctx.event.name : undefined,
     };
 }
 

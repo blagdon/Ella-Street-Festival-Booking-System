@@ -176,10 +176,12 @@ export function renderProvisioningSection(container) {
                     <button type="button" id="btnResetWizard" class="px-4 py-2 border border-gray-300 text-gray-700 hover:bg-gray-50 text-xs font-semibold rounded-lg transition">Provision Another Organisation</button>
                 </div>
                 <p class="text-xs text-gray-500 mt-3 max-w-2xl">
-                    Public booking forms don't yet route by organisation — every real booking still lands in the
-                    primary organisation until that ships. Viewing as ${escapeHtml(r.org_name)} switches every admin
-                    page to its (currently empty) data until you switch back; an amber "↩ Primary org" button appears
-                    in the header at all times to return.
+                    Public booking forms route to this organisation's own event when shared with
+                    <code>?org=${escapeHtml(r.org_slug || '')}&amp;event=${escapeHtml(r.event_slug || '')}</code>
+                    added to the link — applications submitted that way belong to ${escapeHtml(r.org_name)}, not the
+                    primary organisation. Viewing as ${escapeHtml(r.org_name)} switches every admin page to its
+                    (currently empty) data until you switch back; an amber "↩ Primary org" button appears in the
+                    header at all times to return.
                 </p>
             </div>
         </div>`;
