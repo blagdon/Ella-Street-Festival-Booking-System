@@ -3,6 +3,7 @@ import { getSupabaseClient } from '../supabase.js';
 import { showToast } from '../ui.js';
 import { auditLog } from '../audit.js';
 import { buildStripeCredentialUpdates, STRIPE_CREDENTIAL_KEYS } from '../stripe-credentials.js';
+import { getCurrentOrgId } from '../config.js';
 
 const sb = getSupabaseClient();
 
@@ -23,7 +24,7 @@ export async function initStripeSettings() {
     let testModeOn = false;
 
     try {
-        const { data, error } = await sb.from('settings').select('key, value').eq('key', 'stripe_test_mode').maybeSingle();
+        const { data, error } = await sb.from('settings').select('key, value').eq('org_id', getCurrentOrgId()).eq('key', 'stripe_test_mode').maybeSingle();
         if (error) throw error;
         testModeOn = data ? (data.value === 'true') : false;
         updateUI(testModeOn);
@@ -59,6 +60,7 @@ export async function initStripeSettings() {
             const userEmail = session?.user?.email || 'admin';
 
             const { error } = await sb.from('settings').upsert({
+                org_id: getCurrentOrgId(),
                 key: 'stripe_test_mode',
                 value: strVal,
                 updated_at: new Date().toISOString(),
@@ -122,6 +124,7 @@ export async function initStripeSettings() {
             try {
                 const { data, error } = await sb.from('settings')
                     .select('key')
+                    .eq('org_id', getCurrentOrgId())
                     .in('key', STRIPE_CREDENTIAL_KEYS)
                     .neq('value', '');
                 if (error) throw error;
@@ -161,12 +164,13 @@ export async function initStripeSettings() {
                 // see stripe-credentials.js. With write-only fields this is the
                 // normal case: every field starts blank on load, so a save only
                 // ever writes the ones actually typed into.
+                const orgId = getCurrentOrgId();
                 const updates = buildStripeCredentialUpdates(
                     Object.fromEntries(
                         STRIPE_CREDENTIAL_KEYS.map(key => [key, fieldsByKey[key].value])
                     ),
                     { updatedAt: now, updatedBy: userEmail }
-                );
+                ).map(row => ({ ...row, org_id: orgId }));
 
                 if (updates.length === 0) {
                     showToast("Nothing to save — type a credential to replace it. Blank fields are left unchanged.", 'error');

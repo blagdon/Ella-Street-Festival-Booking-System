@@ -278,10 +278,17 @@ describe('backwards compatibility', () => {
     await service.from('bookings').delete().eq('id', testId);
   });
 
-  it('settings can still be read by key name alone (no org_id filter required in Phase 1)', async () => {
+  it('org_default settings are unaffected by other organisations having their own rows for the same key (Phase 2)', async () => {
+    // Was "read by key name alone, no org_id filter required" back when
+    // every settings row belonged to org_default (Phase 1). Now that
+    // js/settings/*.js writes are org-scoped (see the cross-tenant write fix),
+    // any organisation can legitimately hold its own booking_prefix row, so
+    // asserting global uniqueness by key alone is no longer a valid check —
+    // only org_default's own row is what this test actually cares about.
     const { data, error } = await service
       .from('settings')
       .select('value')
+      .eq('org_id', 'org_default')
       .eq('key', 'booking_prefix')
       .single();
     assert.ifError(error);
