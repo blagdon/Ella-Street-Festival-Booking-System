@@ -13,6 +13,17 @@ Deno.serve(async (req) => {
     return new Response('ok', { headers: corsHeaders })
   }
 
+  // Declared outside the try block, not inside it: the catch block below
+  // needs both to run its rollback. A `let`/`const` declared inside `try {}`
+  // is NOT visible in the sibling `catch {}` block - referencing it there
+  // throws a fresh ReferenceError instead of running the cleanup, which
+  // silently swallows the real error AND leaves a half-provisioned
+  // organisation behind (this is exactly how riverside-autumn ended up with
+  // an organisations row and owner member but no event, settings, or email
+  // templates - see the RC operational certification's Finding 3/4).
+  let supabaseAdmin: any = null
+  let createdOrgSlug: string | null = null
+
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
@@ -32,7 +43,7 @@ Deno.serve(async (req) => {
       )
     }
 
-    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey)
+    supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey)
 
     const token = (authHeader ? authHeader.replace('Bearer ', '') : '').trim()
     const apiKey = (req.headers.get('apikey') || '').trim()
@@ -175,7 +186,7 @@ Deno.serve(async (req) => {
     }
 
     // 2. Execution Pipeline
-    let createdOrgSlug: string | null = null
+    // (createdOrgSlug is declared above the try block - see the comment there)
 
     // Step A: Create Organisation
     const { error: createOrgErr } = await supabaseAdmin
@@ -300,7 +311,7 @@ Deno.serve(async (req) => {
     )
 
   } catch (err: any) {
-    if (createdOrgSlug) {
+    if (createdOrgSlug && supabaseAdmin) {
       try {
         await supabaseAdmin.from('events').delete().eq('org_id', createdOrgSlug)
         await supabaseAdmin.from('settings').delete().eq('org_id', createdOrgSlug)
