@@ -2,7 +2,7 @@
 import { getSupabaseClient } from '../supabase.js';
 import { showToast } from '../ui.js';
 import { auditLog } from '../audit.js';
-import { CONFIG, clearSettingsCache } from '../config.js';
+import { CONFIG, clearSettingsCache, getCurrentOrgId } from '../config.js';
 import { ESF_PUBLIC_CONFIG } from '../../supabase-public.js';
 
 const sb = getSupabaseClient();
@@ -23,7 +23,7 @@ export async function initToggles() {
 
     // Load current values
     try {
-        const { data, error } = await sb.from('settings').select('*');
+        const { data, error } = await sb.from('settings').select('*').eq('org_id', getCurrentOrgId());
         if (error) throw error;
 
         data.forEach(item => {
@@ -80,6 +80,7 @@ export async function initToggles() {
             const userEmail = session?.user?.email || 'admin';
 
             const { error } = await sb.from('settings').upsert({
+                org_id: getCurrentOrgId(),
                 key: key,
                 value: strVal,
                 updated_at: new Date().toISOString(),
@@ -150,15 +151,16 @@ export async function initSystemConstants() {
             const userEmail = session?.user?.email || 'admin';
             const now = new Date().toISOString();
 
+            const orgId = getCurrentOrgId();
             const updates = [
-                { key: 'festival_display_name', value: valFestivalName, updated_at: now, updated_by: userEmail },
-                { key: 'turnstile_site_key', value: valTurnstile, updated_at: now, updated_by: userEmail },
-                { key: 'base_url', value: valBaseUrl, updated_at: now, updated_by: userEmail },
-                { key: 'cancel_url', value: valCancelUrl, updated_at: now, updated_by: userEmail },
-                { key: 'portal_url', value: valPortalUrl, updated_at: now, updated_by: userEmail },
-                { key: 'hcc_council_email', value: valCouncilEmail, updated_at: now, updated_by: userEmail },
-                { key: 'bucket_name', value: valBucket, updated_at: now, updated_by: userEmail },
-                { key: 'booking_prefix', value: valPrefix, updated_at: now, updated_by: userEmail }
+                { org_id: orgId, key: 'festival_display_name', value: valFestivalName, updated_at: now, updated_by: userEmail },
+                { org_id: orgId, key: 'turnstile_site_key', value: valTurnstile, updated_at: now, updated_by: userEmail },
+                { org_id: orgId, key: 'base_url', value: valBaseUrl, updated_at: now, updated_by: userEmail },
+                { org_id: orgId, key: 'cancel_url', value: valCancelUrl, updated_at: now, updated_by: userEmail },
+                { org_id: orgId, key: 'portal_url', value: valPortalUrl, updated_at: now, updated_by: userEmail },
+                { org_id: orgId, key: 'hcc_council_email', value: valCouncilEmail, updated_at: now, updated_by: userEmail },
+                { org_id: orgId, key: 'bucket_name', value: valBucket, updated_at: now, updated_by: userEmail },
+                { org_id: orgId, key: 'booking_prefix', value: valPrefix, updated_at: now, updated_by: userEmail }
             ];
 
             const { error } = await sb.from('settings').upsert(updates);
@@ -212,6 +214,7 @@ export async function initSentrySettings() {
     try {
         const { data, error } = await sb.from('settings')
             .select('key, value')
+            .eq('org_id', getCurrentOrgId())
             .in('key', ['sentry_dsn', 'sentry_browser_loader_url']);
         if (error) throw error;
 
@@ -234,9 +237,10 @@ export async function initSentrySettings() {
             const userEmail = session?.user?.email || 'admin';
             const now = new Date().toISOString();
 
+            const orgId = getCurrentOrgId();
             const { error } = await sb.from('settings').upsert([
-                { key: 'sentry_dsn', value: valDsn, updated_at: now, updated_by: userEmail },
-                { key: 'sentry_browser_loader_url', value: valLoaderUrl, updated_at: now, updated_by: userEmail },
+                { org_id: orgId, key: 'sentry_dsn', value: valDsn, updated_at: now, updated_by: userEmail },
+                { org_id: orgId, key: 'sentry_browser_loader_url', value: valLoaderUrl, updated_at: now, updated_by: userEmail },
             ]);
             if (error) throw error;
 
@@ -270,6 +274,7 @@ export async function initSerpApiSettings() {
         const { data, error } = await sb
             .from('settings')
             .select('key, value')
+            .eq('org_id', getCurrentOrgId())
             .eq('key', 'serpapi_api_key')
             .single();
 
@@ -300,6 +305,7 @@ export async function initSerpApiSettings() {
             const now = new Date().toISOString();
 
             const { error } = await sb.from('settings').upsert({
+                org_id: getCurrentOrgId(),
                 key: 'serpapi_api_key',
                 value: valSerpApiKey,
                 updated_at: now,

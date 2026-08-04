@@ -8,10 +8,27 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
 
+// No org-scoped settings exist yet at owner-invite time (Step D, which
+// clones them from platform_defaults_settings, hasn't run) - matches the
+// same hardcoded fallback create-checkout-session/index.ts uses once an
+// org's own base_url setting does exist.
+const DEFAULT_BASE_URL = 'https://app.ellastreet.co.uk'
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
+
+  // Declared outside the try block, not inside it: the catch block below
+  // needs both to run its rollback. A `let`/`const` declared inside `try {}`
+  // is NOT visible in the sibling `catch {}` block - referencing it there
+  // throws a fresh ReferenceError instead of running the cleanup, which
+  // silently swallows the real error AND leaves a half-provisioned
+  // organisation behind (this is exactly how riverside-autumn ended up with
+  // an organisations row and owner member but no event, settings, or email
+  // templates - see the RC operational certification's Finding 3/4).
+  let supabaseAdmin: any = null
+  let createdOrgSlug: string | null = null
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
@@ -32,7 +49,7 @@ Deno.serve(async (req) => {
       )
     }
 
-    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey)
+    supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey)
 
     const token = (authHeader ? authHeader.replace('Bearer ', '') : '').trim()
     const apiKey = (req.headers.get('apikey') || '').trim()
@@ -175,7 +192,7 @@ Deno.serve(async (req) => {
     }
 
     // 2. Execution Pipeline
-    let createdOrgSlug: string | null = null
+    // (createdOrgSlug is declared above the try block - see the comment there)
 
     // Step A: Create Organisation
     const { error: createOrgErr } = await supabaseAdmin
@@ -195,6 +212,7 @@ Deno.serve(async (req) => {
 
     // Step B: Assign Owner Member
     let ownerUserId: string | null = null
+    let ownerInviteSent = false
 
     const { data: authUsers } = await supabaseAdmin.auth.admin.listUsers()
     const foundUser = authUsers?.users?.find((u: any) => u.email?.toLowerCase() === cleanEmail)
@@ -202,13 +220,35 @@ Deno.serve(async (req) => {
     if (foundUser) {
       ownerUserId = foundUser.id
     } else {
-      const { data: existingRole } = await supabaseAdmin
-        .from('user_roles')
-        .select('id')
-        .eq('email', cleanEmail)
-        .maybeSingle()
-      
-      ownerUserId = existingRole?.id || crypto.randomUUID()
+      // Send a real Supabase invite email so the owner can actually sign in
+      // as themselves. This used to generate a random placeholder UUID with
+      // no email ever sent - the owner had no way to discover they needed
+      // to sign up, and no self-service signup page existed even if they
+      // did (see the RC operational certification's Finding 1).
+      // inviteUserByEmail creates the auth.users row itself and returns its
+      // real id, so there's no placeholder/re-linking step needed here.
+      const { data: inviteData, error: inviteErr } = await supabaseAdmin.auth.admin.inviteUserByEmail(
+        cleanEmail,
+        { redirectTo: `${DEFAULT_BASE_URL}/index.html` }
+      )
+
+      if (inviteErr || !inviteData?.user) {
+        // Fall back to the placeholder mechanism rather than failing the
+        // whole provisioning run over a transient email-sending problem -
+        // the existing link_pending_user_roles_on_signup trigger still
+        // re-links this if they ever do sign up independently.
+        console.warn('[provision-organisation] inviteUserByEmail failed, falling back to placeholder:', inviteErr?.message)
+        const { data: existingRole } = await supabaseAdmin
+          .from('user_roles')
+          .select('id')
+          .eq('email', cleanEmail)
+          .maybeSingle()
+
+        ownerUserId = existingRole?.id || crypto.randomUUID()
+      } else {
+        ownerUserId = inviteData.user.id
+        ownerInviteSent = true
+      }
     }
 
     const { error: userRoleErr } = await supabaseAdmin
@@ -288,6 +328,7 @@ Deno.serve(async (req) => {
       event_name: String(event_name).trim(),
       booking_prefix: cleanPrefix,
       event_status: 'draft',
+      owner_invite_sent: ownerInviteSent,
       settings_initialised: defaultsData?.settings_initialised || 0,
       email_templates_initialised: defaultsData?.email_templates_initialised || 0,
       sms_templates_initialised: defaultsData?.sms_templates_initialised || 0,
@@ -300,7 +341,7 @@ Deno.serve(async (req) => {
     )
 
   } catch (err: any) {
-    if (createdOrgSlug) {
+    if (createdOrgSlug && supabaseAdmin) {
       try {
         await supabaseAdmin.from('events').delete().eq('org_id', createdOrgSlug)
         await supabaseAdmin.from('settings').delete().eq('org_id', createdOrgSlug)

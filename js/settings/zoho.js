@@ -3,7 +3,7 @@ import { getSupabaseClient } from '../supabase.js';
 import { showToast } from '../ui.js';
 import { auditLog } from '../audit.js';
 import { parseEdgeFunctionError } from '../utils.js';
-import { clearSettingsCache } from '../config.js';
+import { clearSettingsCache, getCurrentOrgId } from '../config.js';
 
 const sb = getSupabaseClient();
 
@@ -25,6 +25,7 @@ export async function initZohoSettings() {
         const { data, error } = await sb
             .from('settings')
             .select('key, value')
+            .eq('org_id', getCurrentOrgId())
             .in('key', [
                 'zoho_client_id',
                 'zoho_client_secret',
@@ -78,15 +79,16 @@ export async function initZohoSettings() {
             const userEmail = session?.user?.email || 'admin';
             const now = new Date().toISOString();
 
+            const orgId = getCurrentOrgId();
             const updates = [
-                { key: 'zoho_client_id', value: valClientId, updated_at: now, updated_by: userEmail },
-                { key: 'zoho_client_secret', value: valClientSecret, updated_at: now, updated_by: userEmail },
-                { key: 'zoho_refresh_token', value: valRefreshToken, updated_at: now, updated_by: userEmail },
-                { key: 'zoho_account_id', value: valAccountId, updated_at: now, updated_by: userEmail },
-                { key: 'zoho_from_address', value: valFromAddress, updated_at: now, updated_by: userEmail },
-                { key: 'zoho_display_name', value: valDisplayName, updated_at: now, updated_by: userEmail },
-                { key: 'zoho_api_domain', value: valApiDomain, updated_at: now, updated_by: userEmail },
-                { key: 'zoho_accounts_domain', value: valAccountsDomain, updated_at: now, updated_by: userEmail }
+                { org_id: orgId, key: 'zoho_client_id', value: valClientId, updated_at: now, updated_by: userEmail },
+                { org_id: orgId, key: 'zoho_client_secret', value: valClientSecret, updated_at: now, updated_by: userEmail },
+                { org_id: orgId, key: 'zoho_refresh_token', value: valRefreshToken, updated_at: now, updated_by: userEmail },
+                { org_id: orgId, key: 'zoho_account_id', value: valAccountId, updated_at: now, updated_by: userEmail },
+                { org_id: orgId, key: 'zoho_from_address', value: valFromAddress, updated_at: now, updated_by: userEmail },
+                { org_id: orgId, key: 'zoho_display_name', value: valDisplayName, updated_at: now, updated_by: userEmail },
+                { org_id: orgId, key: 'zoho_api_domain', value: valApiDomain, updated_at: now, updated_by: userEmail },
+                { org_id: orgId, key: 'zoho_accounts_domain', value: valAccountsDomain, updated_at: now, updated_by: userEmail }
             ];
 
             const { error } = await sb.from('settings').upsert(updates);

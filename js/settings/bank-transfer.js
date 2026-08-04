@@ -2,6 +2,7 @@
 import { getSupabaseClient } from '../supabase.js';
 import { showToast } from '../ui.js';
 import { auditLog } from '../audit.js';
+import { getCurrentOrgId } from '../config.js';
 
 const sb = getSupabaseClient();
 
@@ -21,9 +22,11 @@ export async function initBankTransferSettings() {
     if (!txtAccountName || !txtSortCode || !txtAccountNumber || !btnSave) return;
 
     try {
-        const { data, error } = await sb.from('settings').select('key, value').in('key', [
-            'bank_account_name', 'bank_sort_code', 'bank_account_number'
-        ]);
+        const { data, error } = await sb.from('settings').select('key, value')
+            .eq('org_id', getCurrentOrgId())
+            .in('key', [
+                'bank_account_name', 'bank_sort_code', 'bank_account_number'
+            ]);
         if (error) throw error;
 
         (data || []).forEach(item => {
@@ -44,10 +47,11 @@ export async function initBankTransferSettings() {
             const userEmail = session?.user?.email || 'admin';
             const now = new Date().toISOString();
 
+            const orgId = getCurrentOrgId();
             const updates = [
-                { key: 'bank_account_name', value: txtAccountName.value.trim(), updated_at: now, updated_by: userEmail },
-                { key: 'bank_sort_code', value: txtSortCode.value.trim(), updated_at: now, updated_by: userEmail },
-                { key: 'bank_account_number', value: txtAccountNumber.value.trim(), updated_at: now, updated_by: userEmail }
+                { org_id: orgId, key: 'bank_account_name', value: txtAccountName.value.trim(), updated_at: now, updated_by: userEmail },
+                { org_id: orgId, key: 'bank_sort_code', value: txtSortCode.value.trim(), updated_at: now, updated_by: userEmail },
+                { org_id: orgId, key: 'bank_account_number', value: txtAccountNumber.value.trim(), updated_at: now, updated_by: userEmail }
             ];
 
             const { error } = await sb.from('settings').upsert(updates);

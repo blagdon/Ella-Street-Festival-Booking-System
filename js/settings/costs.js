@@ -2,7 +2,7 @@
 import { getSupabaseClient } from '../supabase.js';
 import { showToast } from '../ui.js';
 import { auditLog } from '../audit.js';
-import { CONFIG, clearSettingsCache } from '../config.js';
+import { CONFIG, clearSettingsCache, getCurrentOrgId } from '../config.js';
 import { escapeHtml } from '../utils.js';
 
 const sb = getSupabaseClient();
@@ -39,10 +39,11 @@ export async function initStallCosts() {
             const userEmail = session?.user?.email || 'admin';
             const now = new Date().toISOString();
 
+            const orgId = getCurrentOrgId();
             const updates = [
-                { key: 'stall_cost_food', value: valFood.toFixed(2), updated_at: now, updated_by: userEmail },
-                { key: 'stall_cost_general', value: valGeneral.toFixed(2), updated_at: now, updated_by: userEmail },
-                { key: 'stall_cost_dev', value: valDev.toFixed(2), updated_at: now, updated_by: userEmail }
+                { org_id: orgId, key: 'stall_cost_food', value: valFood.toFixed(2), updated_at: now, updated_by: userEmail },
+                { org_id: orgId, key: 'stall_cost_general', value: valGeneral.toFixed(2), updated_at: now, updated_by: userEmail },
+                { org_id: orgId, key: 'stall_cost_dev', value: valDev.toFixed(2), updated_at: now, updated_by: userEmail }
             ];
 
             const { error } = await sb.from('settings').upsert(updates);
@@ -94,6 +95,7 @@ export function initStallTypes() {
             const userEmail = session?.user?.email || 'admin';
 
             const { error } = await sb.from('settings').upsert({
+                org_id: getCurrentOrgId(),
                 key: 'allowed_stall_types',
                 value: newList.join(','),
                 updated_at: new Date().toISOString(),

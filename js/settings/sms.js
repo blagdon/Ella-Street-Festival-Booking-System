@@ -2,6 +2,7 @@
 import { getSupabaseClient } from '../supabase.js';
 import { showToast } from '../ui.js';
 import { auditLog } from '../audit.js';
+import { getCurrentOrgId } from '../config.js';
 
 const sb = getSupabaseClient();
 
@@ -51,6 +52,7 @@ export async function initSmsSettings() {
             const userEmail = session?.user?.email || 'admin';
 
             const { error } = await sb.from('settings').upsert({
+                org_id: getCurrentOrgId(),
                 key: 'sms_test_mode',
                 value: newValue ? 'true' : 'false',
                 updated_at: new Date().toISOString(),
@@ -72,6 +74,7 @@ export async function initSmsSettings() {
     try {
         const { data, error } = await sb.from('settings')
             .select('key, value')
+            .eq('org_id', getCurrentOrgId())
             .in('key', ['sms_test_mode', 'sms_sender_id']);
         if (error) throw error;
 
@@ -94,6 +97,7 @@ export async function initSmsSettings() {
         try {
             const { data, error } = await sb.from('settings')
                 .select('key')
+                .eq('org_id', getCurrentOrgId())
                 .eq('key', 'sms_api_key')
                 .neq('value', '');
             if (error) throw error;
@@ -140,16 +144,17 @@ export async function initSmsSettings() {
             // sms_provider is fixed to 'thesmsworks' by this card — there is
             // no provider dropdown in this UI, since The SMS Works is the one
             // integration actually being configured here.
+            const orgId = getCurrentOrgId();
             const updates = [
-                { key: 'sms_provider', value: 'thesmsworks', updated_at: now, updated_by: userEmail },
-                { key: 'sms_sender_id', value: valSenderId, updated_at: now, updated_by: userEmail },
+                { org_id: orgId, key: 'sms_provider', value: 'thesmsworks', updated_at: now, updated_by: userEmail },
+                { org_id: orgId, key: 'sms_sender_id', value: valSenderId, updated_at: now, updated_by: userEmail },
             ];
             // Blank means "leave it alone" — same write-only rule as Stripe,
             // and for the same reason: this field is never populated with
             // the stored value, so blank-on-load is the normal state, not
             // evidence the key is unset.
             if (valApiKey) {
-                updates.push({ key: 'sms_api_key', value: valApiKey, updated_at: now, updated_by: userEmail });
+                updates.push({ org_id: orgId, key: 'sms_api_key', value: valApiKey, updated_at: now, updated_by: userEmail });
             }
 
             const { error } = await sb.from('settings').upsert(updates);
