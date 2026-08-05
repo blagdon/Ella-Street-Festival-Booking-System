@@ -76,6 +76,7 @@ export async function initNavigation() {
                     <select id="orgSelect" aria-label="Select active organisation" class="bg-transparent text-sm font-bold text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded cursor-pointer max-w-[160px] truncate">
                         <option value="${escapeHtml(ctx.orgId)}">${escapeHtml(ctx.orgId)}</option>
                     </select>
+                    <span id="orgScopeBadge" class="hidden ml-1.5 text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 border border-purple-200 shrink-0" title="You hold the platform administrator role, so every organisation is listed here - not just ones you're a member of.">🛡️ ALL ORGS</span>
                 </div>
 
                 <div class="flex items-center bg-gray-50 rounded px-3 py-1 border border-gray-200">
@@ -116,7 +117,7 @@ export async function initNavigation() {
         <div id="mobileMenu" class="mobile-menu hidden mt-4 pt-4 border-t border-gray-200 space-y-3">
              ${backBtnMobile}
              <div class="flex flex-col gap-2">
-                <span class="text-xs text-gray-500 uppercase font-bold tracking-wider">Organisation:</span>
+                <span class="text-xs text-gray-500 uppercase font-bold tracking-wider">Organisation: <span id="orgScopeBadgeMobile" class="hidden ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 border border-purple-200 normal-case tracking-normal" title="You hold the platform administrator role, so every organisation is listed here - not just ones you're a member of.">🛡️ All orgs (platform admin)</span></span>
                 <select id="orgSelectMobile" aria-label="Select active organisation" class="bg-gray-50 border border-gray-200 rounded px-3 py-2 text-sm font-bold text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer">
                     <option value="${escapeHtml(ctx.orgId)}">${escapeHtml(ctx.orgId)}</option>
                 </select>
@@ -162,9 +163,21 @@ export async function initNavigation() {
         window.location.reload();
     });
 
-    // Populate Organisation Selectors
+    // Populate Organisation Selectors - via rpc_list_switchable_organisations(),
+    // not a raw organisations SELECT. The org switcher used to list every
+    // organisation on the platform for any authenticated admin regardless of
+    // membership - a confidentiality leak of every tenant's existence, name,
+    // slug and website (RC operational certification, Finding 6). The RPC
+    // returns only the organisations the caller genuinely belongs to, unless
+    // they hold the platform-wide admin role, in which case it returns every
+    // organisation - the same distinction check_user_role() already makes,
+    // just applied here explicitly and labelled in the UI (orgScopeBadge)
+    // rather than silently baked into a blanket RLS bypass.
     const sb = getSupabaseClient();
-    sb.from('organisations').select('id, name, slug').order('name', { ascending: true }).then(({ data: orgs, error }) => {
+    sb.rpc('rpc_list_switchable_organisations').then(({ data: result, error }) => {
+        const orgs = result?.organisations;
+        const isPlatformAdminScope = result?.scope === 'platform_admin';
+
         let list = (orgs && orgs.length > 0)
             ? orgs
             : [{ id: 'org_default', name: 'Ella Street Festival', slug: 'org_default' }];
@@ -173,6 +186,10 @@ export async function initNavigation() {
         if (!list.some(o => o.id === 'org_default')) {
             list.unshift({ id: 'org_default', name: 'Ella Street Festival (Default)', slug: 'org_default' });
         }
+
+        ['orgScopeBadge', 'orgScopeBadgeMobile'].forEach(id => {
+            document.getElementById(id)?.classList.toggle('hidden', !isPlatformAdminScope);
+        });
 
         ['orgSelect', 'orgSelectMobile'].forEach(id => {
             const selectEl = /** @type {HTMLSelectElement|null} */ (document.getElementById(id));
