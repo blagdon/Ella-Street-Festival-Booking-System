@@ -1,7 +1,7 @@
 // @ts-check
 import { fetchKanbanData, addNote, sendEmail, sendBookingSms, queueBulkEmail, queueBulkSms, requestPayment, resendPaymentRequest, LIST_CAP } from './api.js';
 import { sharedUpdateStatus, populateDetailPane, initComposeSmsToggle, initBulkSmsToggle, readOptionalSmsBody, resetSmsToggle, readStatusSmsChecked, resetStatusSmsCheckbox } from './shared.js';
-import { showToast, showConfirm, notifyIfTruncated, trapFocus, registerModalClose } from './ui.js';
+import { showToast, showConfirm, notifyIfTruncated, trapModal, releaseModal } from './ui.js';
 import { escapeHtml, sortBookings } from './utils.js';
 import { CONFIG, getStallCost, isFoodPrefix } from './config.js';
 
@@ -330,7 +330,7 @@ function openDetails(id) {
     document.body.classList.add('modal-active');
     m.classList.remove('opacity-0', 'pointer-events-none');
     p.classList.remove('translate-x-full');
-    trapModalFocus('detailModal');
+    trapModal('detailModal', closeModal);
 
     const globalInstance = localStorage.getItem('ESF_INSTANCE') || 'DEV';
     const bookingInstance = item.instance_prefix || '';
@@ -351,20 +351,13 @@ function openDetails(id) {
     }
 }
 
-// Focus trap release + Escape unregister, per modal id - same convention as
-// kanban.js's modalEscUnregisterById/modalFocusReleaseById, just kept here
-// since this page's modals were never wired into the shared Escape-key
-// registry at all (unlike kanban_m.html's equivalents) until now.
-const modalFocusReleaseById = {};
-const modalEscUnregisterById = {};
-
-function trapModalFocus(id) {
-    if (modalFocusReleaseById[id]) return;
-    modalFocusReleaseById[id] = trapFocus(document.getElementById(id));
-    modalEscUnregisterById[id] = registerModalClose(() => window.closeModal(id));
-}
-
-window.closeModal = function (id) {
+// Modal trap+register glue lives in ui.js's trapModal()/releaseModal() -
+// shared with kanban.js, which this file used to independently reimplement
+// under a different local name (trapModalFocus vs registerModalEsc). That
+// naming split is exactly why this page's modals were missed when
+// Escape-key handling was first added to every modal in the app - see
+// CLAUDE.md's "sweep for every instance" rule.
+export function closeModal(id) {
     if (id === 'detailModal') {
         document.getElementById('detailPanel').classList.add('translate-x-full');
         setTimeout(() => {
@@ -374,14 +367,7 @@ window.closeModal = function (id) {
     } else {
         document.getElementById(id).classList.add('opacity-0', 'pointer-events-none');
     }
-    if (modalFocusReleaseById[id]) {
-        modalFocusReleaseById[id]();
-        modalFocusReleaseById[id] = null;
-    }
-    if (modalEscUnregisterById[id]) {
-        modalEscUnregisterById[id]();
-        modalEscUnregisterById[id] = null;
-    }
+    releaseModal(id);
 }
 
 window.saveNote = async function () {
@@ -399,17 +385,17 @@ async function promptStatusChange(newStatus) {
     // the confirmation step — routing them through the generic "Are you sure?"
     // first would make the admin confirm twice for one action.
     if (newStatus === 'Confirmed') {
-        window.closeModal('detailModal');
+        closeModal('detailModal');
         showConfirmModalLocal(currentId);
         return;
     }
     if (newStatus === 'Rejected') {
-        window.closeModal('detailModal');
+        closeModal('detailModal');
         window.openRejectModal(currentId);
         return;
     }
     if (newStatus === 'Cancelled') {
-        window.closeModal('detailModal');
+        closeModal('detailModal');
         window.openCancelModal(currentId);
         return;
     }
@@ -420,7 +406,7 @@ async function promptStatusChange(newStatus) {
         async () => {
             try {
                 await updateStatus(currentId, newStatus);
-                window.closeModal('detailModal');
+                closeModal('detailModal');
                 window.filterTable();
             } catch (e) { showToast("Error changing status: " + e.message, 'error'); }
         }
@@ -472,7 +458,7 @@ function showConfirmModalLocal(id) {
     // Reset the opt-in SMS tickbox so a ticked state never carries over.
     resetStatusSmsCheckbox('confirmSendSms');
     document.getElementById('confirmTypeModal').classList.remove('opacity-0', 'pointer-events-none');
-    trapModalFocus('confirmTypeModal');
+    trapModal('confirmTypeModal', closeModal);
 }
 
 window.finalizeConfirm = function (isChargeable) {
@@ -484,7 +470,7 @@ window.finalizeConfirm = function (isChargeable) {
     const rawCost = costInput ? costInput.value : '';
     const parsedCost = parseFloat(rawCost);
     const overrideCost = (rawCost !== '' && !isNaN(parsedCost)) ? parsedCost : null;
-    window.closeModal('confirmTypeModal');
+    closeModal('confirmTypeModal');
 
     // Free (admin's explicit choice) OR an explicit £0 cost both skip
     // Stripe entirely and go straight to Confirmed, exactly as today.
@@ -561,14 +547,14 @@ window.openRejectModal = function (id) {
     (/** @type {HTMLTextAreaElement} */ (document.getElementById('rejectReason'))).value = "";
     resetStatusSmsCheckbox('rejectSendSms');
     document.getElementById('rejectReasonModal').classList.remove('opacity-0', 'pointer-events-none');
-    trapModalFocus('rejectReasonModal');
+    trapModal('rejectReasonModal', closeModal);
 }
 
 window.confirmRejection = function () {
     const id = (/** @type {HTMLInputElement} */ (document.getElementById('rejectBookingId'))).value;
     const reason = (/** @type {HTMLTextAreaElement} */ (document.getElementById('rejectReason'))).value;
     const sendSms = readStatusSmsChecked('rejectSendSms');
-    window.closeModal('rejectReasonModal');
+    closeModal('rejectReasonModal');
     updateStatus(id, 'Rejected', reason, sendSms);
 }
 
@@ -579,13 +565,13 @@ window.openCancelModal = function (id) {
     (/** @type {HTMLInputElement} */ (document.getElementById('cancelBookingId'))).value = id;
     resetStatusSmsCheckbox('cancelSendSms');
     document.getElementById('cancelBookingModal').classList.remove('opacity-0', 'pointer-events-none');
-    trapModalFocus('cancelBookingModal');
+    trapModal('cancelBookingModal', closeModal);
 }
 
 window.confirmCancellation = function () {
     const id = (/** @type {HTMLInputElement} */ (document.getElementById('cancelBookingId'))).value;
     const sendSms = readStatusSmsChecked('cancelSendSms');
-    window.closeModal('cancelBookingModal');
+    closeModal('cancelBookingModal');
     updateStatus(id, 'Cancelled', null, sendSms);
 }
 
@@ -624,7 +610,7 @@ window.openEmailModal = function (id) {
     resetSmsToggle('compose');
 
     document.getElementById('emailComposeModal').classList.remove('opacity-0', 'pointer-events-none');
-    trapModalFocus('emailComposeModal');
+    trapModal('emailComposeModal', closeModal);
 }
 
 window.sendSystemEmail = async function (btn) {
@@ -653,7 +639,7 @@ window.sendSystemEmail = async function (btn) {
 
     try {
         await sendEmail(id, subject, body);
-        window.closeModal('emailComposeModal');
+        closeModal('emailComposeModal');
         showToast("Email queued.");
     } catch (e) {
         showToast("Error sending email: " + e.message, 'error');
@@ -716,7 +702,7 @@ window.emailAllConfirmed = function () {
     resetSmsToggle('bulk');
 
     document.getElementById('bulkEmailModal').classList.remove('opacity-0', 'pointer-events-none');
-    trapModalFocus('bulkEmailModal');
+    trapModal('bulkEmailModal', closeModal);
 };
 
 // Bulk Email - Send admin-written HTML email to all confirmed bookings
@@ -760,7 +746,7 @@ window.sendBulkEmail = async function (btn) {
     if (wantsEmail) {
         try {
             const { queued } = await queueBulkEmail(ids, subject, body);
-            window.closeModal('bulkEmailModal');
+            closeModal('bulkEmailModal');
             showToast(`${queued} email${queued !== 1 ? 's' : ''} queued and sending.`);
         } catch (e) {
             showToast('Failed to queue emails: ' + e.message, 'error');
@@ -771,7 +757,7 @@ window.sendBulkEmail = async function (btn) {
     } else {
         // Text-only send: close the modal here, since the email branch that
         // normally does it was skipped.
-        window.closeModal('bulkEmailModal');
+        closeModal('bulkEmailModal');
     }
 
     // Separate from the email queue above, and reported separately: the

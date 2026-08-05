@@ -1,6 +1,6 @@
 // @ts-check
 import { initAdminPage } from './supabase.js';
-import { initSummary } from './summary.js';
+import { initSummary, closeModal } from './summary.js';
 
 function init() {
     initSummary();
@@ -62,7 +62,7 @@ function init() {
         // Close Modal Actions
         const closeBtn = target.closest('[data-action="close-modal"]');
         if (closeBtn instanceof HTMLElement) {
-            window.closeModal(closeBtn.dataset.modal);
+            closeModal(closeBtn.dataset.modal);
             return;
         }
 

@@ -201,6 +201,52 @@ export function trapFocus(modalEl) {
     };
 }
 
+// ===================================================================
+// === SHARED: Per-id modal trap + Escape registration ===
+// ===================================================================
+/**
+ * Combines trapFocus() + registerModalClose() for a modal identified by
+ * `id`, keeping the per-id release/unregister state internally so callers
+ * don't need their own tracking maps. kanban.js and summary.js each
+ * reimplemented this exact combination independently under different local
+ * names (registerModalEsc / trapModalFocus) - which is why summary.js's
+ * modals were missed when Escape-key handling was first added to every
+ * modal in the app: a page-by-page grep for one name doesn't find the
+ * other. See CLAUDE.md's "sweep for every instance" rule, which this
+ * incident is the worked example for.
+ *
+ * Idempotent per id: safe to call again on an already-open modal (e.g. a
+ * detail pane that repopulates itself without closing first) without
+ * pushing a duplicate Escape registration or losing the original focus-
+ * restore target.
+ *
+ * Call at open time, once the modal is already visible. Call
+ * releaseModal(id) from the modal's own close path, on the path where it
+ * actually closes (after any early-return guard) - same convention
+ * trapFocus()/registerModalClose() already document individually.
+ * @param {string} id - the modal element's own id
+ * @param {(id: string) => void} closeFn - the page's own close-by-id function,
+ *   called with `id` when Escape is pressed
+ */
+const modalTrapReleaseById = {};
+
+export function trapModal(id, closeFn) {
+    if (modalTrapReleaseById[id]) return;
+    const releaseFocus = trapFocus(document.getElementById(id));
+    const unregisterEsc = registerModalClose(() => closeFn(id));
+    modalTrapReleaseById[id] = () => { releaseFocus(); unregisterEsc(); };
+}
+
+/**
+ * @param {string} id
+ */
+export function releaseModal(id) {
+    if (modalTrapReleaseById[id]) {
+        modalTrapReleaseById[id]();
+        modalTrapReleaseById[id] = null;
+    }
+}
+
 let activeConfirmCallback = null;
 let unregisterConfirmModalEsc = null;
 let releaseConfirmModalFocus = null;
