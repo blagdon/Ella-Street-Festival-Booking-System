@@ -2,7 +2,7 @@
 
 Read `HANDOVER.md` first — it's the full reference (architecture, data model,
 conventions, gotchas, agent-autonomy risk tiers). This file is just the one
-habit worth surfacing every session rather than leaving buried in a 3800-line
+habit worth surfacing every session rather than leaving buried in a 4500-line
 doc.
 
 ## Sweep for every instance of a pattern before calling a fix done
