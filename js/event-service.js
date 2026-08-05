@@ -76,6 +76,21 @@ export function setCurrentEvent(eventOrId) {
 }
 
 /**
+ * Clears any cached active event (localStorage + in-memory), so a stale
+ * event that no longer exists server-side stops being trusted. Distinct
+ * from a fetch failure (network, RLS) - that keeps showing whatever was
+ * cached rather than wiping it out over a transient problem unrelated to
+ * whether the event itself is real.
+ */
+function clearCurrentEvent() {
+    activeEventState = null;
+    if (typeof localStorage !== 'undefined') {
+        localStorage.removeItem('ESF_EVENT_ID');
+        localStorage.removeItem('ESF_ACTIVE_EVENT');
+    }
+}
+
+/**
  * Fetches all available events for the active organisation.
  * @returns {Promise<Record<string, any>[]>}
  */
@@ -90,14 +105,31 @@ export async function fetchAvailableEvents() {
             .eq('org_id', ctx.orgId)
             .order('created_at', { ascending: false });
 
-        if (error || !data || data.length === 0) {
+        if (error) {
             return [getCurrentEvent()];
+        }
+
+        if (!data || data.length === 0) {
+            // The organisation genuinely has no events - a previously
+            // cached "active event" (if any) does not exist server-side and
+            // must stop being trusted, rather than kept rendering across
+            // every admin page as if it were real. This is exactly how a
+            // phantom event stayed fully rendered - Event Configuration,
+            // System Settings, the header itself - throughout the RC
+            // operational certification's test organisation, right up until
+            // the public booking form (which resolves server-side) quietly
+            // returned "not found" (Finding 4).
+            clearCurrentEvent();
+            return [];
         }
 
         const matched = data.find(e => e.id === ctx.eventId);
         if (matched) {
             setCurrentEvent(matched);
         } else {
+            // Cached event id doesn't match anything real either - same
+            // situation as the empty-list case above, just with other real
+            // events available to fall back to instead of none.
             const activeEvt = data.find(e => e.is_active) || data[0];
             if (activeEvt) {
                 setCurrentEvent(activeEvt);

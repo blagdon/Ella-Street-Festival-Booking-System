@@ -3,7 +3,7 @@ import { fetchKanbanData, addNote, sendEmail, sendBookingSms, queueBulkEmail, qu
 import { sharedUpdateStatus, populateDetailPane, initComposeSmsToggle, initBulkSmsToggle, readOptionalSmsBody, resetSmsToggle, readStatusSmsChecked, resetStatusSmsCheckbox } from './shared.js';
 import { showToast, showConfirm, notifyIfTruncated, trapFocus, registerModalClose } from './ui.js';
 import { escapeHtml, sortBookings } from './utils.js';
-import { CONFIG, getStallCost } from './config.js';
+import { CONFIG, getStallCost, isFoodPrefix } from './config.js';
 
 let allBookings = [];
 let currentId = null;
@@ -334,7 +334,7 @@ function openDetails(id) {
 
     const globalInstance = localStorage.getItem('ESF_INSTANCE') || 'DEV';
     const bookingInstance = item.instance_prefix || '';
-    const isFoodBooking = globalInstance === 'FOOD' || bookingInstance.includes('FOOD');
+    const isFoodBooking = globalInstance === 'FOOD' || isFoodPrefix(bookingInstance);
 
     // Mobile HCC button
     const hccMobileBtn = document.getElementById('hccChecksMobileBtn');

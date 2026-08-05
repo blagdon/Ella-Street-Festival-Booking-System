@@ -198,6 +198,24 @@ export function getCurrentInstance() {
 
 
 /**
+ * Whether an instance prefix or booking instance_prefix (e.g. "RAM26-FOOD-",
+ * "RAM26-NONFOOD-") denotes a food stall. Deliberately guards against
+ * "NONFOOD" containing "FOOD" as a substring - a plain `.includes('FOOD')`
+ * miscategorises every General/Non-Food booking as food (see the RC
+ * operational certification's Finding 5; submit-booking/index.ts and
+ * summary.js both had the unguarded version independently). Mirrored (not
+ * imported - different runtimes) in
+ * supabase/functions/_shared/booking-type.ts for the server side.
+ * @param {string} prefix
+ * @returns {boolean}
+ */
+export function isFoodPrefix(prefix) {
+    if (!prefix) return false;
+    const p = prefix.toUpperCase();
+    return p.includes('FOOD') && !p.includes('NONFOOD');
+}
+
+/**
  * Resolves the stall cost based on instance prefix or key.
  */
 export function getStallCost(prefixOrKey) {
@@ -207,7 +225,7 @@ export function getStallCost(prefixOrKey) {
     let cost;
     if (prefixOrKey) {
         const p = prefixOrKey.toUpperCase();
-        if (p.includes('FOOD') && !p.includes('NONFOOD')) cost = costs.FOOD;
+        if (isFoodPrefix(p)) cost = costs.FOOD;
         else if (p.includes('NONFOOD') || p === 'GENERAL') cost = costs.GENERAL;
         else if (p.includes('DEV')) cost = costs.DEV;
     }
