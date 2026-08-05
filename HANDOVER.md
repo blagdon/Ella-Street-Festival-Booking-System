@@ -8,7 +8,7 @@
 > including applying additive migrations to production), which require specific
 > verification first, and the short list that needs an explicit instruction every
 > time. Default to acting.
-> Last updated: 2026-08-03.
+> Last updated: 2026-08-05.
 > Current release: **v7.21.0** ("Epic 3 Complete" — the formal closing tag for Epic 3, cut 2026-08-03.
 > `package.json` had drifted to 7.16.0 across v7.17.0–v7.20.2; this release catches it up.) Bundles
 > v7.20.0's provisioning engine, v7.20.1's multi-tenant Edge Function fixes, and v7.20.2's operational-
@@ -17,6 +17,165 @@
 > `'unsafe-inline'` for `script-src` — see the "No inline event handlers" gotcha — so it silently never
 > ran. A broken logo URL showed the browser's default broken-image icon instead of the intended clean
 > fallback. Fixed with `addEventListener('error', ...)`, matching every other listener in `js/nav.js`.
+> **Everything below through the RC Operational Certification entry is unreleased** — Epic 4 (all
+> phases), the Deno tooling change, both operational reviews, and all ten certification fixes have
+> merged to `main` and (where they touch the database or an Edge Function) deployed to production, but
+> no version bump/tag has been cut since v7.21.0. `CHANGELOG.md`'s `[Unreleased]` section currently
+> only covers Phase 4B/4B.1/4D — it needs the same catch-up this entry gives HANDOVER.md before the
+> next release is cut.
+> **Release Candidate Operational Certification — merged 2026-08-04–05 as PRs #165–#170, all deployed
+> to production.** A second, more rigorous operational review than the one below: three personas
+> (festival organiser, trader, platform administrator) walked the live product end-to-end against a
+> **fresh** organisation, explicitly forbidding SQL/manual DB edits/developer intervention — the point
+> was to find out whether a genuinely new paying customer could operate this unassisted, not whether
+> the code looked right on inspection. Findings were written up as a published report (an artifact, not
+> a repo file) with a severity/impact/fix classification per finding, then fixed in four PR waves by
+> priority; **the report itself was updated in place afterward to mark every finding fixed**, so it
+> stays a live reference rather than a stale snapshot — ask the owner for the link if you need it,
+> since it isn't linked from this repo. Ten findings, most consequential first:
+> **No organisation could ever get an independent admin login (Critical, #165).** Adding an owner
+> (`provision-organisation`) or a team member (`rpc_add_organisation_member`) both only ever created a
+> placeholder `user_roles` row with a random UUID — no email was ever sent, and no self-service signup
+> page existed for the invitee to discover they needed one. Both paths now call
+> `supabase.auth.admin.inviteUserByEmail()` — `provision-organisation` directly (falling back to the
+> old placeholder if the invite call itself fails, so a transient email problem can't fail the whole
+> provisioning run), and a new `invite-organisation-member` Edge Function wraps the existing RPC (called
+> **as the caller**, so its `check_user_role('admin')`/`get_current_org_id()` authorization is reused
+> unchanged, not re-derived). `js/page-index.js`'s existing password-recovery landing (`type=recovery`
+> in the URL hash) now also handles `type=invite` — Supabase invite links use the identical hash-token
+> flow, so the same `auth.updateUser({password})` mechanism just needed a second `type` to trigger on,
+> with welcoming copy instead of "reset" wording for a first-time invitee.
+> **Every System Settings save silently corrupted `org_default` instead of the selected organisation
+> (Critical, #165).** `js/settings/system.js`, `bank-transfer.js`, `costs.js`, `sms.js`, `stripe.js`,
+> and `zoho.js` all omitted `org_id` from their `.upsert()` calls — `settings.org_id` defaults to
+> `'org_default'` (`NOT NULL DEFAULT`), so every save from any other organisation landed there
+> regardless of the org switcher, with a false "success" toast. Discovered live: setting a test org's
+> Turnstile key overwrote and replaced `org_default`'s real key. Every file now scopes reads and writes
+> to `getCurrentOrgId()`, matching the pattern `event-config.js` already used correctly — the org-
+> scoping work from Epic 4 Phase 4B had never been swept to the rest of `js/settings/`.
+> **A `try`/`catch` scoping bug in `provision-organisation` silently broke rollback and swallowed the
+> real error on any mid-provisioning failure (Critical, #165).** `supabaseAdmin` and `createdOrgSlug`
+> were declared with `let`/`const` **inside** the `try` block but referenced in the sibling `catch` —
+> block-scoped variables aren't visible across that boundary, so the rollback itself threw a fresh
+> `ReferenceError` instead of running, on every single provisioning failure since the function was
+> written. `deno check` confirms it: 13 "Cannot find name" compile errors on the original file, 0 after
+> — this file had evidently never been type-checked despite `supabase/functions/deno.json` existing (see
+> the Deno-tooling entry below). This is what actually produced Finding 4 below: a genuinely
+> half-provisioned test organisation with an `organisations` row and owner member but no event,
+> settings, or email templates, and an admin UI that kept confidently rendering a cached event that had
+> never actually been persisted.
+> **`event_settings.event_id` had no foreign key to `events.id` (High, #166).** A write against an
+> event that doesn't exist succeeded silently — exactly what let the phantom-event scenario above leave
+> 3 orphaned `event_settings` rows behind. Migration adds the FK (`ON DELETE CASCADE`, so deleting an
+> event — including provisioning's own rollback path, now that it works — cleans up its overrides
+> automatically); two real orphaned rows in the test project needed deleting first, since the
+> constraint fails outright against violating data. Separately, `js/event-service.js`'s
+> `fetchAvailableEvents()` only ever validated a cached event against the server when the organisation's
+> real events list was **non-empty** — when it was empty (the actual phantom-event scenario), it just
+> echoed the stale `localStorage` cache back as if it were valid and never called `setCurrentEvent()` to
+> correct it. Now clears the cached event whenever the organisation genuinely has none.
+> **"NONFOOD" contains "FOOD" as a substring (High, #166).** `submit-booking`'s `booking_type`
+> computation and `js/summary.js`'s HCC-Checks-button gate both did a plain `.includes('FOOD')` against
+> `instance_prefix`, silently miscategorising every General/Non-Food booking as food — confirmed live as
+> a genuine non-food trader application showing up as 100% "Food & Drink" on the Statistics dashboard.
+> `js/config.js:210`'s `getStallCost()` had the identical check already correctly guarded
+> (`&& !p.includes('NONFOOD')`) — the team had hit this exact bug once and fixed it in one place, never
+> swept to the other two (see this file's own §7 rule on sweeping a repeated pattern, and `CLAUDE.md`).
+> Extracted one `isFoodPrefix()` helper per runtime — `js/config.js` for the browser,
+> `supabase/functions/_shared/booking-type.ts` for Deno, mirroring the existing `_shared/slugs.ts`/
+> `js/utils.js` "different runtimes, can't share a module" pattern — and used it at all three sites.
+> **The org switcher and its RLS policies leaked every organisation's existence to any admin (Medium,
+> #167), and — found while fixing it — let any org-scoped admin write to any *other* organisation's row
+> too (a more severe issue than the one being fixed).** Three separate `organisations` RLS policies all
+> granted a blanket `check_user_role('admin')` bypass — Postgres OR's policies together, so tightening
+> only one (the one actually named in the finding) would have left the leak fully intact via the other
+> two. Split into per-command policies; added `is_platform_admin()`, a small helper that checks
+> **only** the global `user_roles` table — deliberately not `check_user_role()`, whose primary check is
+> `organisation_members` scoped to whatever org is currently active in the caller's session, so it also
+> returns true for an ordinary admin of a single organisation, not just a genuine platform-wide one.
+> That distinction is what the write-side bug actually was: `"Admins can manage organisations"` gated
+> every command on `check_user_role('admin')` alone, with no correlation to which organisation a given
+> row belonged to, so any org-scoped admin of any single org could already update or delete any other
+> org's row — confirmed live, a test account that was only an admin member of one throwaway org
+> successfully renamed `org_default` through this policy before the fix. A genuine platform admin still
+> needs to browse/act on every organisation (the "View As" workflow the whole certification relied on)
+> — that now goes through a new `rpc_list_switchable_organisations()` explicitly, labelled in the UI
+> with a "🛡️ ALL ORGS" badge next to the switcher, rather than living as an implicit, unlabelled RLS
+> bypass. `js/page-admin-locations.js`'s "clone locations from another organisation" dropdown had the
+> exact same unfiltered read and now goes through the same RPC. The identical architecture existed on
+> `settings`'s write policy too (Finding 10, Low, decided fixed in #169) — same `is_platform_admin()`
+> helper, same per-command split, mirrored on to a second table by explicit decision rather than found
+> independently, since `settings` didn't have organisations' extra "any org can write any org" bug (it
+> already checked `user_roles` directly), just the narrower "an org's own admin can't reach their own
+> settings via RLS at all" gap that Finding 2's client-side scoping happened to paper over in practice.
+> **The Payments Dashboard's "Pending" total silently excluded `Payment Requested` bookings (Medium,
+> #167).** `computeTotals()`'s outstanding sum only counted unpaid `'Confirmed'` rows — a real £45
+> awaiting-payment booking showed **£0.00 Pending** in the header tile while Statistics' own "Awaiting
+> Payment" figure correctly showed £45.00 for the same booking at the same moment. Now includes
+> `r.awaitingPayment`, the same derived flag the rest of the file already uses to badge these rows; the
+> two statuses are mutually exclusive so this can't double-count.
+> **Two parallel Settings UIs, and one of them writes keys nothing reads (Medium, #167).**
+> `page-admin.js`'s newer Settings Hub "Bookings"/"Advanced" tabs wrote `food_applications_open`,
+> `general_trader_applications_open`, and `sentry_loader_url` — names nothing else in the app
+> recognised (every real reader checks `food_bookings_open`/`general_bookings_open`/
+> `sentry_browser_loader_url`). Toggling "open"/"closed" from that page saved successfully with a
+> success toast and had **zero effect** on whether the public forms were actually open — surfaced as
+> repeated "unrecognized settings key" console warnings during the review. Aligned both the read and
+> write sides to the keys everything else already uses; no new settings concept, just fixing which row
+> gets touched.
+> **Event Configuration silently discarded an unsaved field when a sibling toggle was flipped (Low,
+> #169) — the one finding carried over unfixed from the first operational review below.** `render()`
+> rebuilds the whole config panel from `fieldState` on every interaction, but a typed-but-uncommitted
+> value in an already-overridden field only ever lived in the DOM, never synced back into `fieldState`
+> until save time — toggling a *different* field's override triggered a re-render that rebuilt the
+> first field from its stale entry, discarding whatever had just been typed. Fixed with a
+> `syncDomToFieldState()` call at the top of the root click handler, before any state mutation or
+> re-render. The new e2e regression test for this also surfaced pre-existing test-isolation debt in the
+> same spec file — every test shared one module-level `eventId`, so parallel Playwright workers raced on
+> the same `event_settings` rows; the new test uses its own dedicated event instead.
+> **Process notes worth carrying forward**: every database migration in this round went test project
+> first (dry-run, then apply, then verify live with a throwaway account exercising both the allow and
+> deny paths) and was only applied to production after the corresponding PR merged and the owner
+> explicitly confirmed the production deploy — a code merge to `main` does **not** imply the migration
+> or Edge Function redeploy has happened; check `supabase/.temp/project-ref` for which project the CLI
+> is currently linked to before running `db push`. `rls_grants_snapshot.txt` needed a follow-up PR after
+> each RLS-touching migration (#168 after #167, #170 after #169) because it's only ever regenerated
+> from **production**, and production is deployed as a separate, later step than the merge itself — the
+> merge-to-`main` CI run's own `rls-grants-check` job failed twice for exactly this reason (comparing
+> `main`'s already-merged code against a not-yet-updated production database), both self-resolved by
+> the follow-up snapshot PR minutes later. Also: `css/output.css` needed rebuilding **against a clean
+> `npm ci` install**, not whatever was already in local `node_modules` — `@tailwindcss/cli` isn't
+> pinned in `package-lock.json` at all (`npx` resolves it fresh every invocation), so a stale local
+> `tailwindcss` core version silently produced different default-theme CSS than CI's clean checkout,
+> and `css-build-check` caught the drift.
+> **Operational Review #1 fixes — merged 2026-08-04 as PR #164**, from actually provisioning a new
+> organisation and running its onboarding-to-first-booking journey by hand (less rigorous than the
+> Certification above, which followed it and found ten more issues this pass missed, three of them
+> Critical). Booking form pages (`General_Booking.html`/`Food_Stall_booking.html`) never displayed the
+> resolved organisation/event's identity — gating and persistence used the resolved context correctly
+> (Phase 4D), but the page header/title stayed hardcoded to "Ella Street Festival 2026" regardless of
+> which organisation's link a trader actually followed; `initPublicBookingForm()` now also returns
+> `orgName`/`eventName`, applied to the page only when a real (non-default) event was resolved. The
+> provisioning wizard's completion report still said "Public booking forms don't yet route by
+> organisation" — stale copy from before Phase 4D shipped — now shows the real `?org=&event=` link using
+> the report's own `org_slug`/`event_slug` fields. `tests/security.test.mjs`'s anon-settings-allowlist
+> test was missing 6 branding keys (`logo_url`, `logo_light_url`, `brand_primary_color`,
+> `brand_accent_color`, `org_support_email`, `email_footer_text`) that a migration had added to the real
+> RLS policy months earlier — a pre-existing test/reality drift, not a Phase 4D regression, caught by a
+> full regression run rather than by inspection. One finding from this review was recorded but
+> deliberately **not** fixed at the time (worked around during the walkthrough instead) — Event
+> Configuration's toggle-wipes-a-sibling-field's-unsaved-text bug, closed out later in the Certification
+> above (#169) once it had its own regression test.
+> **Deno local type-checking — merged 2026-08-04 as PR #163.** Added `supabase/functions/deno.json`
+> (`{"nodeModulesDir": "auto"}` only) so `deno check` works locally against every Edge Function —
+> exactly the tool that caught the 13 real compile errors in `provision-organisation` above, which had
+> evidently never been run against this file before. Deliberately did **not** pin
+> `@supabase/supabase-js`'s resolved version via an import map — tried it first
+> (`{"imports": {"https://esm.sh/@supabase/supabase-js@2": "https://esm.sh/@supabase/supabase-js@2.59.0"}}`),
+> but Deno's import maps do prefix matching on URL-style keys and mangled the resolved URL into
+> "Cannot find module". Pinning the actual runtime import in every Edge Function's source instead would
+> have worked but is a bigger, riskier change than "add a type-checking config file", so it was left for
+> a deliberate later decision rather than folded in here.
 > **Epic 4, Phases 4A + 4C — merged 2026-08-04 as PR #159.**
 > Explicitly scoped to just these two phases; 4B (Event Configuration), 4D (Public Booking), 4E
 > (Publishing workflow), and 4F (Public Experience polish) are deliberately untouched — see Next
@@ -114,8 +273,8 @@
 > the test project and verifies the resulting `event_settings` rows directly, plus an accessibility
 > check via the existing admin suite. Full regression (329 integration tests, 28 Playwright tests) ran
 > clean after the grant fix.
-> **Epic 4, Phase 4D (Public Booking Routing) — on `feat/epic4-phase-4d-public-booking-routing`,
-> not yet released or merged.** Replaces the last places public bookings assumed `org_default`/
+> **Epic 4, Phase 4D (Public Booking Routing) — merged 2026-08-04 as PR #162.**
+> Replaces the last places public bookings assumed `org_default`/
 > `event_default`, framed (per the owner's own instruction) as "resolve once, persist once, reuse
 > everywhere" rather than "booking routing": every public request resolves its organisation/event
 > exactly once, from a trusted slug pair, and everything downstream — persistence, confirmation
