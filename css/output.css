@@ -3,8 +3,9 @@
 @layer theme, base, components, utilities;
 @layer theme {
   :root, :host {
-    --font-sans: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji",
-      "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
+      "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji",
+      "Segoe UI Symbol", "Noto Color Emoji";
     --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
       "Courier New", monospace;
     --color-red-50: oklch(97.1% 0.013 17.38);
@@ -135,6 +136,7 @@
     --font-weight-extrabold: 800;
     --font-weight-black: 900;
     --tracking-tight: -0.025em;
+    --tracking-normal: 0em;
     --tracking-wide: 0.025em;
     --tracking-wider: 0.05em;
     --tracking-widest: 0.1em;
@@ -166,7 +168,7 @@
     line-height: 1.5;
     -webkit-text-size-adjust: 100%;
     tab-size: 4;
-    font-family: var(--default-font-family, ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji");
+    font-family: var(--default-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji");
     font-feature-settings: var(--default-font-feature-settings, normal);
     font-variation-settings: var(--default-font-variation-settings, normal);
     -webkit-tap-highlight-color: transparent;
@@ -218,7 +220,7 @@
     border-color: inherit;
     border-collapse: collapse;
   }
-  :-moz-focusring {
+  :-moz-focusring:where(:not(iframe)) {
     outline: auto;
   }
   progress {
@@ -533,6 +535,9 @@
   }
   .ml-1 {
     margin-left: var(--spacing);
+  }
+  .ml-1\.5 {
+    margin-left: calc(var(--spacing) * 1.5);
   }
   .ml-2 {
     margin-left: calc(var(--spacing) * 2);
@@ -1794,6 +1799,10 @@
     --tw-font-weight: var(--font-weight-semibold);
     font-weight: var(--font-weight-semibold);
   }
+  .tracking-normal {
+    --tw-tracking: var(--tracking-normal);
+    letter-spacing: var(--tracking-normal);
+  }
   .tracking-tight {
     --tw-tracking: var(--tracking-tight);
     letter-spacing: var(--tracking-tight);
@@ -1989,6 +1998,9 @@
   }
   .lowercase {
     text-transform: lowercase;
+  }
+  .normal-case {
+    text-transform: none;
   }
   .uppercase {
     text-transform: uppercase;
