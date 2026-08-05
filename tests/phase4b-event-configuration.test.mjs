@@ -164,7 +164,21 @@ describe('event configuration across multiple events in one organisation', () =>
 
 // ── 4. RLS ───────────────────────────────────────────────────────────────────
 describe('event_settings RLS', () => {
+    const orgId = `org_4b_rls_${Date.now()}`;
     const eventId = `event_4b_rls_${Date.now()}`;
+
+    // event_settings.event_id carries a foreign key to events.id (added
+    // alongside the RC operational certification's Finding 4 fix - a
+    // fabricated event_id used to write here unchecked, which is exactly
+    // how a phantom event ended up with real event_settings rows in that
+    // review), so these RLS-only tests now need a genuine parent event too,
+    // not just a plausible-looking id string.
+    before(async () => {
+        await makeOrgAndEvent(service, { orgId, eventId, bookingPrefix: `R4B${Date.now().toString().slice(-3)}` });
+    });
+    after(async () => {
+        await cleanupOrgAndEvents(service, orgId, [eventId]);
+    });
 
     it('an authenticated admin can insert, update, and delete an event_settings row', async () => {
         const { error: insertErr } = await admin.from('event_settings').insert({ event_id: eventId, key: 'stall_cost_dev', value: '1.00' });
