@@ -558,8 +558,13 @@ async function openCloneDialog(ctx, dataset) {
     const { data: events } = await sb.from('events').select('id, name, org_id').eq('org_id', ctx.orgId).neq('id', ctx.eventId);
     otherEvents = events || [];
 
-    const { data: orgs } = await sb.from('organisations').select('id, name').neq('id', ctx.orgId);
-    otherOrgs = orgs || [];
+    // Same leak js/nav.js's org switcher had (RC operational certification,
+    // Finding 6): a raw organisations SELECT let any admin browse every
+    // organisation's name here regardless of membership. Now goes through
+    // the same rpc_list_switchable_organisations() the switcher uses -
+    // membership-scoped, or every organisation for a genuine platform admin.
+    const { data: orgResult } = await sb.rpc('rpc_list_switchable_organisations');
+    otherOrgs = (orgResult?.organisations || []).filter(o => o.id !== ctx.orgId);
 
     const eventOptionsHtml = otherEvents.map((e) => `<option value="${escapeHtml(e.id)}">${escapeHtml(e.name)}</option>`).join('');
     const orgOptionsHtml = otherOrgs.map((o) => `<option value="${escapeHtml(o.id)}">${escapeHtml(o.name)}</option>`).join('');
