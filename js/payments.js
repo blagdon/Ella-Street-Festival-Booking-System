@@ -151,7 +151,18 @@ function computeTotals(records) {
     const totalRefunded = records.reduce((sum, r) => sum + (parseFloat(r.refund_amount) || 0), 0);
     // A refunded booking keeps paid = true, so it is already excluded from
     // Outstanding - correct, since a refunded cancellation is not money owed.
-    const totalOutstanding = records.reduce((sum, r) => sum + (!r.paid && r.status === 'Confirmed' ? (parseFloat(r.stall_cost) || 0) : 0), 0);
+    //
+    // Includes r.awaitingPayment (status 'Payment Requested', no payments
+    // row yet - see fetchPayments()'s comment on why those are synthesised
+    // separately) alongside unpaid 'Confirmed' rows. Previously only the
+    // latter counted, so a booking the table itself badges "AWAITING
+    // PAYMENT" was invisible in this total - confirmed live during the RC
+    // operational certification (Finding 7): a real £45 awaiting-payment
+    // booking showed £0.00 Pending here while Statistics' own "Awaiting
+    // Payment" figure correctly showed £45.00 for the same booking.
+    // The two statuses are mutually exclusive (awaitingPayment only ever
+    // applies to 'Payment Requested' rows), so this can't double-count.
+    const totalOutstanding = records.reduce((sum, r) => sum + (!r.paid && (r.status === 'Confirmed' || r.awaitingPayment) ? (parseFloat(r.stall_cost) || 0) : 0), 0);
     return { totalPaid, totalRefunded, totalOutstanding };
 }
 
