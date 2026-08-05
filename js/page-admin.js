@@ -961,8 +961,8 @@ async function renderSettingsSection(container) {
         tabFormHtml = `
         <form id="settingsCategoryForm">
             <div class="space-y-2 mb-4">
-                ${renderToggleField({ id: 'setFoodOpen', label: 'Food Stall Applications Open', checked: currentSettings.food_applications_open !== 'false', helpText: 'Controls public food booking form access' })}
-                ${renderToggleField({ id: 'setGeneralOpen', label: 'General Trader Applications Open', checked: currentSettings.general_trader_applications_open !== 'false', helpText: 'Controls public general trader form access' })}
+                ${renderToggleField({ id: 'setFoodOpen', label: 'Food Stall Applications Open', checked: currentSettings.food_bookings_open !== 'false', helpText: 'Controls public food booking form access' })}
+                ${renderToggleField({ id: 'setGeneralOpen', label: 'General Trader Applications Open', checked: currentSettings.general_bookings_open !== 'false', helpText: 'Controls public general trader form access' })}
             </div>
             ${renderFormSaveBar({ submitId: 'btnSaveCatSettings', submitLabel: 'Save Booking Settings' })}
         </form>`;
@@ -992,7 +992,7 @@ async function renderSettingsSection(container) {
     } else {
         tabFormHtml = `
         <form id="settingsCategoryForm">
-            ${renderInputField({ id: 'setSentryUrl', label: 'Sentry Loader URL', value: currentSettings.sentry_loader_url || '', placeholder: 'https://js-de.sentry-cdn.com/...' })}
+            ${renderInputField({ id: 'setSentryUrl', label: 'Sentry Loader URL', value: currentSettings.sentry_browser_loader_url || '', placeholder: 'https://js-de.sentry-cdn.com/...' })}
             ${renderFormSaveBar({ submitId: 'btnSaveCatSettings', submitLabel: 'Save Advanced Settings' })}
         </form>`;
     }
@@ -1037,9 +1037,18 @@ async function saveCategorySettings(currentSettings) {
             { key: 'bucket_name', value: (/** @type {HTMLInputElement} */ (document.getElementById('setBucketName'))).value.trim() }
         );
     } else if (activeSettingsTab === 'bookings') {
+        // food_bookings_open / general_bookings_open are the keys every
+        // reader actually checks (js/config.js's applySettingsToConfig(),
+        // js/settings/system.js's initToggles(), and the public booking
+        // form's own open/closed gate in js/public-context.js). This tab
+        // previously wrote food_applications_open /
+        // general_trader_applications_open - names nothing else in the app
+        // recognised, so toggling "open"/"closed" here saved successfully
+        // but had zero effect on whether the public forms were actually
+        // open (RC operational certification, Finding 8).
         updates.push(
-            { key: 'food_applications_open', value: String((/** @type {HTMLInputElement} */ (document.getElementById('setFoodOpen'))).checked) },
-            { key: 'general_trader_applications_open', value: String((/** @type {HTMLInputElement} */ (document.getElementById('setGeneralOpen'))).checked) }
+            { key: 'food_bookings_open', value: String((/** @type {HTMLInputElement} */ (document.getElementById('setFoodOpen'))).checked) },
+            { key: 'general_bookings_open', value: String((/** @type {HTMLInputElement} */ (document.getElementById('setGeneralOpen'))).checked) }
         );
     } else if (activeSettingsTab === 'comms') {
         updates.push(
@@ -1055,8 +1064,10 @@ async function saveCategorySettings(currentSettings) {
             { key: 'bank_account_number', value: (/** @type {HTMLInputElement} */ (document.getElementById('setBankAccountNo'))).value.trim() }
         );
     } else {
+        // sentry_browser_loader_url is the key config.js/system.js actually
+        // read - same mismatch as the bookings tab above.
         updates.push(
-            { key: 'sentry_loader_url', value: (/** @type {HTMLInputElement} */ (document.getElementById('setSentryUrl'))).value.trim() }
+            { key: 'sentry_browser_loader_url', value: (/** @type {HTMLInputElement} */ (document.getElementById('setSentryUrl'))).value.trim() }
         );
     }
 
