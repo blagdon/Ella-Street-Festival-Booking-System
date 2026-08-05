@@ -5,7 +5,7 @@
  * Manages section view switching (Organisation, Events, Members, Branding, Settings, Audit).
  */
 import { initAdminPage, getSupabaseClient } from './supabase.js';
-import { getPlatformContext, setCurrentOrgId, CONFIG } from './config.js';
+import { getPlatformContext, setCurrentOrgId } from './config.js';
 import { escapeHtml, validateSlug, parseEdgeFunctionError } from './utils.js';
 import { renderAdminSidebar } from './platform/navigation.js';
 import { renderPageHeader } from './platform/layout.js';
@@ -13,7 +13,7 @@ import { renderStatCard, renderCard } from './platform/cards.js';
 import { renderInputField, renderToggleField, renderFormSaveBar } from './platform/forms.js';
 import { renderDataTable, renderStatusBadge } from './platform/tables.js';
 import { openDialog } from './platform/dialogs.js';
-import { notify } from './platform/notifications.js';
+import { notify, renderAlert } from './platform/notifications.js';
 import { auditLog } from './audit.js';
 import { renderProvisioningSection } from './page-provisioning.js';
 import { renderLocationsSection } from './page-admin-locations.js';
@@ -77,17 +77,25 @@ async function loadWorkspaceData() {
     const ctx = getPlatformContext();
 
     try {
-        // Load Organisation details
-        const { data: org, error: orgErr } = await sb
-            .from('organisations')
-            .select('*')
-            .eq('id', ctx.orgId)
-            .maybeSingle();
+        // Load Organisation details via rpc_get_organisation(), not a direct
+        // select - RLS only grants SELECT on organisations to a genuine
+        // member of that org (or a real platform admin, via this RPC's own
+        // check), so a direct query silently returns zero rows for any org
+        // the signed-in admin didn't personally provision. A previous
+        // version of this code treated that as "fetch failed" and
+        // substituted a hardcoded stand-in organisation - which then
+        // silently rendered (and could silently overwrite, via Save) a
+        // completely different organisation's identity. See the Round 2
+        // operational certification, Finding 1. orgData stays null on
+        // failure so the render functions can show an honest empty state
+        // instead of fabricating one.
+        const { data: org, error: orgErr } = await sb.rpc('rpc_get_organisation', { p_org_id: ctx.orgId });
 
         if (!orgErr && org) {
             orgData = org;
         } else {
-            orgData = { id: ctx.orgId, name: CONFIG.FESTIVAL_DISPLAY_NAME || 'Ella Street Festival', slug: 'ella-street' };
+            orgData = null;
+            if (orgErr) console.warn('[Admin Workspace] Error loading organisation:', orgErr);
         }
 
         // Load Events list for active organisation
@@ -100,17 +108,13 @@ async function loadWorkspaceData() {
         if (!evtErr && evts) {
             eventsList = evts;
         } else {
-            eventsList = [{
-                id: ctx.eventId,
-                org_id: ctx.orgId,
-                name: 'Ella Street Festival 2026',
-                slug: 'esf-2026',
-                booking_prefix: 'ESF26',
-                is_active: true
-            }];
+            eventsList = [];
+            if (evtErr) console.warn('[Admin Workspace] Error loading events:', evtErr);
         }
     } catch (e) {
         console.warn('[Admin Workspace] Error loading workspace data:', e);
+        orgData = null;
+        eventsList = [];
     }
 }
 
@@ -155,8 +159,6 @@ function renderActiveSection() {
 // 0. ORGANISATION DASHBOARD SECTION VIEW (Epic 2C)
 // ===================================================================
 function renderDashboardSection(container) {
-    const org = orgData || { name: 'Ella Street Festival', slug: 'ella-street' };
-
     const headerHtml = renderPageHeader({
         title: 'Platform Overview',
         description: 'High-level summary of organisation events, members, and platform health.',
@@ -171,33 +173,46 @@ function renderDashboardSection(container) {
         ${renderStatCard({ label: 'Platform Health', value: '100% OK', icon: '🟢', badgeClass: 'bg-emerald-50 text-emerald-700' })}
     </div>`;
 
-    const summaryContentHtml = `
-    <div class="space-y-4">
-        <p class="text-sm text-gray-600">
-            Welcome to the <strong>${escapeHtml(org.name)}</strong> Platform Administration Workspace.
-            Use the sidebar navigation to configure festival editions, manage staff access, customize branding, and inspect security audit logs.
-        </p>
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
-            <button data-goto-section="events" class="btn-goto-section text-left p-4 bg-gray-50 hover:bg-blue-50 border border-gray-200 hover:border-blue-200 rounded-xl transition group">
-                <div class="font-bold text-sm text-gray-900 group-hover:text-blue-600">📅 Manage Events →</div>
-                <div class="text-xs text-gray-500 mt-1">Configure event dates & prefixes</div>
-            </button>
-            <button data-goto-section="members" class="btn-goto-section text-left p-4 bg-gray-50 hover:bg-blue-50 border border-gray-200 hover:border-blue-200 rounded-xl transition group">
-                <div class="font-bold text-sm text-gray-900 group-hover:text-blue-600">👥 Team Directory →</div>
-                <div class="text-xs text-gray-500 mt-1">Invite & manage staff roles</div>
-            </button>
-            <button data-goto-section="settings" class="btn-goto-section text-left p-4 bg-gray-50 hover:bg-blue-50 border border-gray-200 hover:border-blue-200 rounded-xl transition group">
-                <div class="font-bold text-sm text-gray-900 group-hover:text-blue-600">⚙️ System Settings →</div>
-                <div class="text-xs text-gray-500 mt-1">Stripe, SMS & system controls</div>
-            </button>
-        </div>
-    </div>`;
+    // orgData is null when it couldn't be loaded (not a member of this org,
+    // or a genuine fetch error) - showing a fabricated organisation name
+    // here is exactly Finding 1 of the Round 2 certification, so this is an
+    // honest empty state instead, not a stand-in identity.
+    let cardHtml;
+    if (!orgData) {
+        cardHtml = renderAlert({
+            title: 'Organisation details unavailable',
+            message: "Couldn't load this organisation's details. You may not have access, or the organisation record may not exist.",
+            type: 'warning'
+        });
+    } else {
+        const summaryContentHtml = `
+        <div class="space-y-4">
+            <p class="text-sm text-gray-600">
+                Welcome to the <strong>${escapeHtml(orgData.name)}</strong> Platform Administration Workspace.
+                Use the sidebar navigation to configure festival editions, manage staff access, customize branding, and inspect security audit logs.
+            </p>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+                <button data-goto-section="events" class="btn-goto-section text-left p-4 bg-gray-50 hover:bg-blue-50 border border-gray-200 hover:border-blue-200 rounded-xl transition group">
+                    <div class="font-bold text-sm text-gray-900 group-hover:text-blue-600">📅 Manage Events →</div>
+                    <div class="text-xs text-gray-500 mt-1">Configure event dates & prefixes</div>
+                </button>
+                <button data-goto-section="members" class="btn-goto-section text-left p-4 bg-gray-50 hover:bg-blue-50 border border-gray-200 hover:border-blue-200 rounded-xl transition group">
+                    <div class="font-bold text-sm text-gray-900 group-hover:text-blue-600">👥 Team Directory →</div>
+                    <div class="text-xs text-gray-500 mt-1">Invite & manage staff roles</div>
+                </button>
+                <button data-goto-section="settings" class="btn-goto-section text-left p-4 bg-gray-50 hover:bg-blue-50 border border-gray-200 hover:border-blue-200 rounded-xl transition group">
+                    <div class="font-bold text-sm text-gray-900 group-hover:text-blue-600">⚙️ System Settings →</div>
+                    <div class="text-xs text-gray-500 mt-1">Stripe, SMS & system controls</div>
+                </button>
+            </div>
+        </div>`;
 
-    const cardHtml = renderCard({
-        title: 'Organisation Summary',
-        subtitle: `Overview for ${org.name}`,
-        contentHtml: summaryContentHtml
-    });
+        cardHtml = renderCard({
+            title: 'Organisation Summary',
+            subtitle: `Overview for ${orgData.name}`,
+            contentHtml: summaryContentHtml
+        });
+    }
 
     container.innerHTML = headerHtml + statCardsHtml + cardHtml; // innerhtml-safe: component HTML built with internal escapeHtml calls
 
@@ -217,8 +232,6 @@ function renderDashboardSection(container) {
 // 1. ORGANISATION SECTION VIEW (Epic 2A)
 // ===================================================================
 function renderOrganisationSection(container) {
-    const org = orgData || { name: 'Ella Street Festival', slug: 'ella-street', id: 'org_default' };
-
     const headerHtml = renderPageHeader({
         title: 'Organisation Settings',
         description: 'Manage core organization attributes, contact info, and status.',
@@ -232,24 +245,38 @@ function renderOrganisationSection(container) {
         ${renderStatCard({ label: 'Status', value: 'Active', icon: '✅', badgeClass: 'bg-emerald-50 text-emerald-700' })}
     </div>`;
 
-    const formContentHtml = `
-    <form id="orgDetailsForm">
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            ${renderInputField({ id: 'orgName', label: 'Organisation Name', value: org.name || '', required: true })}
-            ${renderInputField({ id: 'orgSlug', label: 'Organisation Slug', value: org.slug || '', helpText: 'Used in subdomains and URLs' })}
-        </div>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
-            ${renderInputField({ id: 'orgContactEmail', label: 'Contact Email', value: org.contact_email || 'admin@ellastreetfestival.co.uk', type: 'email' })}
-            ${renderInputField({ id: 'orgWebsite', label: 'Official Website', value: org.website || 'https://ellastreetfestival.co.uk' })}
-        </div>
-        ${renderFormSaveBar({ submitId: 'btnSaveOrg', submitLabel: 'Save Organisation Details' })}
-    </form>`;
+    let cardHtml;
+    if (!orgData) {
+        // No fabricated form here either: rendering one pre-filled with
+        // stand-in values, editable and connected to a working Save button,
+        // is exactly how Finding 1 turned "can't read this org" into "can
+        // silently overwrite it" - refuse to render an editable identity
+        // form when the real current values aren't actually known.
+        cardHtml = renderAlert({
+            title: 'Organisation details unavailable',
+            message: "Couldn't load this organisation's details, so there's nothing safe to edit here. You may not have access, or the organisation record may not exist.",
+            type: 'warning'
+        });
+    } else {
+        const formContentHtml = `
+        <form id="orgDetailsForm">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                ${renderInputField({ id: 'orgName', label: 'Organisation Name', value: orgData.name || '', required: true })}
+                ${renderInputField({ id: 'orgSlug', label: 'Organisation Slug', value: orgData.slug || '', helpText: 'Used in subdomains and URLs' })}
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+                ${renderInputField({ id: 'orgContactEmail', label: 'Contact Email', value: orgData.contact_email || '', type: 'email' })}
+                ${renderInputField({ id: 'orgWebsite', label: 'Official Website', value: orgData.website || '' })}
+            </div>
+            ${renderFormSaveBar({ submitId: 'btnSaveOrg', submitLabel: 'Save Organisation Details' })}
+        </form>`;
 
-    const cardHtml = renderCard({
-        title: 'Organisation Details',
-        subtitle: 'General settings for the platform tenant',
-        contentHtml: formContentHtml
-    });
+        cardHtml = renderCard({
+            title: 'Organisation Details',
+            subtitle: 'General settings for the platform tenant',
+            contentHtml: formContentHtml
+        });
+    }
 
     container.innerHTML = headerHtml + statCardsHtml + cardHtml; // innerhtml-safe: component HTML built with internal escapeHtml calls
 
@@ -594,23 +621,50 @@ async function renderMembersSection(container) {
     });
 
     try {
-        const { data, error } = await sb
-            .from('user_roles')
-            .select('*')
+        // organisation_members has no email column of its own (see
+        // 20260801003_create_organisation_members.sql), so the caller's
+        // email is resolved via a second lookup against user_roles by id -
+        // every member currently gets a user_roles row too (both
+        // provision-organisation and invite-organisation-member upsert
+        // both tables for the same user), so this join is reliable in
+        // practice even though the tables are only related by convention,
+        // not a foreign key.
+        //
+        // Previously this queried user_roles directly with no org filter at
+        // all, so it showed the same platform-wide roster regardless of
+        // which organisation was selected via View-As - see the Round 2
+        // certification, Finding 2.
+        const { data: orgMembers, error } = await sb
+            .from('organisation_members')
+            .select('id, user_id, role, created_at')
+            .eq('org_id', ctx.orgId)
             .order('created_at', { ascending: false });
 
-        if (!error && data) {
-            membersList = data;
+        if (!error && orgMembers) {
+            const userIds = orgMembers.map(m => m.user_id);
+            let emailById = {};
+            if (userIds.length) {
+                const { data: roles } = await sb.from('user_roles').select('id, email').in('id', userIds);
+                emailById = Object.fromEntries((roles || []).map(r => [r.id, r.email]));
+            }
+            membersList = orgMembers.map(m => ({
+                id: m.user_id,
+                email: emailById[m.user_id] || null,
+                role: m.role,
+                created_at: m.created_at
+            }));
         } else {
-            membersList = [{ id: ctx.userId || 'admin-1', email: 'admin@ellastreetfestival.co.uk', role: 'admin', created_at: new Date().toISOString() }];
+            membersList = [];
+            if (error) console.warn('[Members] Failed to load organisation members:', error);
         }
     } catch (e) {
-        console.warn('[Members] Failed to load user roles:', e);
+        console.warn('[Members] Failed to load organisation members:', e);
+        membersList = [];
     }
 
     const columns = [
         { key: 'email', label: 'Member Email' },
-        { key: 'role', label: 'Platform Role' },
+        { key: 'role', label: 'Role' },
         { key: 'created_at', label: 'Added Date' },
         { key: 'actions', label: 'Actions' }
     ];
@@ -640,7 +694,7 @@ async function renderMembersSection(container) {
 
     const cardHtml = renderCard({
         title: 'Organisation Members',
-        subtitle: 'Users with permission to access this platform workspace',
+        subtitle: 'Users with a role in this organisation',
         contentHtml: tableHtml
     });
 
@@ -755,10 +809,18 @@ function openChangeRoleDialog(userId, currentRole) {
         const sb = getSupabaseClient();
         const ctx = getPlatformContext();
         try {
-            const { error } = await sb.from('user_roles').update({ role: newRole }).eq('id', userId);
+            // organisation_members, scoped to this org - not user_roles.
+            // Writing to user_roles here would change the member's GLOBAL
+            // platform role instead of their role within this organisation
+            // (see Round 2 certification, Finding 2).
+            const { error } = await sb
+                .from('organisation_members')
+                .update({ role: newRole })
+                .eq('org_id', ctx.orgId)
+                .eq('user_id', userId);
             if (error) throw error;
 
-            await auditLog('change_member_role', 'user_roles', { org_id: ctx.orgId, target_user: userId, new_role: newRole });
+            await auditLog('change_member_role', 'organisation_members', { org_id: ctx.orgId, target_user: userId, new_role: newRole });
             notify(`Role changed to ${newRole}!`, 'success');
             document.getElementById('dialogChangeRole')?.classList.add('hidden');
             await loadWorkspaceData();
@@ -773,14 +835,22 @@ async function removeMember(userId) {
     const sb = getSupabaseClient();
     const ctx = getPlatformContext();
 
-    if (!confirm('Are you sure you want to remove this member?')) return;
+    if (!confirm('Are you sure you want to remove this member from this organisation?')) return;
 
     try {
-        const { error } = await sb.from('user_roles').delete().eq('id', userId);
+        // organisation_members, scoped to this org - not user_roles. Deleting
+        // from user_roles here would revoke the member's platform access
+        // everywhere, not just remove them from this one organisation (see
+        // Round 2 certification, Finding 2).
+        const { error } = await sb
+            .from('organisation_members')
+            .delete()
+            .eq('org_id', ctx.orgId)
+            .eq('user_id', userId);
         if (error) throw error;
 
-        await auditLog('remove_member', 'user_roles', { org_id: ctx.orgId, target_user: userId });
-        notify('Member removed successfully.', 'success');
+        await auditLog('remove_member', 'organisation_members', { org_id: ctx.orgId, target_user: userId });
+        notify('Member removed from this organisation.', 'success');
         await loadWorkspaceData();
         renderActiveSection();
     } catch (err) {
