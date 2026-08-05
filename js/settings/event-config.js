@@ -178,12 +178,35 @@ export async function initEventConfig() {
             + renderStallTypesField(fieldState[STALL_TYPES_KEY]);
     }
 
+    /**
+     * Reads whatever's currently typed into each overridden simple field's
+     * input back into fieldState, before render() replaces #event-config-root's
+     * innerHTML wholesale. render() rebuilds every field from fieldState, so
+     * without this, typing a new value into one already-overridden field and
+     * then interacting with ANY other field (toggling its override, adding/
+     * removing a stall type chip) silently discarded the typed text - the
+     * next render() re-seeded that input from fieldState, which still held
+     * whatever value was there before typing started. Save itself was
+     * unaffected (it reads the DOM directly), only the value shown across an
+     * intervening re-render. See the RC operational certification's
+     * Finding 9.
+     */
+    function syncDomToFieldState() {
+        SIMPLE_FIELDS.forEach(field => {
+            const state = fieldState[field.key];
+            if (!state.overridden) return;
+            const inputEl = /** @type {HTMLInputElement | null} */ (root.querySelector(`[data-field="${field.key}"] [data-role="input"]`));
+            if (inputEl) state.eventValue = inputEl.value;
+        });
+    }
+
     render();
 
     // Event delegation: toggles, resets, and the stall-types chip editor all
     // live inside #event-config-root, re-rendered wholesale on every change.
     root.addEventListener('click', async (e) => {
         const target = /** @type {Element} */ (e.target);
+        syncDomToFieldState();
 
         const toggleBtn = target.closest('[data-role="toggle"]');
         if (toggleBtn instanceof HTMLElement) {

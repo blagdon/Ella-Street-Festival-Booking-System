@@ -84,6 +84,50 @@ test.describe('Event Configuration page', () => {
     expect(data).toHaveLength(0);
   });
 
+  test('typing into one overridden field survives toggling a different field\'s override (Finding 9)', async ({ page }) => {
+    // Own dedicated event, not the describe block's shared one - this test
+    // deliberately leaves state mid-interaction (typed but unsaved) across
+    // several async ticks, which is exactly the window where the shared
+    // eventId's other parallel-running tests (their own beforeEach/afterEach
+    // insert/delete rows against that SAME id) could otherwise race with it.
+    const soloEventId = `e2e_4b_solo_${Date.now()}`;
+    const soloPrefix = `E4S${Date.now().toString().slice(-4)}`;
+    await service.from('events').insert({
+      id: soloEventId, org_id: 'org_default', name: 'E2E Solo Event Config Test',
+      slug: soloEventId.replace(/_/g, '-'), booking_prefix: soloPrefix, is_active: false,
+    });
+    await page.addInitScript((id) => { window.localStorage.setItem('ESF_EVENT_ID', id); }, soloEventId);
+
+    try {
+      await page.goto('/event_settings.html');
+
+      // Override stall_cost_general and type a new value, but don't save yet.
+      await page.locator('[data-field="stall_cost_general"] [data-role="toggle"]').click();
+      await page.locator('[data-field="stall_cost_general"] [data-role="input"]').fill('12.34');
+
+      // Toggling a DIFFERENT field's override triggers a full re-render of
+      // #event-config-root. Before the fix, render() rebuilt every field
+      // from fieldState, and the typed-but-unsaved '12.34' was never synced
+      // back into fieldState first - it silently reverted to the
+      // org-default seed value the moment any other field's override was
+      // toggled.
+      await page.locator('[data-field="stall_cost_food"] [data-role="toggle"]').click();
+
+      await expect(page.locator('[data-field="stall_cost_general"] [data-role="input"]')).toHaveValue('12.34');
+
+      // Confirm it also actually saves correctly, not just survives display.
+      await page.locator('#btn-save-event-config').click();
+      await expect(page.getByText('Event configuration saved')).toBeVisible();
+
+      const { data, error } = await service.from('event_settings').select('value').eq('event_id', soloEventId).eq('key', 'stall_cost_general').single();
+      expect(error).toBeNull();
+      expect(data.value).toBe('12.34');
+    } finally {
+      await service.from('event_settings').delete().eq('event_id', soloEventId);
+      await service.from('events').delete().eq('id', soloEventId);
+    }
+  });
+
   test('allowed stall types can be overridden by adding a chip, and it persists', async ({ page }) => {
     await page.goto('/event_settings.html');
     await page.locator('[data-field="allowed_stall_types"] [data-role="toggle"]').click();
