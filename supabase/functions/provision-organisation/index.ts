@@ -295,8 +295,13 @@ Deno.serve(async (req) => {
     }
 
     // Step D: Initialise Tenant Platform Defaults
+    // p_display_name overrides the generic 'Festival Event' template value
+    // platform_defaults_settings seeds festival_display_name with, so a
+    // brand-new organisation shows its own event's name immediately instead
+    // of a placeholder (RC Round 2 certification, Finding 3).
     const { data: defaultsData, error: defaultsErr } = await supabaseAdmin.rpc('rpc_initialise_tenant_defaults', {
-      p_org_id: cleanOrgSlug
+      p_org_id: cleanOrgSlug,
+      p_display_name: String(event_name).trim()
     })
 
     if (defaultsErr) {
