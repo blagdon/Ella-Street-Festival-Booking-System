@@ -39,11 +39,11 @@ jobs:
         run: bash .githooks/pre-commit
 
   # Incremental type-checking (jsconfig.json + tsc --noEmit, via // @ts-check
-  # opt-in per file - see jsconfig.json's own comment) - NOT yet a required
-  # status check. Every file currently opted in (js/api.js, js/audit.js,
-  # js/ui.js) is clean as of when this job was added; deliberately not
-  # required yet so a first batch of newly-opted-in files can surface real
-  # findings without immediately blocking merges while the pattern beds in.
+  # opt-in per file - see jsconfig.json's own comment). A required status
+  # check as of the Launch Readiness Review (2026-08-06) - every file under
+  # js/ opted in and passed clean as of 2026-07-31 (see jsconfig.json), so
+  # the original "let a first batch of newly-opted-in files bed in before
+  # blocking merges" reason no longer applies.
   typecheck:
     runs-on: ubuntu-latest
     steps:

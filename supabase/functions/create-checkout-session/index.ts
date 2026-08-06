@@ -267,7 +267,8 @@ Deno.serve(async (req) => {
         body,
         status: emailStatus,
         error_message: emailError,
-        instance_prefix: booking.instance_prefix || null
+        instance_prefix: booking.instance_prefix || null,
+        org_id: booking.org_id
       })
     } catch (emailErr: any) {
       console.warn('Failed to send payment_requested email:', emailErr.message)
@@ -326,7 +327,8 @@ Deno.serve(async (req) => {
           error_message: smsError,
           provider_message_id: providerMessageId,
           segments,
-          instance_prefix: booking.instance_prefix || null
+          instance_prefix: booking.instance_prefix || null,
+          org_id: booking.org_id
         })
 
         // Every other SMS send path goes through sendBookingSms (js/api.js),
@@ -340,7 +342,8 @@ Deno.serve(async (req) => {
             target_id: booking.id,
             user_email: user.email,
             details: { recipient, segments, provider_message_id: providerMessageId },
-            instance: booking.instance_prefix || null
+            instance: booking.instance_prefix || null,
+            org_id: booking.org_id
           })
         }
       } catch (smsErr: any) {

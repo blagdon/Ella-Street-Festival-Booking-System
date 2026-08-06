@@ -264,3 +264,95 @@ describe('bulk messaging and retry are org-scoped (20260805 Edge Function fixes,
     await service.from('email_queue').delete().eq('id', queuedRow.id);
   });
 });
+
+describe('payments/audit_logs/hcc_checks/email_queue/sms_queue RLS is org-scoped (20260806000000)', () => {
+  // Same defect shape as the six tables in 20260805040000, found by sweeping
+  // for every other table with an org_id column and a check_user_role('admin')-
+  // only policy — CLAUDE.md's "sweep for every instance of a pattern" rule.
+  // Ground truth seeded directly (service role) with an explicit org_id, so
+  // this isolates the RLS question from the separate write-path bug below.
+  const payment = { booking_id: BOOKING_B, org_id: ORG_B, paid: true, bank_ref: 'sweep-test', payment_method: 'bank_transfer' };
+  const auditRow = { action: 'sweep_test', target_id: BOOKING_B, user_email: 'sweep@example.test', org_id: ORG_B };
+  const hccRow = { booking_id: BOOKING_B, org_id: ORG_B, council_status: 'Pending' };
+  const emailRow = { org_id: ORG_B, recipient: 'sweep@example.test', subject: 'sweep', body: 'sweep', status: 'Sent' };
+  const smsRow = { org_id: ORG_B, recipient: '+447000000099', body: 'sweep', status: 'Sent' };
+  let auditId, hccId, emailId, smsId;
+
+  before(async () => {
+    await service.from('payments').insert(payment);
+    ({ data: { id: auditId } = {} } = await service.from('audit_logs').insert(auditRow).select('id').single());
+    ({ data: { id: hccId } = {} } = await service.from('hcc_checks').insert(hccRow).select('id').single());
+    ({ data: { id: emailId } = {} } = await service.from('email_queue').insert(emailRow).select('id').single());
+    ({ data: { id: smsId } = {} } = await service.from('sms_queue').insert(smsRow).select('id').single());
+  });
+
+  after(async () => {
+    await service.from('payments').delete().eq('booking_id', BOOKING_B);
+    if (auditId) await service.from('audit_logs').delete().eq('id', auditId);
+    if (hccId) await service.from('hcc_checks').delete().eq('id', hccId);
+    if (emailId) await service.from('email_queue').delete().eq('id', emailId);
+    if (smsId) await service.from('sms_queue').delete().eq('id', smsId);
+  });
+
+  test('an organisation admin cannot read a DIFFERENT org\'s payments/audit_logs/hcc_checks/email_queue/sms_queue rows', async () => {
+    const { data: payments, error: paymentsErr } = await ownerA.from('payments').select('booking_id').eq('booking_id', BOOKING_B);
+    assert.equal(paymentsErr, null, paymentsErr?.message);
+    assert.equal(payments.length, 0, 'owner A must not see org B\'s payment row');
+
+    const { data: audit, error: auditErr } = await ownerA.from('audit_logs').select('id').eq('id', auditId);
+    assert.equal(auditErr, null, auditErr?.message);
+    assert.equal(audit.length, 0, 'owner A must not see org B\'s audit_logs row');
+
+    const { data: hcc, error: hccErr } = await ownerA.from('hcc_checks').select('id').eq('id', hccId);
+    assert.equal(hccErr, null, hccErr?.message);
+    assert.equal(hcc.length, 0, 'owner A must not see org B\'s hcc_checks row');
+
+    const { data: email, error: emailErr } = await ownerA.from('email_queue').select('id').eq('id', emailId);
+    assert.equal(emailErr, null, emailErr?.message);
+    assert.equal(email.length, 0, 'owner A must not see org B\'s email_queue row');
+
+    const { data: sms, error: smsErr } = await ownerA.from('sms_queue').select('id').eq('id', smsId);
+    assert.equal(smsErr, null, smsErr?.message);
+    assert.equal(sms.length, 0, 'owner A must not see org B\'s sms_queue row');
+  });
+
+  test('a genuine platform admin (org_default) can still read every organisation\'s rows on all five tables (regression guard)', async () => {
+    const { data: payments } = await platformAdmin.from('payments').select('booking_id').eq('booking_id', BOOKING_B);
+    const { data: audit } = await platformAdmin.from('audit_logs').select('id').eq('id', auditId);
+    const { data: hcc } = await platformAdmin.from('hcc_checks').select('id').eq('id', hccId);
+    const { data: email } = await platformAdmin.from('email_queue').select('id').eq('id', emailId);
+    const { data: sms } = await platformAdmin.from('sms_queue').select('id').eq('id', smsId);
+    assert.equal(payments.length, 1, 'platform admin must still see org B\'s payment row');
+    assert.equal(audit.length, 1, 'platform admin must still see org B\'s audit_logs row');
+    assert.equal(hcc.length, 1, 'platform admin must still see org B\'s hcc_checks row');
+    assert.equal(email.length, 1, 'platform admin must still see org B\'s email_queue row');
+    assert.equal(sms.length, 1, 'platform admin must still see org B\'s sms_queue row');
+  });
+});
+
+describe('finalize_stripe_payment tags the payment with the booking\'s real org_id, not org_default (20260806000000)', () => {
+  const bookingId = `TISO-STRIPE-${RUN_ID}`;
+
+  before(async () => {
+    await service.from('bookings').insert({
+      id: bookingId, org_id: ORG_B, event_id: EVENT_B, status: 'Payment Requested',
+      business_name: 'Stripe Org-Tagging Test', owner_name: 'Test Owner',
+      email: 'trader@example.test', instance_prefix: `${ORG_B}-`, booking_type: 'general',
+      payment_link_code: `${bookingId}-code`,
+    });
+  });
+
+  after(async () => {
+    await service.from('payments').delete().eq('booking_id', bookingId);
+    await service.from('bookings').delete().eq('id', bookingId);
+  });
+
+  test('a Stripe auto-confirmed payment is tagged with the booking\'s own org_id', async () => {
+    const { error } = await service.rpc('finalize_stripe_payment', { p_booking_id: bookingId, p_payment_intent_id: 'pi_sweep_test' });
+    assert.equal(error, null, error?.message);
+
+    const { data: row } = await service.from('payments').select('org_id, paid').eq('booking_id', bookingId).single();
+    assert.equal(row.paid, true, 'expected the payment to be recorded as paid');
+    assert.equal(row.org_id, ORG_B, 'expected the payment to be tagged with the booking\'s real org, not silently defaulted to org_default');
+  });
+});
