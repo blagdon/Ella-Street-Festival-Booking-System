@@ -22,17 +22,28 @@
 // Run: npm run test:integration
 import { test, before, after, describe } from 'node:test';
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
 import { url, anonKey, adminEmail, adminPassword, service } from './helpers.mjs';
+
+// No password-shaped string literal anywhere in this file (not even inside a
+// template literal) - secret scanners like GitGuardian pattern-match the raw
+// source text, not the runtime value, so a fixed-looking literal fragment
+// (e.g. `Tp-...!Aa1`) still reads as a hardcoded credential even when parts
+// of it are interpolated. A full UUID plus a fragment of a second, uppercased,
+// plus a symbol gives lower+upper+digit+symbol complexity while staying well
+// under GoTrue's 72-character password limit (two full UUIDs, 73 chars, trips
+// a 500 from the admin create-user endpoint) - and never appears in source as
+// a quoted/backtick literal.
+function genTestPassword() {
+  return randomUUID() + randomUUID().slice(0, 8).toUpperCase() + '!';
+}
 
 const RUN_ID = Date.now();
 const ORG_A = `tenant-iso-a-${RUN_ID}`;
 const ORG_B = `tenant-iso-b-${RUN_ID}`;
 const OWNER_A_EMAIL = `tenant-iso-owner-a-${RUN_ID}@example.test`;
-// Generated at runtime, not a literal - this is a throwaway disposable-test-
-// project fixture account deleted in after(), but a hardcoded-looking
-// password string still reads as a leaked credential to secret scanners.
-const OWNER_A_PASSWORD = `Tp-${RUN_ID}-${Math.random().toString(36).slice(2)}!Aa1`;
+const OWNER_A_PASSWORD = genTestPassword();
 const SYNC_PROBE_EMAIL = `tenant-iso-sync-probe-${RUN_ID}@example.test`;
 
 const platformAdmin = createClient(url, anonKey);
@@ -187,10 +198,10 @@ describe('public locations read goes through rpc_get_public_locations, not a dir
 describe('the user_roles → organisation_members sync trigger no longer grants org_default membership (20260805050000)', () => {
   test('a brand-new user_roles admin row does not create an org_default organisation_members row', async () => {
     // Never signed in as, so the password's value genuinely doesn't matter -
-    // still generated at runtime rather than a literal, same reasoning as
-    // OWNER_A_PASSWORD above.
+    // still routed through genTestPassword() rather than an inline literal,
+    // same reasoning as OWNER_A_PASSWORD above.
     const { data: created, error: createErr } = await service.auth.admin.createUser({
-      email: SYNC_PROBE_EMAIL, password: `Tp-${Date.now()}-${Math.random().toString(36).slice(2)}!Aa1`, email_confirm: true,
+      email: SYNC_PROBE_EMAIL, password: genTestPassword(), email_confirm: true,
     });
     assert.equal(createErr, null, createErr?.message);
     syncProbeUserId = created.user.id;
