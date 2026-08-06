@@ -2,6 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { sendViaZoho } from '../_shared/zoho.ts'
 import { ALLOWED_ORIGIN } from '../_shared/cors.ts'
 import { captureAndFlush } from '../_shared/sentry.ts'
+import { resolveCallerAdminScope } from '../_shared/tenant-auth.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
@@ -108,13 +109,13 @@ Deno.serve(async (req) => {
       })
     }
 
-    const { data: roleData, error: roleError } = await supabaseClient
-      .from('user_roles')
-      .select('role')
-      .eq('id', user.id)
-      .single()
-
-    if (roleError || !roleData || roleData.role !== 'admin') {
+    // organisation_members-based, not the legacy global user_roles table -
+    // that table gets a row for every organisation's owner (see
+    // 20260805050000), so checking it alone would let any organisation's
+    // admin bulk-email any OTHER organisation's bookings (Launch Readiness
+    // Review finding).
+    const callerScope = await resolveCallerAdminScope(supabaseClient, user.id)
+    if (!callerScope.isPlatformAdmin && callerScope.orgIds.length === 0) {
       return new Response(JSON.stringify({ error: 'Forbidden: Admin role required' }), {
         status: 403,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -150,11 +151,22 @@ Deno.serve(async (req) => {
 
     // Re-derive recipients server-side rather than trusting client-supplied
     // emails — only actually-Confirmed bookings with a real email are used.
-    const { data: bookings, error: bookingsErr } = await supabaseClient
+    let bookingsQuery = supabaseClient
       .from('bookings')
-      .select('id, email, instance_prefix')
+      .select('id, email, instance_prefix, org_id')
       .in('id', bookingIds)
       .eq('status', 'Confirmed')
+
+    // Platform admins may act across every organisation (same as View As
+    // elsewhere in the app); anyone else is restricted to bookings that
+    // belong to an organisation they are actually an admin of - silently
+    // excluded here the same way a non-Confirmed booking already is, rather
+    // than a separate error path.
+    if (!callerScope.isPlatformAdmin) {
+      bookingsQuery = bookingsQuery.in('org_id', callerScope.orgIds)
+    }
+
+    const { data: bookings, error: bookingsErr } = await bookingsQuery
 
     if (bookingsErr) {
       throw new Error('Failed to look up bookings: ' + bookingsErr.message)
@@ -167,7 +179,8 @@ Deno.serve(async (req) => {
         subject,
         body,
         status: 'Pending',
-        instance_prefix: b.instance_prefix || null
+        instance_prefix: b.instance_prefix || null,
+        org_id: b.org_id
       }))
 
     if (rows.length === 0) {

@@ -301,22 +301,44 @@ describe('anon access to performers', () => {
 });
 
 describe('anon access to locations', () => {
-  test('DEV rows are never visible to anon, even unfiltered', async () => {
-    const { data: unfiltered } = await anon.from('locations').select('id,dataset');
-    assert.ok(!unfiltered.some((r) => r.dataset === 'DEV'), 'expected zero DEV rows in an unfiltered anon query');
+  // Launch Readiness Review, Finding 2 (20260805040000): anon lost its
+  // direct SELECT grant on locations entirely — the old unfiltered query
+  // (`dataset='LIVE'`, no org_id) let one anon request enumerate every
+  // organisation's live locations at once. Reads now go through
+  // rpc_get_public_locations(org_id, dataset), the same
+  // "no anon table grant, only a controlled SECURITY DEFINER function"
+  // pattern storage.objects already used.
+  test('anon has no direct SELECT on locations at all', async () => {
+    const { data, error } = await anon.from('locations').select('id,dataset');
+    if (!error) {
+      assert.equal(data.length, 0, 'expected zero rows via direct anon table access — reads must go through rpc_get_public_locations');
+    }
+  });
 
-    const { data: explicitDev } = await anon.from('locations').select('id').eq('id', devLocationId);
-    assert.equal(explicitDev.length, 0, 'expected the specific DEV test row to be invisible to anon');
+  test('DEV rows are never visible via rpc_get_public_locations, even unfiltered by id', async () => {
+    const { data: unfiltered, error } = await anon.rpc('rpc_get_public_locations', { p_org_id: 'org_default', p_dataset: 'DEV' });
+    assert.equal(error, null, error?.message);
+    assert.ok(!(unfiltered || []).some((r) => r.id === devLocationId) || unfiltered.every((r) => r.dataset === 'DEV'),
+      'rpc_get_public_locations(p_dataset="DEV") should only ever return DEV rows when DEV is explicitly requested');
 
-    const { data: explicitLive } = await anon.from('locations').select('id').eq('id', liveLocationId);
-    assert.equal(explicitLive.length, 1, 'expected the LIVE test row to remain visible to anon');
+    const { data: explicitDev } = await anon.rpc('rpc_get_public_locations', { p_org_id: 'org_default', p_dataset: 'LIVE' });
+    assert.ok(!(explicitDev || []).some((r) => r.id === devLocationId), 'expected the DEV test row to be absent when LIVE is requested');
+
+    const { data: explicitLive } = await anon.rpc('rpc_get_public_locations', { p_org_id: 'org_default', p_dataset: 'LIVE' });
+    assert.ok((explicitLive || []).some((r) => r.id === liveLocationId), 'expected the LIVE test row to be present when LIVE is requested');
+  });
+
+  test('rpc_get_public_locations only returns the requested organisation\'s rows', async () => {
+    const { data, error } = await anon.rpc('rpc_get_public_locations', { p_org_id: 'some-other-org-entirely', p_dataset: 'LIVE' });
+    assert.equal(error, null, error?.message);
+    assert.equal((data || []).length, 0, 'a made-up org_id must return nothing, not fall back to org_default or every organisation');
   });
 
   // 20260718100000_narrow_remaining_anon_table_grants.sql: locations was
-  // narrowed from GRANT ALL to SELECT-only for anon (RLS was already the
-  // only thing filtering rows; this makes the table grant a second,
-  // independent layer). SELECT continuing to work is proven above; this
-  // proves the write side is actually rejected outright, not just filtered.
+  // narrowed from GRANT ALL to SELECT-only for anon, then SELECT itself was
+  // later revoked entirely by the Finding 2 fix above. This proves the
+  // write side is still rejected outright, independent of whichever way
+  // reads currently work.
   test('anon cannot write to locations', async () => {
     const { error: updateErr } = await anon.from('locations').update({ lat: 0 }).eq('id', liveLocationId);
     assert.ok(updateErr, 'expected anon UPDATE on locations to be rejected outright');

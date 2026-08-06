@@ -2,6 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { sendViaSms, normalizePhone } from '../_shared/sms.ts'
 import { ALLOWED_ORIGIN } from '../_shared/cors.ts'
 import { captureAndFlush } from '../_shared/sentry.ts'
+import { resolveCallerAdminScope } from '../_shared/tenant-auth.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
@@ -101,13 +102,9 @@ Deno.serve(async (req) => {
       })
     }
 
-    const { data: roleData, error: roleError } = await supabaseClient
-      .from('user_roles')
-      .select('role')
-      .eq('id', user.id)
-      .single()
-
-    if (roleError || !roleData || roleData.role !== 'admin') {
+    // organisation_members-based - see queue-bulk-email's identical comment.
+    const callerScope = await resolveCallerAdminScope(supabaseClient, user.id)
+    if (!callerScope.isPlatformAdmin && callerScope.orgIds.length === 0) {
       return new Response(JSON.stringify({ error: 'Forbidden: Admin role required' }), {
         status: 403,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -136,11 +133,17 @@ Deno.serve(async (req) => {
     }
 
     // Re-derive recipients server-side — only Confirmed bookings with a phone.
-    const { data: bookings, error: bookingsErr } = await supabaseClient
+    let bookingsQuery = supabaseClient
       .from('bookings')
-      .select('id, phone, instance_prefix')
+      .select('id, phone, instance_prefix, org_id')
       .in('id', bookingIds)
       .eq('status', 'Confirmed')
+
+    if (!callerScope.isPlatformAdmin) {
+      bookingsQuery = bookingsQuery.in('org_id', callerScope.orgIds)
+    }
+
+    const { data: bookings, error: bookingsErr } = await bookingsQuery
 
     if (bookingsErr) {
       throw new Error('Failed to look up bookings: ' + bookingsErr.message)
@@ -159,6 +162,7 @@ Deno.serve(async (req) => {
           body,
           status: 'Pending',
           instance_prefix: b.instance_prefix || null,
+          org_id: b.org_id,
         })
       } catch {
         skipped++

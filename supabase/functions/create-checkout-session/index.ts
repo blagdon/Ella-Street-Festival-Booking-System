@@ -184,7 +184,7 @@ Deno.serve(async (req) => {
     // resend intentionally changed the price.
     if (booking.stripe_checkout_session_id) {
       try {
-        const stripeSettings = await loadStripeSettings(supabaseClient)
+        const stripeSettings = await loadStripeSettings(supabaseClient, booking.org_id)
         const mode = resolveStripeMode(booking.instance_prefix, stripeSettings.testModeSetting)
         const stripe = getStripeClient(mode, stripeSettings)
         await stripe.checkout.sessions.expire(booking.stripe_checkout_session_id)

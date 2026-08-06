@@ -774,12 +774,22 @@ export async function fetchHubSummary(todaySinceIso, orgId = getCurrentOrgId(), 
  * @param {string} currentInstance
  * @returns {Promise<Array>}
  */
-export async function fetchMapData(currentInstance) {
+export async function fetchMapData(currentInstance, orgId = getCurrentOrgId()) {
     const sb = getSupabaseClient();
     const mapDataset = (currentInstance === 'DEV') ? 'DEV' : 'LIVE';
 
     // 1. Get Locations
-    const { data: mapLocs } = await sb.from(TBL_LOCATIONS).select('*').eq('dataset', mapDataset);
+    // Goes through rpc_get_public_locations() rather than a direct table
+    // select - anon has no SELECT grant on locations at all as of the
+    // Launch Readiness Review's tenant-isolation fix, since a direct anon
+    // policy scoped only by dataset let one query return every
+    // organisation's live location layout at once. orgId defaults to
+    // getCurrentOrgId() purely to preserve today's behaviour (this page has
+    // no per-org resolution of its own yet, unlike the booking forms'
+    // ?org=&event= + resolvePublicContext()) - wiring the visitor map into
+    // that same public-context mechanism is a separate piece of work, not
+    // part of this security fix.
+    const { data: mapLocs } = await sb.rpc('rpc_get_public_locations', { p_org_id: orgId, p_dataset: mapDataset });
     const safeMapLocs = normalizeLocationIds(mapLocs);
 
     // 2. Get Confirmed bookings and their assigned location(s) via the
