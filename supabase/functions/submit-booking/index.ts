@@ -224,7 +224,8 @@ async function sendReceivedEmail(supabaseAdmin: ReturnType<typeof createClient>,
     body,
     status,
     error_message: errorMessage,
-    instance_prefix: booking.instance_prefix || null
+    instance_prefix: booking.instance_prefix || null,
+    org_id: booking.org_id
   })
   if (logErr) console.warn('Failed to write to email_queue log:', logErr.message)
 
@@ -284,7 +285,8 @@ async function sendReceivedSms(supabaseAdmin: ReturnType<typeof createClient>, b
       body,
       status: 'Error',
       error_message: e.message,
-      instance_prefix: booking.instance_prefix || null
+      instance_prefix: booking.instance_prefix || null,
+      org_id: booking.org_id
     })
     if (logErr) console.warn('Failed to write to sms_queue log:', logErr.message)
     throw e
@@ -311,7 +313,8 @@ async function sendReceivedSms(supabaseAdmin: ReturnType<typeof createClient>, b
     error_message: errorMessage,
     provider_message_id: providerMessageId,
     segments,
-    instance_prefix: booking.instance_prefix || null
+    instance_prefix: booking.instance_prefix || null,
+    org_id: booking.org_id
   })
   if (logErr) console.warn('Failed to write to sms_queue log:', logErr.message)
 

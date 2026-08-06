@@ -134,7 +134,18 @@ describe('the six directly-rewritten policies (previously plain text, now user_r
   });
 });
 
-describe('the seven check_user_role()-based policies (text unchanged, behaviour must still hold)', () => {
+// Originally titled around check_user_role() specifically, at the time this
+// migration (20260720140000) only touched the enum, not these policies'
+// authorization logic. Since then every one of the seven has individually
+// moved to a has_org_role()/is_platform_admin() org-scoped equivalent —
+// bookings/locations in 20260805040000 (Finding 1), payments/audit_logs/
+// hcc_checks/email_queue in 20260806000000 (the sweep that found the same
+// gap on five more tables) — so "check_user_role()-based" is no longer
+// literally true of any of them. Kept as one block because the actual
+// behaviour under test (admin can act, steward's narrower access holds) is
+// unchanged by either migration; the org-scoping itself has its own
+// regression tests in tests/tenant-isolation.test.mjs.
+describe('admin/steward access to the seven originally check_user_role()-based policies (now org-scoped, behaviour must still hold)', () => {
   test('admin can update a booking (Admin full)', async () => {
     const id = `${PREFIX}-0001`;
     await service.from('bookings').insert({
@@ -167,7 +178,7 @@ describe('the seven check_user_role()-based policies (text unchanged, behaviour 
       'steward UPDATE must not have changed the row (the 20260720100000 drop, unaffected by this migration)');
   });
 
-  test('admin can read email_queue, locations, payments, audit_logs, hcc_checks (remaining check_user_role() policies)', async () => {
+  test('admin can read email_queue, locations, payments, audit_logs, hcc_checks (now org-scoped, all fixtures under org_default)', async () => {
     const results = await Promise.all([
       authed.from('email_queue').select('id').limit(1),
       authed.from('locations').select('id').limit(1),

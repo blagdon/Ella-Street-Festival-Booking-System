@@ -132,7 +132,7 @@ export async function updateBookingStatus(id, status, reason = null) {
     // Fetch booking details before updating if moving to HCC Checks
     let bookingDetails = null;
     if (status === 'HCC Checks') {
-        const { data: bData, error: bErr } = await sb.from(TBL_BOOKINGS).select('business_name, owner_name, registered_business_name').eq('id', id).single();
+        const { data: bData, error: bErr } = await sb.from(TBL_BOOKINGS).select('business_name, owner_name, registered_business_name, org_id').eq('id', id).single();
         if (bErr) throw bErr;
         bookingDetails = bData;
     }
@@ -154,7 +154,8 @@ export async function updateBookingStatus(id, status, reason = null) {
         if (!existingHcc) {
             const { error: hccErr } = await sb.from('hcc_checks').insert({
                 booking_id: id,
-                council_status: 'Pending'
+                council_status: 'Pending',
+                org_id: bookingDetails.org_id
             });
             if (hccErr) console.warn("Failed to insert into hcc_checks:", hccErr);
         }
@@ -212,15 +213,19 @@ export async function sendEmailViaZoho(recipient, subject, body, bcc = null) {
 
 /**
  * Sends an email directly, writes log to email_queue, and records audit trail.
- * 
- * @param {string} recipient 
- * @param {string} subject 
- * @param {string} body 
- * @param {string|null} bookingId 
- * @param {string|null} instancePrefix 
- * @param {string|null} bcc 
+ *
+ * @param {string} recipient
+ * @param {string} subject
+ * @param {string} body
+ * @param {string|null} bookingId
+ * @param {string|null} instancePrefix
+ * @param {string|null} bcc
+ * @param {string} [orgId] defaults to the caller's own current org — correct
+ *   for org-less sends (e.g. the HCC council notification), but a caller that
+ *   already has a specific booking in hand should pass that booking's own
+ *   org_id explicitly instead, same reasoning as loadStripeSettings().
  */
-export async function sendEmailDirect(recipient, subject, body, bookingId = null, instancePrefix = null, bcc = null) {
+export async function sendEmailDirect(recipient, subject, body, bookingId = null, instancePrefix = null, bcc = null, orgId = getCurrentOrgId()) {
     let status = 'Sent';
     let errorMessage = null;
 
@@ -241,7 +246,8 @@ export async function sendEmailDirect(recipient, subject, body, bookingId = null
         bcc: bcc || null,
         status: status,
         error_message: errorMessage,
-        instance_prefix: instancePrefix || localStorage.getItem('ESF_INSTANCE') || 'DEV'
+        instance_prefix: instancePrefix || localStorage.getItem('ESF_INSTANCE') || 'DEV',
+        org_id: orgId
     });
 
     if (insertErr) {
@@ -266,16 +272,16 @@ export async function sendEmail(id, subject, body) {
     validateBookingId(id);
     const sb = getSupabaseClient();
 
-    // Fetch email and instance prefix
+    // Fetch email, instance prefix, and org_id
     const { data: emailData, error: fetchErr } = await sb
         .from(TBL_BOOKINGS)
-        .select('email, instance_prefix')
+        .select('email, instance_prefix, org_id')
         .eq('id', id)
         .single();
 
     if (fetchErr || !emailData || !emailData.email) throw new Error("Could not find email address.");
 
-    return await sendEmailDirect(emailData.email, subject, body, id, emailData.instance_prefix);
+    return await sendEmailDirect(emailData.email, subject, body, id, emailData.instance_prefix, null, emailData.org_id);
 }
 
 /**
@@ -293,7 +299,7 @@ export async function sendBookingSms(id, body) {
 
     const { data: row, error: fetchErr } = await sb
         .from(TBL_BOOKINGS)
-        .select('phone')
+        .select('phone, org_id')
         .eq('id', id)
         .single();
 
@@ -301,7 +307,7 @@ export async function sendBookingSms(id, body) {
     if (!row.phone) throw new Error("This booking has no phone number.");
 
     const { data, error } = await sb.functions.invoke('send-sms', {
-        body: { recipient: row.phone, body }
+        body: { recipient: row.phone, body, orgId: row.org_id }
     });
 
     if (error) {

@@ -79,7 +79,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    const { recipient, body } = await req.json()
+    const { recipient, body, orgId } = await req.json()
 
     if (!recipient || typeof recipient !== 'string') {
       return new Response(JSON.stringify({ error: 'A recipient phone number is required.' }), {
@@ -121,6 +121,11 @@ Deno.serve(async (req) => {
 
     // Log the outcome to sms_queue regardless, so inline and bulk sends share
     // one audit trail. A failed log write shouldn't mask the send result.
+    // orgId is caller-supplied (js/api.js's sendBookingSms passes the target
+    // booking's own org_id) and optional, since this endpoint has no booking
+    // of its own to derive one from — omitted rather than null when absent,
+    // so the column's NOT NULL DEFAULT 'org_default' applies instead of a
+    // rejected explicit null.
     const { error: logErr } = await supabaseAdmin.from('sms_queue').insert({
       recipient: to,
       body,
@@ -128,6 +133,7 @@ Deno.serve(async (req) => {
       error_message: errorMessage,
       segments,
       provider_message_id: providerMessageId,
+      org_id: (typeof orgId === 'string' && orgId) ? orgId : undefined,
     })
     if (logErr) console.warn('Failed to log sms_queue row:', logErr.message)
 
