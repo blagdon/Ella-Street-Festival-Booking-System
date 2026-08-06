@@ -8,7 +8,7 @@
 > including applying additive migrations to production), which require specific
 > verification first, and the short list that needs an explicit instruction every
 > time. Default to acting.
-> Last updated: 2026-08-05.
+> Last updated: 2026-08-06.
 > Current release: **v7.21.0** ("Epic 3 Complete" — the formal closing tag for Epic 3, cut 2026-08-03.
 > `package.json` had drifted to 7.16.0 across v7.17.0–v7.20.2; this release catches it up.) Bundles
 > v7.20.0's provisioning engine, v7.20.1's multi-tenant Edge Function fixes, and v7.20.2's operational-
@@ -18,11 +18,138 @@
 > ran. A broken logo URL showed the browser's default broken-image icon instead of the intended clean
 > fallback. Fixed with `addEventListener('error', ...)`, matching every other listener in `js/nav.js`.
 > **Everything below through the RC Operational Certification entry is unreleased** — Epic 4 (all
-> phases), the Deno tooling change, both operational reviews, and all ten certification fixes have
-> merged to `main` and (where they touch the database or an Edge Function) deployed to production, but
-> no version bump/tag has been cut since v7.21.0. `CHANGELOG.md`'s `[Unreleased]` section currently
-> only covers Phase 4B/4B.1/4D — it needs the same catch-up this entry gives HANDOVER.md before the
-> next release is cut.
+> phases), the Deno tooling change, both operational reviews, all ten certification fixes, the shared
+> modal-trap refactor, the Round 2/3 certification fixes (PR #173), and the Launch Readiness Review's
+> five Must-Fix tenant-isolation fixes (PR #174) have all merged to `main` and (where they touch the
+> database or an Edge Function) deployed to production, but no version bump/tag has been cut since
+> v7.21.0. `CHANGELOG.md`'s `[Unreleased]` section currently only covers Phase 4B/4B.1/4D — it needs the
+> same catch-up this entry gives HANDOVER.md before the next release is cut.
+> **Launch Readiness Review — five Must-Fix tenant-isolation findings, merged 2026-08-06 as PR #174, all
+> deployed to production.** A third operational review, broader in scope than the two below: a
+> Principal-Engineer-style pass across Security/Reliability/Data Integrity/Multi-tenancy/Customer &
+> Trader Workflow/Maintainability/Documentation/DX/Performance, at the owner's explicit request treating
+> every Must-Fix finding as a **suspected regression in the Epic 1–4 multi-tenant rollout** — prove it's
+> real against the disposable test project with an authenticated end-to-end test first, then align the
+> fix with the `organisation_members` pattern already proven for organisations/settings, then add a
+> regression test that would have failed before and passes after. All five proved real before being
+> fixed. **Finding 1: `bookings`, `locations`, `events`, `booking_locations`, `email_templates`, and
+> `sms_templates` RLS all gated on `check_user_role('admin')` or a raw `user_roles` lookup, with no
+> correlation between a row's own `org_id` and the caller's actual organisation** — `check_user_role()`'s
+> documented fallback to the global `user_roles` table (kept for Phase 1 RPC backwards-compatibility)
+> meant any organisation's owner, who receives a global `user_roles` admin row during provisioning,
+> already satisfied these policies for every *other* organisation too — confirmed live, not inferred
+> from the policy text. Realigned all six tables with `is_platform_admin()` as the explicit bypass and a
+> new `has_org_role(org_id, roles[])` SECURITY DEFINER helper otherwise
+> (`20260805040000_tenant_scope_bookings_locations_events_templates.sql`). That helper exists because
+> the first version of this fix used an inline `EXISTS` against `organisation_members` directly, which
+> is itself gated by `organisation_members`'s own admin-only read policy — a steward's own subquery
+> silently saw nothing even for their own membership row. Caught by
+> `tests/privilege-hardening.test.mjs`'s pre-existing steward-read test failing against that first draft,
+> before it ever reached production — the exact value of "add a regression test and watch it fail
+> first" the owner's brief asked for, not a hypothetical. **Finding 2: the "Public view locations" policy
+> filtered only by `dataset='LIVE'`, so one unauthenticated request could enumerate every organisation's
+> live pitch layout at once.** Anon's direct `SELECT` grant on `locations` is now revoked entirely;
+> reads go through a new `rpc_get_public_locations(org_id, dataset)`, mirroring the one other place this
+> codebase already solved the identical shape of problem (`storage.objects` has no anon read policy
+> either — every download goes through a signed-URL function instead). **Finding 3: `loadStripeSettings()`
+> defaults its org argument to `'org_default'`, and the three call sites that actually know their
+> booking's real `org_id` — `create-checkout-session`, `get-payment-link`, `refund-payment` — all
+> omitted it,** so every organisation's checkout/payment-link/refund activity ran against
+> `org_default`'s Stripe credentials regardless of who the customer actually booked with. Fixed by
+> passing `booking.org_id` explicitly at each site. `stripe-webhook`'s own credential load is
+> deliberately left as-is, documented in place rather than "fixed": Stripe signature verification must
+> succeed before the payload can be parsed to learn which booking (and therefore which organisation) an
+> event is even about, so a single shared webhook endpoint structurally cannot select per-organisation
+> credentials — a real product limitation to track (it needs a distinct webhook URL per organisation
+> once a second org has its own live Stripe account), not a parameter that was merely missed. **Finding
+> 4: `queue-bulk-email`, `queue-bulk-sms`, `retry-queued-email`, and `retry-queued-sms` all checked only
+> the global `user_roles` table for their admin gate, with no `org_id` filter on the booking/queue-row
+> lookups underneath it.** A new `resolveCallerAdminScope()` helper
+> (`supabase/functions/_shared/tenant-auth.ts`, `organisation_members`-based) now scopes every lookup in
+> all four functions to organisations the caller actually administers, including the "distinguish
+> not-found from not-retryable" diagnostic reads, so a rejected retry can't be used to probe whether a
+> queue-row id belongs to another organisation. `js/message-templates.js`'s email/SMS template reads
+> also gained an `org_id` filter, made mandatory now that `email_templates`/`sms_templates` use a
+> composite `(org_id, id)` key. **The root cause, found while implementing the fix and more fundamental
+> than any of the five listed findings: `sync_organisation_members_from_user_roles()` granted
+> `org_default` admin membership to *every* organisation's owner as a side effect of provisioning simply
+> writing to `user_roles`, regardless of which organisation was actually being provisioned** — this is
+> what made Finding 1's "any org owner passes any other org's check" possible in the first place, and
+> separately made every org owner a de facto platform admin. Confirmed live: 5+ affected accounts in the
+> test project, one in production (the owner's own account, `org_default` membership removed by hand
+> after confirming it wasn't intentional). `20260805050000_stop_trigger_granting_org_default_membership.sql`
+> makes the trigger only ever UPDATE an *existing* `org_default` row, never INSERT a new one; the one
+> caller that relied on the old implicit grant (`js/page-manage-users.js`'s Add User flow) now writes it
+> explicitly. `is_platform_admin()` itself was redefined to check real `org_default` membership instead
+> of the same polluted global `user_roles` table, restoring what its name and original doc comment had
+> always claimed it meant. **All five verified live against the test project** via a new
+> `tests/tenant-isolation.test.mjs` (13 tests: real two-organisation cross-tenant reproduction confirmed
+> real before each fix, then confirmed closed after) and `tests/security.test.mjs` (updated for the
+> anon-locations mechanism change) — full suite (350+ tests) re-run clean. **Process note: GitGuardian's
+> secret scanner pattern-matches raw source text per commit, not the runtime value** — a test-fixture
+> password built from a template literal with fixed surrounding characters (`` `Tp-${...}!Aa1` ``) still
+> read as a hardcoded credential even though the value was generated per-run, and continued failing
+> across two fix attempts because the *original* commits containing the old literal stay in the PR's
+> scanned history forever, however the tip is later fixed. Confirmed via branch protection
+> (`required_status_checks`) that GitGuardian isn't actually a required merge check in this repo — left
+> red rather than rewriting history for a disposable test credential, once the real fix (passwords built
+> from concatenated `randomUUID()` calls with zero password-shaped string literal anywhere in source)
+> stopped the *new* commits from tripping it. Two full UUIDs (73 characters) also tripped an unrelated
+> 500 from GoTrue's admin create-user endpoint — its password limit is bcrypt's 72-byte ceiling, so it's
+> one full UUID plus an 8-character uppercased fragment instead.
+> **Round 2/3 Certification fixes — merged 2026-08-05 as PR #173, all deployed to production.** A repeat
+> of the RC Operational Certification methodology below (fresh organisation, live persona walkthroughs,
+> no SQL/manual DB intervention) run again after the RC fixes shipped, to check whether they actually
+> held under a real second pass rather than assuming a merged PR settles it. Found three new issues, all
+> in the Platform Administration hub, then re-verified fixed against a second fresh organisation (Round
+> 3) before closing out. **Organisation Settings could silently show, and let an admin overwrite, a
+> *different* organisation's identity** for any admin who wasn't personally a member of the org being
+> viewed via View As — PR #167's own RLS tightening (see the RC entry below) had removed the blanket
+> admin `SELECT` bypass this tab relied on without migrating it to the replacement RPC pattern that same
+> fix established elsewhere. Added `rpc_get_organisation(org_id)` as that explicit, labelled bypass, and
+> stopped substituting fabricated placeholder data (org name, slug, contact email, website) whenever a
+> fetch failed or was denied — the fabrication is what turned a read-side gap into a write-side risk:
+> saving the form re-submitted the fake values as if they were real. **Team & Members showed the
+> platform-wide staff roster with no organisation filter at all**, so the list never changed with View
+> As, and Change Role / Remove wrote the global `user_roles` table — revoking a member's access
+> everywhere, not just the organisation being viewed, the moment the list became actionable. Rescoped to
+> `organisation_members` (joined against `user_roles` for email) for both reads and writes. **New
+> organisations launched showing the literal seed placeholder "Festival Event"** on every screen driven
+> by `festival_display_name`, instead of the name entered in the setup wizard, until someone manually
+> fixed it in Branding. `rpc_initialise_tenant_defaults` now takes an optional `p_display_name` override
+> applied after the generic clone. That override caught a live regression before it shipped: the
+> migration was first drafted from `create_platform_defaults.sql`'s original `ON CONFLICT (id)` clauses
+> for `email_templates`/`sms_templates`, missing that `20260802200_composite_pk_templates.sql` (same
+> day, later) had already moved those tables to a composite `(org_id, id)` key and updated the function
+> to match — shipping the stale version would have broken every future provisioning run with a 42P10
+> error. Caught by exercising `provision-organisation` end-to-end against the test project, not by a
+> static read of "the" function definition; fixed by rebuilding from the later version. All three
+> verified live: `rpc_get_organisation` returns the real row while a direct select still correctly
+> returns nothing for a non-member (confirming PR #167's original fix stayed intact),
+> `organisation_members` scoping resolves the right owner by email, and `festival_display_name` matches
+> the provisioned event name. The one issue Round 2 surfaced that wasn't a code bug: a Gmail invite link
+> opened to `#error=access_denied&error_code=otp_expired` on first click — reproduced directly by
+> navigating the exact URL, and diagnosed as an integration risk (most likely Gmail's link-scanner
+> prefetching and consuming the one-time token before the real recipient clicks), not an application
+> defect, so deliberately left unfixed. Distinguishing findings this way — proven-real application
+> defects vs. externally-observed integration risk — was itself an explicit instruction for this round,
+> not a judgment call made unprompted.
+> **Shared modal trap+Escape refactor — merged 2026-08-05 as PR #172.** `kanban.js` and `summary.js` each
+> independently reimplemented the same `trapFocus()` + `registerModalClose()` combination under
+> different local names (`registerModalEsc` / `trapModalFocus`), each with its own per-id tracking map —
+> exactly why `summary.js`'s modals were missed when Escape-key handling was first added to every modal
+> in the app, the incident `CLAUDE.md`'s "sweep for every instance of a pattern" rule now cites by name.
+> Added `trapModal(id, closeFn)` / `releaseModal(id)` to `js/ui.js`, holding the per-id release state
+> internally so callers need no tracking map of their own; both files' `closeModal(id)` now call
+> `releaseModal(id)` directly. Along the way, `summary.js`'s `closeModal` — previously attached only to
+> `window.closeModal`, never a real module export, unlike `kanban.js`'s — became a proper export too.
+> **Swept for, and found, the same shape of duplication in five other files**
+> (`payments.js`, `locations.js`, `page-email-admin.js`, `page-sms-admin.js`, `page-steward.js`, each
+> with one bespoke named-variable-pair per modal rather than a per-id map) — deliberately left alone,
+> since consolidating them is a separate, larger scope than the kanban/summary duplication that actually
+> prompted this change. Verified live in both `kanban_m.html` and `summary.html`: focus trap and Escape
+> both work via the shared path, re-opening the same modal id stays idempotent;
+> `e2e/focus-trap.spec.mjs` and the full admin accessibility + integration suites pass.
 > **Release Candidate Operational Certification — merged 2026-08-04–05 as PRs #165–#170, all deployed
 > to production.** A second, more rigorous operational review than the one below: three personas
 > (festival organiser, trader, platform administrator) walked the live product end-to-end against a
