@@ -8,9 +8,42 @@ the incident-by-incident writeup most of these are drawn from) — it's the cond
 answer to "why is it built this way and not the more obvious way," kept short enough
 that someone will actually read it before changing the thing.
 
+**Numbering is permanent and append-only.** A decision keeps its number forever,
+even if it's later superseded — so it stays a stable thing to reference in a code
+review or a commit message ("see decision 4"). New decisions always get the next
+number in sequence; nothing already here is ever renumbered.
+
+**Status** is one of:
+- `Accepted` — current, in effect.
+- `Superseded by decision N` — no longer the active decision; kept in place (not
+  deleted) so the reasoning that led here stays readable, with a pointer to
+  whatever replaced it.
+
 Each entry: **Context** (the problem), **Decision** (what was actually done),
 **Alternatives considered** (what wasn't done, and why not), **Consequences** (what
-this costs or constrains going forward). Status is `Accepted` unless noted.
+this costs or constrains going forward).
+
+## Platform timeline
+
+```
+Pre-multi-tenant (through v6.x, earliest tagged history 2026-07-15)
+  Single organisation, single event, no tenant concept at all.
+        │
+        ▼
+Epic 3 — Multi-Tenant Foundation (started 2026-08-01, PR #130)
+  organisation_members, per-tenant settings, provisioning engine.
+  Closed as v7.21.0 "Epic 3 Complete" (2026-08-03).
+        │
+        ▼
+Epic 4 — Public Context, Event Settings, Tenant Isolation (2026-08-03 → 2026-08-06)
+  Public identity/event resolution, location management, event-level config
+  overrides, URL-based public booking routing — plus three rounds of live
+  operational certification that found and closed every remaining cross-tenant
+  gap the new multi-tenant surface had opened up.
+        │
+        ▼
+v7.22.0 "Epic 4 Complete" (2026-08-06) — Launch Ready
+```
 
 ## Index
 
@@ -31,6 +64,8 @@ this costs or constrains going forward). Status is `Accepted` unless noted.
 ---
 
 ## 1. `booking_prefix` stays a typed column on `events`, not an `event_settings` override
+
+> **Status:** Accepted · **Established:** Epic 4 Phase 4B · **Related:** [Decision 3](#3-event_settings-is-a-separate-table-from-settings-not-a-scope-column-on-it)
 
 **Context.** Epic 4 Phase 4B added `event_settings` specifically to let an organiser
 override certain org-level settings for just one event (display name, stall prices,
@@ -63,6 +98,8 @@ through some other event-scoped mechanism? If yes, routing it through
 
 ## 2. Public booking context is resolved server-side, never trusted from the client
 
+> **Status:** Accepted · **Established:** Epic 4 Phase 4D · **Related:** [Decision 10](#10-the-stripe-webhook-keeps-using-org_defaults-credentials-deliberately-for-now)
+
 **Context.** Phase 4D added `?org=&event=` slugs to the public booking forms so a
 link could resolve to a specific organisation's specific event. The obvious
 implementation has the client resolve the slugs, then send `org_id`/`event_id`
@@ -87,11 +124,17 @@ closes the hole entirely.
 write (`submit-booking`, and by the same reasoning `cancel-booking`,
 `get-payment-link`) must resolve tenant identity itself from a slug, token, or
 session — never from a plain client-supplied id field. This is now the standing
-pattern for any new public endpoint, not a one-off for booking submission.
+pattern for any new public endpoint, not a one-off for booking submission. It's the
+same "don't trust identity claims you haven't verified yourself" instinct behind
+decision 10, applied on the other side of the trust boundary: there, the constraint
+is that the org *can't* be known before verification; here, the constraint is that a
+client-asserted org must never be trusted even though it easily *could* be read.
 
 ---
 
 ## 3. `event_settings` is a separate table from `settings`, not a scope column on it
+
+> **Status:** Accepted · **Established:** Epic 4 Phase 4B · **Related:** [Decision 1](#1-booking_prefix-stays-a-typed-column-on-events-not-an-event_settings-override)
 
 **Context.** The platform already had a two-level settings inheritance chain
 (Platform Defaults → Organisation Settings, both living in the one `settings` table,
@@ -126,6 +169,8 @@ before assuming the copy is complete.
 ---
 
 ## 4. `has_org_role()` replaced the global-fallback role check for tenant-scoped tables
+
+> **Status:** Accepted · **Established:** Launch Readiness Review, PR #174 (v7.22.0) · **Related:** [Decision 6](#6-is_platform_admin-is-a-distinct-concept-from-admin-of-some-organisation), [Decision 7](#7-tenant-scoping-helpers-are-security-definer-not-inline-exists-subqueries), [Decision 8](#8-the-provisioning-trigger-only-ever-updates-an-existing-org_default-row-never-creates-one)
 
 **Context.** `check_user_role(required_role)` was the platform's original
 authorization primitive: check `organisation_members` for the caller's *current*
@@ -165,11 +210,13 @@ admin policy should use `has_org_role()` from the start, not `check_user_role()`
 copying an existing policy that predates this fix (there's a decent chance one still
 does, somewhere) will silently reintroduce the exact bug this decision closed.
 `performers`/`schedules`/`user_roles` itself are the deliberate exceptions: genuinely
-single-tenant/legacy, not tables that were merely missed.
+single-tenant/legacy, not tables that were merely missed (see decision 9).
 
 ---
 
 ## 5. Public locations are read through an RPC, never a direct anon table grant
+
+> **Status:** Accepted · **Established:** Launch Readiness Review, PR #174 (v7.22.0) · **Related:** [Decision 11](#11-documents-are-served-through-a-signed-url-function-never-a-direct-storage-read-policy)
 
 **Context.** The public map needs to show one organisation's live pitch layout to
 anonymous visitors. The original policy, `"Public view locations" FOR SELECT USING
@@ -193,13 +240,16 @@ request." An RPC parameter is the only mechanism that actually receives that val
 
 **Consequences.** This is now the standing pattern for *any* future anon-readable,
 tenant-scoped data: no direct table grant, a parameterized RPC instead — mirroring
-the precedent `storage.objects` already set (see decision 11). A bare anon `SELECT`
-grant on a table with an `org_id` column should be treated as a default-deny
-violation on sight, not something that needs its own investigation each time.
+the precedent `storage.objects` already set (decision 11, established earlier). A
+bare anon `SELECT` grant on a table with an `org_id` column should be treated as a
+default-deny violation on sight, not something that needs its own investigation each
+time.
 
 ---
 
 ## 6. `is_platform_admin()` is a distinct concept from "admin of some organisation"
+
+> **Status:** Accepted · **Established:** RC Operational Certification, PR #167 — refined in PR #174 (see decision 8) · **Related:** [Decision 4](#4-has_org_role-replaced-the-global-fallback-role-check-for-tenant-scoped-tables), [Decision 8](#8-the-provisioning-trigger-only-ever-updates-an-existing-org_default-row-never-creates-one)
 
 **Context.** The platform-admin "View As" workflow needs one genuine bypass: a real
 platform administrator (not just any organisation's own admin) can browse and act on
@@ -221,19 +271,26 @@ implicit check.
 itself. Rejected: this was the actual root cause of two separate incidents (the
 `organisations` table's write policy letting any single-org admin rename or delete
 *any* organisation; the org-default-granting trigger silently making every
-organisation *owner* a platform admin). An explicit, separately-named function makes
-the distinction something a reviewer can see in the policy text itself, rather than
-something they have to already know to go verify inside `check_user_role()`'s body.
+organisation *owner* a platform admin — decision 8). An explicit, separately-named
+function makes the distinction something a reviewer can see in the policy text
+itself, rather than something they have to already know to go verify inside
+`check_user_role()`'s body.
 
 **Consequences.** The platform-admin "View As ALL ORGS" browse capability goes
 through an explicit, labelled path (`rpc_list_switchable_organisations()`,
 UI-flagged with a "🛡️ ALL ORGS" badge) rather than living as an implicit RLS side
 effect anywhere else. Any new "platform admin can see/do everything" requirement
 should reuse `is_platform_admin()` by name, not re-derive an equivalent check.
+Its own body was later corrected, not superseded, by decision 8's fix — it always
+checked "real `org_default` membership," but the *data* behind that membership was
+wrong until the provisioning trigger stopped over-granting it. The decision to have
+a distinct function was right from the start; what it read got fixed underneath it.
 
 ---
 
 ## 7. Tenant-scoping helpers are `SECURITY DEFINER`, not inline `EXISTS` subqueries
+
+> **Status:** Accepted · **Established:** Launch Readiness Review, PR #174 (v7.22.0) · **Related:** [Decision 4](#4-has_org_role-replaced-the-global-fallback-role-check-for-tenant-scoped-tables), [Decision 12](#12-deploys-are-test-project-first-always-with-no-exception-for-its-just-additive)
 
 **Context.** The first draft of the `has_org_role()` fix (decision 4) used an inline
 `EXISTS (SELECT 1 FROM organisation_members WHERE ...)` directly inside each RLS
@@ -264,12 +321,14 @@ restrictive RLS must be `SECURITY DEFINER`, or it will silently under-authorize
 exactly the users it's meant to check — and this failure mode is easy to miss by
 reading the SQL, since the query looks correct; it only shows up as a live 403/empty
 result for a real non-admin session. This is why the project's standing convention
-is to prove authorization changes with a live authenticated-session test, not a
-read of the policy text.
+(decision 12) is to prove authorization changes with a live authenticated-session
+test, not a read of the policy text.
 
 ---
 
 ## 8. The provisioning trigger only ever updates an existing `org_default` row, never creates one
+
+> **Status:** Accepted · **Established:** Launch Readiness Review, PR #174 (v7.22.0) · **Related:** [Decision 4](#4-has_org_role-replaced-the-global-fallback-role-check-for-tenant-scoped-tables), [Decision 6](#6-is_platform_admin-is-a-distinct-concept-from-admin-of-some-organisation)
 
 **Context.** `sync_organisation_members_from_user_roles()` originally kept
 `organisation_members` in sync with writes to the legacy `user_roles` table —
@@ -298,11 +357,14 @@ implicit grant entirely is the fix that can't regress the same way twice.
 now grant `org_default` membership explicitly, on purpose. This was the actual root
 cause underneath several of the findings in decision 4's list — not a separate bug,
 but the mechanism that made "any organisation owner already qualifies as a platform
-admin" true in the first place.
+admin" true in the first place, and the reason decision 6's `is_platform_admin()`
+was reading bad data even though its own logic was always correct.
 
 ---
 
 ## 9. `user_roles` stays as a legacy global table instead of being removed
+
+> **Status:** Accepted · **Established:** Epic 3 (`20260801003_create_organisation_members.sql`) · **Related:** [Decision 4](#4-has_org_role-replaced-the-global-fallback-role-check-for-tenant-scoped-tables)
 
 **Context.** `user_roles` predates the multi-tenant `organisation_members` model
 entirely — it's a flat, org-less "this user has this one global role" table. It
@@ -337,6 +399,8 @@ policy being global is correct, not a gap.
 
 ## 10. The Stripe webhook keeps using `org_default`'s credentials, deliberately, for now
 
+> **Status:** Accepted · **Established:** Launch Readiness Review, PR #174 (v7.22.0) · **Related:** [Decision 2](#2-public-booking-context-is-resolved-server-side-never-trusted-from-the-client)
+
 **Context.** Every organisation's Stripe checkout, payment-link, and refund
 activity was found to run against `org_default`'s Stripe credentials regardless of
 which organisation the customer actually booked with — `loadStripeSettings()`'s
@@ -369,6 +433,8 @@ this shared endpoint.
 
 ## 11. Documents are served through a signed-URL function, never a direct storage read policy
 
+> **Status:** Accepted · **Established:** predates Epic 3 (exact version not tracked) · **Related:** [Decision 5](#5-public-locations-are-read-through-an-rpc-never-a-direct-anon-table-grant)
+
 **Context.** Uploaded booking documents (insurance certificates, etc.) need to be
 downloadable by the admins who are supposed to see them, without becoming broadly
 readable.
@@ -396,6 +462,8 @@ policy on `storage.objects`.
 ---
 
 ## 12. Deploys are test-project-first, always, with no exception for "it's just additive"
+
+> **Status:** Accepted · **Established:** standing convention, `HANDOVER.md` §7 · **Related:** [Decision 7](#7-tenant-scoping-helpers-are-security-definer-not-inline-exists-subqueries), [Decision 8](#8-the-provisioning-trigger-only-ever-updates-an-existing-org_default-row-never-creates-one)
 
 **Context.** This project maintains two live Supabase projects: a disposable test
 project and production. Multiple incidents in this project's history trace back to
@@ -431,6 +499,8 @@ generating it from the test project would defeat that purpose silently.
 ---
 
 ## 13. TypeScript checking is per-file opt-in, not a repo-wide `checkJs: true`
+
+> **Status:** Accepted · **Established:** predates Epic 3 (exact version not tracked); full `js/` coverage reached 2026-07-31
 
 **Context.** Most of `js/` is untyped JavaScript. Adding real type-checking value
 without a slow, all-or-nothing migration meant deciding how strictly to turn it on.
