@@ -9,21 +9,20 @@
 > verification first, and the short list that needs an explicit instruction every
 > time. Default to acting.
 > Last updated: 2026-08-06.
-> Current release: **v7.21.0** ("Epic 3 Complete" — the formal closing tag for Epic 3, cut 2026-08-03.
-> `package.json` had drifted to 7.16.0 across v7.17.0–v7.20.2; this release catches it up.) Bundles
-> v7.20.0's provisioning engine, v7.20.1's multi-tenant Edge Function fixes, and v7.20.2's operational-
-> readiness hardening (below), plus one more fix found while cutting this release itself: the logo's
-> `onerror="this.remove()"` (added in v7.20.2) is an inline event handler, and this app's CSP has no
-> `'unsafe-inline'` for `script-src` — see the "No inline event handlers" gotcha — so it silently never
-> ran. A broken logo URL showed the browser's default broken-image icon instead of the intended clean
-> fallback. Fixed with `addEventListener('error', ...)`, matching every other listener in `js/nav.js`.
-> **Everything below through the RC Operational Certification entry is unreleased** — Epic 4 (all
-> phases), the Deno tooling change, both operational reviews, all ten certification fixes, the shared
-> modal-trap refactor, the Round 2/3 certification fixes (PR #173), and the Launch Readiness Review's
-> five Must-Fix tenant-isolation fixes (PR #174) have all merged to `main` and (where they touch the
-> database or an Edge Function) deployed to production, but no version bump/tag has been cut since
-> v7.21.0. `CHANGELOG.md`'s `[Unreleased]` section currently only covers Phase 4B/4B.1/4D — it needs the
-> same catch-up this entry gives HANDOVER.md before the next release is cut.
+> Current release: **v7.22.0** ("Epic 4 Complete" — closes out Epic 4 (Phases 4A–4D) together with three
+> rounds of live operational certification against the Epic 1–4 multi-tenant rollout and everything they
+> found: the RC Operational Certification (ten findings, PRs #165–170), the shared modal-trap refactor
+> (#172), the Round 2/3 certification fixes (#173), the Launch Readiness Review's five Must-Fix
+> tenant-isolation findings plus their root cause (#174), and the two sweep passes that followed —
+> payments/audit_logs/hcc_checks/email_queue/sms_queue plus the org_id write-path bug (#176), and
+> organisation_members/event_settings, including a live-proven cross-organisation privilege-escalation
+> gap (#177). See `CHANGELOG.md`'s `[7.22.0]` entry for the full breakdown; this file's own narrative
+> below (RC Operational Certification onward) has the detailed incident-by-incident writeup.
+> `package.json` had drifted to 7.16.0 across v7.17.0–v7.20.2, caught up by v7.21.0 ("Epic 3 Complete",
+> cut 2026-08-03, bundling v7.20.0's provisioning engine, v7.20.1's multi-tenant Edge Function fixes, and
+> v7.20.2's operational-readiness hardening, plus a CSP-blocked inline logo-error-handler fix found while
+> cutting that release itself — see the "No inline event handlers" gotcha for why `onerror="..."` never
+> ran there).
 > **Launch Readiness Review — five Must-Fix tenant-isolation findings, merged 2026-08-06 as PR #174, all
 > deployed to production.** A third operational review, broader in scope than the two below: a
 > Principal-Engineer-style pass across Security/Reliability/Data Integrity/Multi-tenancy/Customer &
