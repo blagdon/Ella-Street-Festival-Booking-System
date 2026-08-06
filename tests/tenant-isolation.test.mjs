@@ -29,7 +29,10 @@ const RUN_ID = Date.now();
 const ORG_A = `tenant-iso-a-${RUN_ID}`;
 const ORG_B = `tenant-iso-b-${RUN_ID}`;
 const OWNER_A_EMAIL = `tenant-iso-owner-a-${RUN_ID}@example.test`;
-const OWNER_A_PASSWORD = 'Test-Password-1785900000!';
+// Generated at runtime, not a literal - this is a throwaway disposable-test-
+// project fixture account deleted in after(), but a hardcoded-looking
+// password string still reads as a leaked credential to secret scanners.
+const OWNER_A_PASSWORD = `Tp-${RUN_ID}-${Math.random().toString(36).slice(2)}!Aa1`;
 const SYNC_PROBE_EMAIL = `tenant-iso-sync-probe-${RUN_ID}@example.test`;
 
 const platformAdmin = createClient(url, anonKey);
@@ -183,8 +186,11 @@ describe('public locations read goes through rpc_get_public_locations, not a dir
 
 describe('the user_roles → organisation_members sync trigger no longer grants org_default membership (20260805050000)', () => {
   test('a brand-new user_roles admin row does not create an org_default organisation_members row', async () => {
+    // Never signed in as, so the password's value genuinely doesn't matter -
+    // still generated at runtime rather than a literal, same reasoning as
+    // OWNER_A_PASSWORD above.
     const { data: created, error: createErr } = await service.auth.admin.createUser({
-      email: SYNC_PROBE_EMAIL, password: 'irrelevant-not-signed-in-1785900000!', email_confirm: true,
+      email: SYNC_PROBE_EMAIL, password: `Tp-${Date.now()}-${Math.random().toString(36).slice(2)}!Aa1`, email_confirm: true,
     });
     assert.equal(createErr, null, createErr?.message);
     syncProbeUserId = created.user.id;
