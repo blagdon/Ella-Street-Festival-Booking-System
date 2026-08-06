@@ -103,11 +103,12 @@ Deno.serve(async (req) => {
         const { data: settingsRows } = await supabaseClient
           .from('settings')
           .select('value')
+          .eq('org_id', booking.org_id)
           .eq('key', 'base_url')
           .single()
         const baseUrl = settingsRows?.value || 'https://app.ellastreet.co.uk'
 
-        const stripeSettings = await loadStripeSettings(supabaseClient)
+        const stripeSettings = await loadStripeSettings(supabaseClient, booking.org_id)
         const mode = resolveStripeMode(booking.instance_prefix, stripeSettings.testModeSetting)
         const stripe = getStripeClient(mode, stripeSettings)
 

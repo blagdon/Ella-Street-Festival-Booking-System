@@ -1,7 +1,7 @@
 // @ts-check
 import { getSupabaseClient } from './supabase.js';
 import { escapeHtml } from './utils.js';
-import { getStallCost, CONFIG } from './config.js';
+import { getStallCost, CONFIG, getCurrentOrgId } from './config.js';
 
 /**
  * Fetches an email template from the database and replaces placeholders.
@@ -10,8 +10,14 @@ import { getStallCost, CONFIG } from './config.js';
 export async function getEmailFromTemplate(templateId, booking, id, extraVars = {}) {
     const sb = getSupabaseClient();
 
+    // org_id is required now that email_templates uses a composite
+    // (org_id, id) key (20260802200_composite_pk_templates.sql) - without
+    // it, .single() throws (or worse, silently resolves a different
+    // organisation's template) the moment more than one organisation's
+    // templates exist.
     const { data, error } = await sb.from('email_templates')
         .select('subject, body_html')
+        .eq('org_id', getCurrentOrgId())
         .eq('id', templateId)
         .single();
 
@@ -104,8 +110,10 @@ const MAX_SMS_REASON_LEN = 40;
 export async function getSmsFromTemplate(templateId, booking, id, extraVars = {}) {
     const sb = getSupabaseClient();
 
+    // Same composite-key reasoning as getEmailFromTemplate above.
     const { data, error } = await sb.from('sms_templates')
         .select('body')
+        .eq('org_id', getCurrentOrgId())
         .eq('id', templateId)
         .single();
 

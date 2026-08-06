@@ -153,7 +153,7 @@ Deno.serve(async (req) => {
       })
     }
 
-    const settings = await loadStripeSettings(supabaseAdmin)
+    const settings = await loadStripeSettings(supabaseAdmin, booking.org_id)
     const mode = resolveStripeMode(booking.instance_prefix, settings.testModeSetting)
     const stripe = getStripeClient(mode, settings)
 

@@ -156,6 +156,24 @@ async function createUser() {
 
         if (roleErr) throw roleErr;
 
+        // 2b. This page only ever manages org_default's platform-wide staff
+        // (see the Team & Members tab in the newer Platform Administration
+        // hub for per-organisation membership instead) - it must write that
+        // membership explicitly now, matching every other member-creation
+        // path in this codebase (provision-organisation,
+        // invite-organisation-member). The user_roles trigger that used to
+        // do this implicitly was removed: it fired on every user_roles
+        // write regardless of source, which is what silently granted every
+        // newly-provisioned organisation's owner admin rights on org_default
+        // too (Launch Readiness Review finding).
+        const { error: memberErr } = await adminSb.from('organisation_members').upsert({
+            org_id: 'org_default',
+            user_id: newUserId,
+            role: role
+        }, { onConflict: 'org_id,user_id' });
+
+        if (memberErr) throw memberErr;
+
         // 3. Success
         showToast(`✓ Account created for ${email} as ${role}. They will receive a verification email.`, 'success');
         (/** @type {HTMLInputElement} */ (document.getElementById('newEmail'))).value = '';

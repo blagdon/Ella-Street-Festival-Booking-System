@@ -234,6 +234,24 @@ Deno.serve(async (req) => {
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
   )
 
+  // Deliberately org_default only, not per-organisation like the other three
+  // Stripe call sites (create-checkout-session, get-payment-link,
+  // refund-payment - see the Launch Readiness Review's Finding 3 fix). Those
+  // three all know their booking's org_id before loading settings; this
+  // endpoint structurally cannot: Stripe signature verification must
+  // succeed BEFORE the payload can be parsed to learn which booking (and
+  // therefore which organisation) an event is even about, and Stripe posts
+  // every event to the one webhook URL registered for this deployment.
+  // Supporting a genuinely separate Stripe account per organisation would
+  // need a distinct webhook endpoint per org (its own URL, its own
+  // registered secret) - an architecture change, not a parameter fix, and
+  // out of scope here. Today every organisation shares one Stripe merchant
+  // account, so this is a real product limitation to track before offering
+  // a customer their own Stripe account, not a tenant-isolation leak: once
+  // verified, everything downstream (the booking lookup, the RPCs, the
+  // confirmation email/SMS) already correctly resolves off the booking's
+  // own org_id, per HANDOVER.md's "every consumer of a booking's own
+  // organisation reads these columns off the row" convention.
   let stripeSettings
   try {
     stripeSettings = await loadStripeSettings(supabaseAdmin)

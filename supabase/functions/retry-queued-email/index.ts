@@ -2,6 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { sendViaZoho } from '../_shared/zoho.ts'
 import { ALLOWED_ORIGIN } from '../_shared/cors.ts'
 import { captureAndFlush } from '../_shared/sentry.ts'
+import { resolveCallerAdminScope } from '../_shared/tenant-auth.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
@@ -54,13 +55,9 @@ Deno.serve(async (req) => {
       })
     }
 
-    const { data: roleData, error: roleError } = await supabaseAdmin
-      .from('user_roles')
-      .select('role')
-      .eq('id', user.id)
-      .single()
-
-    if (roleError || !roleData || roleData.role !== 'admin') {
+    // organisation_members-based - see queue-bulk-email's identical comment.
+    const callerScope = await resolveCallerAdminScope(supabaseAdmin, user.id)
+    if (!callerScope.isPlatformAdmin && callerScope.orgIds.length === 0) {
       return new Response(JSON.stringify({ error: 'Forbidden: Admin role required' }), {
         status: 403,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -100,12 +97,22 @@ Deno.serve(async (req) => {
     // 15-minute self-heal will hand it to the next bulk drain rather than
     // stranding it.
     const nowIso = new Date().toISOString()
-    const { data: claimedRows, error: claimErr } = await supabaseAdmin
+    let claimQuery = supabaseAdmin
       .from('email_queue')
       .update({ status: 'Processing', claimed_at: nowIso })
       .eq('id', id)
       .eq('status', 'Error')
-      .select()
+
+    // A non-platform-admin can only retry a row belonging to an
+    // organisation they actually administer - folded into the same claim
+    // condition so a row in another organisation just matches zero rows,
+    // the same "not retryable" response an already-Sent row gets, rather
+    // than a separate code path that would confirm the row's existence.
+    if (!callerScope.isPlatformAdmin) {
+      claimQuery = claimQuery.in('org_id', callerScope.orgIds)
+    }
+
+    const { data: claimedRows, error: claimErr } = await claimQuery.select()
 
     if (claimErr) {
       throw new Error('Failed to claim the queue row for retry: ' + claimErr.message)
@@ -113,12 +120,14 @@ Deno.serve(async (req) => {
 
     if (!claimedRows || claimedRows.length === 0) {
       // Distinguish "doesn't exist" from "not in a retryable state" so the
-      // admin gets a message that explains itself.
-      const { data: existing } = await supabaseAdmin
-        .from('email_queue')
-        .select('status')
-        .eq('id', id)
-        .maybeSingle()
+      // admin gets a message that explains itself - scoped the same way the
+      // claim above is, so this diagnostic read can't reveal whether an id
+      // outside the caller's own organisation(s) exists at all.
+      let existingQuery = supabaseAdmin.from('email_queue').select('status').eq('id', id)
+      if (!callerScope.isPlatformAdmin) {
+        existingQuery = existingQuery.in('org_id', callerScope.orgIds)
+      }
+      const { data: existing } = await existingQuery.maybeSingle()
 
       if (!existing) {
         return new Response(JSON.stringify({ error: 'Email queue entry not found.' }), {
