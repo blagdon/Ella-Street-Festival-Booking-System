@@ -30,12 +30,29 @@ Pre-multi-tenant (through v6.x, earliest tagged history 2026-07-15)
   Single organisation, single event, no tenant concept at all.
         │
         ▼
-Epic 3 — Multi-Tenant Foundation (started 2026-08-01, PR #130)
-  organisation_members, per-tenant settings, provisioning engine.
-  Closed as v7.21.0 "Epic 3 Complete" (2026-08-03).
+Multi-Tenant Foundation (2026-08-01, 09:59, PR #130 "Phase 1 & 2")
+  organisation_members, per-tenant settings — the data-model foundation
+  everything below is built on. Not itself epic-numbered; "Epic 1" starts
+  33 minutes later, on top of this.
         │
         ▼
-Epic 4 — Public Context, Event Settings, Tenant Isolation (2026-08-03 → 2026-08-06)
+Epic 1 — Platform Context Foundation (2026-08-01, 10:32 → same day)
+  1A Platform Context Foundation · 1B Business Services Evolution ·
+  1C UI & Navigation Context Exposure (v7.18.0)
+        │
+        ▼
+Epic 2 — Platform Administration (2026-08-01, same day, → 14:31)
+  2A Platform Administration Workspace & UI Library ·
+  2B Settings Hub, Branding & Member Management ·
+  2C Event Service, Navigation Event Selector & Platform Dashboard (v7.19.0)
+        │
+        ▼
+Epic 3 — Provisioning (2026-08-02 → 2026-08-03)
+  Platform provisioning engine, setup wizard, platform defaults, event
+  lifecycle. Closed as v7.21.0 "Epic 3 Complete" (2026-08-03).
+        │
+        ▼
+Epic 4 — Public Context, Event Settings, Tenant Isolation (2026-08-04 → 2026-08-06)
   Public identity/event resolution, location management, event-level config
   overrides, URL-based public booking routing — plus three rounds of live
   operational certification that found and closed every remaining cross-tenant
@@ -44,6 +61,12 @@ Epic 4 — Public Context, Event Settings, Tenant Isolation (2026-08-03 → 2026
         ▼
 v7.22.0 "Epic 4 Complete" (2026-08-06) — Launch Ready
 ```
+
+Epic 1 and Epic 2 land the *same day* as the multi-tenant foundation, several
+hours *after* it, not as separate prior work — the "Epic 3" naming refers
+specifically to the provisioning engine, not to multi-tenancy itself, which is
+why it isn't decision 4/6/7/8/9's "Established" epic even though those
+decisions are all about tenant isolation.
 
 ## Index
 
@@ -60,6 +83,8 @@ v7.22.0 "Epic 4 Complete" (2026-08-06) — Launch Ready
 11. [Documents are served through a signed-URL function, never a direct storage read policy](#11-documents-are-served-through-a-signed-url-function-never-a-direct-storage-read-policy)
 12. [Deploys are test-project-first, always, with no exception for "it's just additive"](#12-deploys-are-test-project-first-always-with-no-exception-for-its-just-additive)
 13. [TypeScript checking is per-file opt-in, not a repo-wide `checkJs: true`](#13-typescript-checking-is-per-file-opt-in-not-a-repo-wide-checkjs-true)
+14. [`email_templates`/`sms_templates` use a composite `(org_id, id)` primary key](#14-email_templatessms_templates-use-a-composite-org_id-id-primary-key)
+15. [`locations` keeps its composite `(id, dataset)` primary key with no `org_id`](#15-locations-keeps-its-composite-id-dataset-primary-key-with-no-org_id)
 
 ---
 
@@ -364,7 +389,7 @@ was reading bad data even though its own logic was always correct.
 
 ## 9. `user_roles` stays as a legacy global table instead of being removed
 
-> **Status:** Accepted · **Established:** Epic 3 (`20260801003_create_organisation_members.sql`) · **Related:** [Decision 4](#4-has_org_role-replaced-the-global-fallback-role-check-for-tenant-scoped-tables)
+> **Status:** Accepted · **Established:** Multi-Tenant Foundation, PR #130 (`20260801003_create_organisation_members.sql`) · **Related:** [Decision 4](#4-has_org_role-replaced-the-global-fallback-role-check-for-tenant-scoped-tables), [Decision 8](#8-the-provisioning-trigger-only-ever-updates-an-existing-org_default-row-never-creates-one)
 
 **Context.** `user_roles` predates the multi-tenant `organisation_members` model
 entirely — it's a flat, org-less "this user has this one global role" table. It
@@ -527,3 +552,81 @@ current coverage), and `typecheck` is now a required CI check on that basis — 
 the per-file mechanism stays even at full coverage, since it's also what lets a
 newly added file start unchecked without breaking the invariant that every *checked*
 file is checked on purpose.
+
+---
+
+## 14. `email_templates`/`sms_templates` use a composite `(org_id, id)` primary key
+
+> **Status:** Accepted · **Established:** Epic 3, `20260802200_composite_pk_templates.sql` (2026-08-02) · **Related:** [Decision 4](#4-has_org_role-replaced-the-global-fallback-role-check-for-tenant-scoped-tables)
+
+**Context.** Template ids (`application_received`, `booking_confirmed`, etc.) were
+originally globally unique — one `application_received` row, full stop. Once each
+organisation needed to be able to customise its own copy of the same named
+template, `id` alone could no longer identify a row.
+
+**Decision.** Both tables' primary key was changed from `(id)` to `(org_id, id)`,
+following the identical precedent `settings` had already set the day before
+(`20260801005_settings_composite_pk.sql`, evolving `(key)` to `(org_id, key)` for
+the same reason — per-organisation Stripe keys, stall costs, etc., without name
+collision). `rpc_initialise_tenant_defaults()`'s template-cloning `INSERT`s were
+updated to `ON CONFLICT (org_id, id)` to match.
+
+**Alternatives considered.** A surrogate UUID primary key with `id` demoted to an
+ordinary (now non-unique) column, `org_id` carried as a plain filter column instead
+of part of the key. Not the path taken — `settings` had already established the
+composite-natural-key shape as the working pattern for exactly this "same logical
+key, once per organisation" problem the day before, and templates are structurally
+identical to it (a small, named, per-organisation-overridable set of rows). Reusing
+the proven shape kept the fix mechanical rather than open-ended.
+
+**Consequences.** Every query against these two tables must include `org_id`, or it
+either throws (`.single()` against multiple matching ids across organisations) or —
+worse — silently resolves a different organisation's template content. This has
+already caused one real regression: an early draft of a provisioning-fix migration
+was built from the *pre*-composite-key version of `rpc_initialise_tenant_defaults()`
+and would have reintroduced bare `ON CONFLICT (id)`, breaking every future
+provisioning run with a `42P10` error — caught by exercising provisioning end-to-end
+against the test project, not by reading the migration. Any new code that reads or
+writes `email_templates`/`sms_templates` by `id` alone, without `org_id`, is either a
+platform-default/legacy-single-tenant path (verify that's actually true) or a bug.
+
+---
+
+## 15. `locations` keeps its composite `(id, dataset)` primary key with no `org_id`
+
+> **Status:** Accepted · **Established:** Epic 4 Phase 4C · **Related:** [Decision 4](#4-has_org_role-replaced-the-global-fallback-role-check-for-tenant-scoped-tables), [Decision 14](#14-email_templatessms_templates-use-a-composite-org_id-id-primary-key)
+
+**Context.** Phase 4C built a full admin module for managing physical pitch
+locations (Add/Edit/Delete/Duplicate/Import-CSV/Export-CSV/Clone/bulk-delete).
+`locations`' primary key predates the multi-tenant model entirely — `(id, dataset)`,
+no `org_id` in the key at all. Two organisations independently choosing the same
+generic pitch code (`P1`, confirmed live by cloning `org_default`'s own seed data
+into a second organisation) collide directly at the database level rather than
+being scoped apart the way `email_templates`/`sms_templates` now are (decision 14).
+
+**Decision.** The primary key was *not* changed to include `org_id`. Instead,
+collision handling was pushed to the application layer, split by how the id is
+chosen: Add/Edit (an admin hand-picks the code) surface a collision as a plain
+"that code's taken" message — the same treatment already used for org/event slug
+collisions — while Duplicate/Import-CSV/Clone (which bulk-populate ids the admin
+never hand-chose one at a time) proactively check dataset-wide via a shared
+`resolveAvailableId()` helper and auto-suffix (`-2`, `-3`, ...) instead of erroring.
+
+**Alternatives considered.** Migrating the primary key to `(org_id, id, dataset)`,
+matching decision 14's shape exactly. Not taken for this pass — `locations` has
+more existing dependents than the two template tables did (booking assignment,
+CSV import/export, the public map RPC), making a key migration a larger, riskier
+change than the admin module Phase 4C actually needed to ship. The chosen fix
+closes the *practical* problem (two organisations' admins stepping on each other's
+pitch codes) without altering the schema every existing query already relies on.
+
+**Consequences.** This is a deliberate, working-as-intended limitation, not an
+oversight — but it means `locations` is genuinely different from every other
+tenant-scoped table in this document: its uniqueness constraint is *not*
+organisation-aware, and every current and future write path that generates or
+accepts a location `id` must know to check availability *within the dataset*
+(not the organisation) and handle the collision itself, rather than trusting the
+database to reject a cross-organisation clash the way it would on
+`email_templates`/`sms_templates`. If `locations` ever gains enough further
+dependents to make a key migration worthwhile on its own terms, decision 14's
+`(org_id, id)` shape is the precedent to follow, not a new design.
