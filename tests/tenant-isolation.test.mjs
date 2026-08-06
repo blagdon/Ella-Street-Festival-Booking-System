@@ -356,3 +356,54 @@ describe('finalize_stripe_payment tags the payment with the booking\'s real org_
     assert.equal(row.org_id, ORG_B, 'expected the payment to be tagged with the booking\'s real org, not silently defaulted to org_default');
   });
 });
+
+describe('organisation_members and event_settings RLS is org-scoped (20260806010000)', () => {
+  // A second full sweep pass, re-running the Launch Readiness Review after
+  // 20260806000000 to confirm it was actually exhaustive: querying every
+  // remaining policy referencing check_user_role() or a raw user_roles
+  // EXISTS check (not just org_id-bearing tables) found these two — the
+  // access-control table itself (organisation_members) and event_settings
+  // (no org_id column, correlated via its parent event instead, same as
+  // booking_locations).
+  const memberBId = randomUUID();
+
+  before(async () => {
+    await service.from('organisation_members').insert({ org_id: ORG_B, user_id: memberBId, role: 'steward' });
+    await service.from('event_settings').insert({ event_id: EVENT_B, key: 'sweep_test_key', value: 'sweep_test_value' });
+  });
+
+  after(async () => {
+    await service.from('organisation_members').delete().eq('org_id', ORG_B).eq('user_id', memberBId);
+    await service.from('event_settings').delete().eq('event_id', EVENT_B).eq('key', 'sweep_test_key');
+  });
+
+  test('an organisation admin cannot read a DIFFERENT org\'s organisation_members or event_settings rows', async () => {
+    const { data: members, error: membersErr } = await ownerA.from('organisation_members').select('user_id').eq('org_id', ORG_B);
+    assert.equal(membersErr, null, membersErr?.message);
+    assert.equal(members.length, 0, 'owner A must not see org B\'s membership roster');
+
+    const { data: settings, error: settingsErr } = await ownerA.from('event_settings').select('key').eq('event_id', EVENT_B).eq('key', 'sweep_test_key');
+    assert.equal(settingsErr, null, settingsErr?.message);
+    assert.equal(settings.length, 0, 'owner A must not see org B\'s event_settings row');
+  });
+
+  test('an organisation admin cannot write a DIFFERENT org\'s organisation_members or event_settings rows', async () => {
+    const { error: memberErr } = await ownerA.from('organisation_members').update({ role: 'admin' }).eq('org_id', ORG_B).eq('user_id', memberBId);
+    assert.equal(memberErr, null);
+    const { data: memberAfter } = await service.from('organisation_members').select('role').eq('org_id', ORG_B).eq('user_id', memberBId).single();
+    assert.equal(memberAfter.role, 'steward', 'org B\'s member role must be unaffected by owner A\'s update attempt');
+
+    const { error: settingsErr } = await ownerA.from('event_settings').update({ value: 'hacked' }).eq('event_id', EVENT_B).eq('key', 'sweep_test_key');
+    assert.equal(settingsErr, null);
+    const { data: settingsAfter } = await service.from('event_settings').select('value').eq('event_id', EVENT_B).eq('key', 'sweep_test_key').single();
+    assert.equal(settingsAfter.value, 'sweep_test_value', 'org B\'s event_settings row must be unaffected by owner A\'s update attempt');
+  });
+
+  test('a genuine platform admin (org_default) can still read and manage every organisation\'s organisation_members and event_settings rows (regression guard)', async () => {
+    const { data: members } = await platformAdmin.from('organisation_members').select('user_id').eq('org_id', ORG_B).eq('user_id', memberBId);
+    assert.equal(members.length, 1, 'platform admin must still see org B\'s membership row');
+
+    const { data: settings } = await platformAdmin.from('event_settings').select('key').eq('event_id', EVENT_B).eq('key', 'sweep_test_key');
+    assert.equal(settings.length, 1, 'platform admin must still see org B\'s event_settings row');
+  });
+});
