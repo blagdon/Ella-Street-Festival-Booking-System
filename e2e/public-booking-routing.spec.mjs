@@ -96,3 +96,70 @@ test.describe('Public booking form routing (Phase 4D)', () => {
     await expect(page.locator('#form-section')).toBeHidden();
   });
 });
+
+// Version 1.1 Sprint 1, Issue 2 — Regulatory Authority. Food_Stall_booking.html's
+// declaration checkboxes used to hardcode "Hull City Council" and "£5,000,000"
+// regardless of organisation. Deliberately provisions its OWN org/event
+// fixture rather than reusing the Phase 4D describe block's shared orgId
+// above: fullyParallel test files don't order one describe block's afterAll
+// relative to a sibling describe block's tests, so a shared fixture can be
+// torn down by the OTHER block's cleanup mid-run - confirmed live (the first
+// version of this block intermittently saw the Phase 4D block's afterAll
+// delete the shared org before these tests finished, which surfaces as
+// "wrong text" here, not a clean "not found", since the still-DOM-present
+// but hidden closed-section's sibling #regulatoryAuthorityText never gets
+// touched by page-food-booking.js's early-return path).
+test.describe('Public declaration text resolves the configured regulatory authority (Phase V1.1-S1 Issue 2)', () => {
+  const raOrgSlug = `e2e-ra-${Date.now()}`;
+  const raEventSlug = `e2e-ra-event-${Date.now()}`;
+  const raOrgId = `org_${raOrgSlug.replace(/-/g, '_')}`;
+  const raEventId = `event_${raEventSlug.replace(/-/g, '_')}`;
+
+  test.beforeAll(async () => {
+    await service.from('organisations').insert({ id: raOrgId, name: 'E2E Regulatory Authority Org', slug: raOrgSlug });
+    await service.from('events').insert({
+      id: raEventId, org_id: raOrgId, name: 'E2E Regulatory Authority Event', slug: raEventSlug,
+      booking_prefix: `ERA${Date.now().toString().slice(-3)}`, is_active: true, status: 'open',
+    });
+  });
+
+  test.afterAll(async () => {
+    await service.from('settings').delete().eq('org_id', raOrgId);
+    await service.from('event_settings').delete().eq('event_id', raEventId);
+    await service.from('events').delete().eq('id', raEventId);
+    await service.from('organisations').delete().eq('id', raOrgId);
+  });
+
+  test.afterEach(async () => {
+    await service.from('settings').delete().eq('org_id', raOrgId).in('key', ['regulatory_authority_name', 'insurance_minimum_amount']);
+    await service.from('event_settings').delete().eq('event_id', raEventId).in('key', ['regulatory_authority_name', 'insurance_minimum_amount']);
+  });
+
+  test('an org with no configured authority/amount shows generic fallback wording', async ({ page }) => {
+    await page.goto(`/Food_Stall_booking.html?org=${raOrgSlug}&event=${raEventSlug}`);
+    await expect(page.locator('#regulatoryAuthorityText')).toContainText('applicable food and');
+    await expect(page.locator('#regulatoryAuthorityText')).not.toContainText('Hull');
+    await expect(page.locator('#insuranceMinimumText')).toContainText('appropriate for this event');
+  });
+
+  test('an org with a configured authority/amount shows its own wording, not a hardcoded one', async ({ page }) => {
+    await service.from('settings').insert([
+      { org_id: raOrgId, key: 'regulatory_authority_name', value: 'Riverside County Council' },
+      { org_id: raOrgId, key: 'insurance_minimum_amount', value: '$2,000,000' },
+    ]);
+
+    await page.goto(`/Food_Stall_booking.html?org=${raOrgSlug}&event=${raEventSlug}`);
+    await expect(page.locator('#regulatoryAuthorityText')).toContainText('Riverside County Council');
+    await expect(page.locator('#regulatoryAuthorityText')).not.toContainText('Hull');
+    await expect(page.locator('#insuranceMinimumText')).toContainText('$2,000,000');
+  });
+
+  test('an event-level override wins over the organisation-level value', async ({ page }) => {
+    await service.from('settings').insert({ org_id: raOrgId, key: 'regulatory_authority_name', value: 'Org-Level Council' });
+    await service.from('event_settings').insert({ event_id: raEventId, key: 'regulatory_authority_name', value: 'Event-Level Council' });
+
+    await page.goto(`/Food_Stall_booking.html?org=${raOrgSlug}&event=${raEventSlug}`);
+    await expect(page.locator('#regulatoryAuthorityText')).toContainText('Event-Level Council');
+    await expect(page.locator('#regulatoryAuthorityText')).not.toContainText('Org-Level Council');
+  });
+});

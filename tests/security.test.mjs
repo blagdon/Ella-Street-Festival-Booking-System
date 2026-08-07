@@ -426,6 +426,11 @@ describe('anon access to settings (booking open/closed flags)', () => {
       'logo_url', 'logo_light_url', 'brand_primary_color', 'brand_accent_color',
       'org_support_email', 'email_footer_text',
       ...bookingOpenKeys,
+      // Regulatory Authority (V1.1 Sprint 1, Issue 2,
+      // 20260807120000_regulatory_authority_settings.sql) - the public
+      // food-stall declaration reads these before an applicant is
+      // authenticated, same reasoning as the branding keys above.
+      'regulatory_authority_name', 'insurance_minimum_amount',
     ];
     const { data: broad, error: broadErr } = await anon.from('settings').select('key');
     assert.equal(broadErr, null, broadErr?.message);

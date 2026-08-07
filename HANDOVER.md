@@ -1231,7 +1231,10 @@ the direct query path (`locations` + `public_bookings_info`).
   booking via `rpc_record_bank_transfer_payment()`, same confirmation-email path as a
   completed Stripe payment; `payment_requested` email offers both a Stripe link and
   bank-transfer instructions — see Next Steps item 43
-- HCC (Hull City Council food safety) check workflow — manual, environment-aware email send
+- HCC (regulatory-authority food safety) check workflow — manual, environment-aware email
+  send. "HCC" is the fixed internal status/workflow name; the actual authority it refers to
+  (org_default's is Hull City Council) is a per-organisation `regulatory_authority_name`
+  setting as of V1.1 Sprint 1 — see [Regulatory Authority](#regulatory-authority) below
 - Email template admin (`more.html`), user role management, steward mobile view
 - Booking cancellation (public self-service link) with automatic confirmation email
 - Bulk email to all confirmed bookings — queues server-side first, survives the admin
@@ -1506,6 +1509,25 @@ structured fields wherever it's used (`js/shared.js`'s `getEmailFromTemplate`,
 `stripe-webhook`'s post-payment confirmation email), rather than reading a
 separate freeform setting. The "BANK DETAILS FOR CONFIRMATIONS" field was
 removed from settings.html's System Constants card accordingly.
+
+#### Regulatory Authority
+`regulatory_authority_name` / `insurance_minimum_amount`, added V1.1 Sprint 1,
+Issue 2 (`20260807120000_regulatory_authority_settings.sql`).
+`Food_Stall_booking.html`'s mandatory declaration checkboxes and the HCC dashboard's
+bulk-send confirm dialog used to hardcode "Hull City Council" and "£5,000,000"
+directly — meaningless (or actively wrong) for any organisation other than Ella
+Street. Both are free-text `settings`/`event_settings` values, anon-readable (the
+public booking form reads them before the applicant is authenticated), resolved
+with the same org-then-event-override precedence as every other settings pair —
+see `js/public-context.js`'s `initPublicBookingForm()`. Admin-editable via
+Settings → General (`js/page-admin.js`); no per-event override UI yet, though the
+data layer already supports one via `event_settings` if a later sprint adds it.
+Unset means generic fallback wording ("all applicable food and hygiene
+regulations" / "a minimum indemnity appropriate for this event"), never a
+hardcoded name — `org_default` is seeded with its real values by the migration
+itself so existing behaviour needed no manual admin action to preserve. Also read
+admin-side via `CONFIG.REGULATORY_AUTHORITY_NAME`/`CONFIG.INSURANCE_MINIMUM_AMOUNT`
+(`js/config.js`'s `applySettingsToConfig()`) for the HCC dashboard's confirm dialog.
 
 ### `event_settings` — the event-scoped layer on top of `settings`
 Added Epic 4 Phase 4B (`20260804110000_create_event_settings.sql`). Same key/value

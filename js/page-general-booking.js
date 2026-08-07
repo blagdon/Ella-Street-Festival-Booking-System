@@ -198,8 +198,14 @@ initPublicPage(async function () {
 
                 // Construct checklist string
                 let checklistArr = [];
-                if (formData.get('pli_check')) checklistArr.push("Public Liability Insurance (£5m)");
-                if (formData.get('hygiene_check')) checklistArr.push("Agreed to Hull City Council Hygiene Regs");
+                // No pli_check/hygiene_check inputs exist on this form (see
+                // Food_Stall_booking.html for the form that does) - these two
+                // lines are unreachable today, kept only so they don't
+                // silently drift back to hardcoded wording if that ever
+                // changes. Same resolution as page-food-booking.js's
+                // identical pair - see that file for the Issue 2 rationale.
+                if (formData.get('pli_check')) checklistArr.push(`Public Liability Insurance${boot.insuranceMinimumAmount ? ` (${boot.insuranceMinimumAmount})` : ''}`);
+                if (formData.get('hygiene_check')) checklistArr.push(`Agreed to ${boot.regulatoryAuthorityName || 'applicable'} Hygiene Regs`);
                 if (formData.get('data_protection_check')) checklistArr.push("Agreed to Data Protection Notice");
 
                 const sbData = {

@@ -4,6 +4,14 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+Version 1.1 Sprint 1 — Public Conversion & Commercial Readiness. Implements the three highest-priority findings from the Version 1.1 UX & Commercial Polish audit's discovery phase. No architecture, database schema, or business-logic changes beyond what each fix required; no later-sprint items included.
+
+### Fixed
+
+- **The public event page had no way to start a booking.** `event.html` (the public `/{orgSlug}/{eventSlug}` landing page) showed a "Bookings open" badge with nothing to click — the single highest-impact finding from the UX audit. Now shows CTA button(s) to whichever booking form(s) are actually open (respecting the existing Food/General "Applications Open" toggles and the event's own lifecycle status), or a plain "applications are currently closed" message when neither is open.
+- **The public food-stall declaration hardcoded one specific council and insurance figure.** `Food_Stall_booking.html`'s mandatory declaration checkboxes said "Hull City Council" and "£5,000,000" regardless of organisation — meaningless, or actively misleading, for any other tenant. Both are now a configurable `regulatory_authority_name`/`insurance_minimum_amount` setting (org-level, with event-level override support in the data layer), admin-editable via Settings → General, with generic fallback wording when unset. `org_default` is seeded with its real existing values by the migration itself, so Ella Street's own declaration is unchanged. Swept and fixed the same hardcoded strings everywhere else they appeared: the HCC dashboard's bulk-send confirm dialog, the Communication Templates help text, and an unreachable-but-present duplicate in the General Trader booking form's submit handler.
+- **Stripe secret fields rendered the organisation's real API keys in cleartext.** `admin.html`'s Settings → Payments tab fetched and displayed the actual `stripe_secret_key_test`/`stripe_webhook_secret_test` values in a plain text input on every page load. Now password-masked by default with a show/hide toggle, matching the field-level pattern Stripe's own dashboard uses. No change to what's fetched, saved, or how — masking only.
+
 ## [1.0.0-rc1] - 2026-08-07
 
 First Version 1.0 Release Candidate. Architecture is frozen as of the Architecture Compliance Audit (Fully Compliant, zero open findings — see `DECISIONS.md`). This release closes both conditions the subsequent Release Readiness Audit required before tagging an RC, plus every other item — Low through Medium severity — that audit found, rather than carrying any of it forward as known debt.
