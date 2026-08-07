@@ -1260,8 +1260,17 @@ the direct query path (`locations` + `public_bookings_info`).
   blamed `js/page-email-admin.js` — that file only ever managed
   `email_templates`; the queue viewer is `js/page-email-queue.js`, a separate
   page.
-- No error/alerting integration (Slack/Discord/Sentry) for Edge Function failures —
-  explicitly deferred by the project owner ("I'll do it later").
+- ~~No error/alerting integration (Slack/Discord/Sentry) for Edge Function failures~~ —
+  **stale, corrected 2026-08-07.** Sentry is genuinely integrated on both sides:
+  `supabase/functions/_shared/sentry.ts` (`captureAndFlush`, DSN read from the
+  `settings` table) is wired into 11 of the 17 Edge Functions, and the browser side
+  (`initSentryBrowser()` in `js/supabase.js`, loader URL from `sentry_browser_loader_url`)
+  is wired into the admin/steward login entry points. Verified live during the v1.0
+  Release Readiness Audit: both `sentry_dsn` and `sentry_browser_loader_url` are
+  configured in production, and the Admin Hub's "View recent errors" link opens a real,
+  working Sentry issues dashboard. This entry was simply never updated when Sentry was
+  added — there was no Slack/Discord integration and there still isn't, but the premise
+  ("no error/alerting integration at all") was wrong.
 - ~~No refund support~~ — **built 2026-07-21 (v7.10.0), see
   [Next Steps](#8-next-steps) item 64.** The original note said to add the
   columns alongside the actual refund code rather than speculatively, and that

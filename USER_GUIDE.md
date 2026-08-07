@@ -36,7 +36,7 @@
 
 ## 1. Logging In
 
-1. Go to `https://stallbookingstailwinds.vercel.app/login.html`
+1. Go to `https://app.ellastreet.co.uk/login.html`
 2. Enter your email address and password, then click **Sign In**
 3. You'll be taken to the Admin Hub
 

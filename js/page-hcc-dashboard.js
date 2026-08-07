@@ -151,7 +151,7 @@ function renderTable(records, append = false) {
         // Only allow selection if Pending
         const canSelect = (r.council_status === 'Pending');
         const checkboxHtml = canSelect
-            ? `<input type="checkbox" class="row-select w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer" value="${r.id}">`
+            ? `<input type="checkbox" class="row-select w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer" value="${r.id}" aria-label="Select booking ${escapeHtml(r.booking_id)}">`
             : `<span class="text-gray-300">-</span>`;
 
         // Main Status colors for the badge
@@ -177,7 +177,7 @@ function renderTable(records, append = false) {
                   </td>
                   <td class="px-6 py-4 text-sm text-gray-500">${new Date(r.submitted_at).toLocaleDateString()}</td>
                   <td class="px-6 py-4">
-                      <select id="status-${r.id}" class="hcc-status-select tracking-wider text-xs font-bold rounded border-0 px-2 py-1 ${statusColor} focus:ring-2 focus:ring-blue-500 cursor-pointer" data-id="${r.id}">
+                      <select id="status-${r.id}" aria-label="Council status for booking ${escapeHtml(r.booking_id)}" class="hcc-status-select tracking-wider text-xs font-bold rounded border-0 px-2 py-1 ${statusColor} focus:ring-2 focus:ring-blue-500 cursor-pointer" data-id="${r.id}">
                           <option value="Pending" ${r.council_status === 'Pending' ? 'selected' : ''}>Pending</option>
                           <option value="Email Sent" ${r.council_status === 'Email Sent' ? 'selected' : ''}>Email Sent</option>
                           <option value="Approved" ${r.council_status === 'Approved' ? 'selected' : ''}>Approved</option>
@@ -185,7 +185,7 @@ function renderTable(records, append = false) {
                       </select>
                   </td>
                   <td class="px-6 py-4">
-                      <input type="date" id="date-${r.id}" value="${escapeHtml(r.approval_date || '')}" class="text-sm border-gray-300 rounded focus:border-blue-500 focus:ring-blue-500">
+                      <input type="date" id="date-${r.id}" aria-label="Approval date for booking ${escapeHtml(r.booking_id)}" value="${escapeHtml(r.approval_date || '')}" class="text-sm border-gray-300 rounded focus:border-blue-500 focus:ring-blue-500">
                   </td>
                   <td class="px-6 py-4">
                       <input type="text" id="editor-${r.id}" placeholder="Your Name" value="${escapeHtml(r.updated_by || '')}" class="text-sm w-24 border-gray-300 rounded focus:border-blue-500 focus:ring-blue-500">
@@ -214,7 +214,7 @@ function renderTable(records, append = false) {
                       </div>
                       ${canSelect ? `
                       <label class="flex items-center cursor-pointer ml-2">
-                          <input type="checkbox" class="mobile-select w-6 h-6 text-blue-600 rounded border-gray-300 focus:ring-blue-500" value="${r.id}">
+                          <input type="checkbox" class="mobile-select w-6 h-6 text-blue-600 rounded border-gray-300 focus:ring-blue-500" value="${r.id}" aria-label="Select booking ${escapeHtml(r.booking_id)}">
                       </label>
                       ` : ''}
                   </div>
@@ -235,7 +235,7 @@ function renderTable(records, append = false) {
                   
                   <div class="space-y-3 mb-3">
                       <div>
-                          <label class="text-xs uppercase text-gray-400 font-bold block mb-1">Council Status</label>
+                          <label for="status-mobile-${r.id}" class="text-xs uppercase text-gray-400 font-bold block mb-1">Council Status</label>
                           <select id="status-mobile-${r.id}" data-id="${r.id}" class="hcc-mobile-status-select w-full text-sm font-bold rounded px-3 py-2 ${statusColor} focus:ring-2 focus:ring-blue-500">
                               <option value="Pending" ${r.council_status === 'Pending' ? 'selected' : ''}>Pending</option>
                               <option value="Email Sent" ${r.council_status === 'Email Sent' ? 'selected' : ''}>Email Sent</option>
@@ -245,12 +245,12 @@ function renderTable(records, append = false) {
                       </div>
                       
                       <div>
-                          <label class="text-xs uppercase text-gray-400 font-bold block mb-1">Approval Date</label>
+                          <label for="date-mobile-${r.id}" class="text-xs uppercase text-gray-400 font-bold block mb-1">Approval Date</label>
                           <input type="date" id="date-mobile-${r.id}" value="${escapeHtml(r.approval_date || '')}" class="w-full text-sm border-gray-300 rounded px-3 py-2 focus:border-blue-500 focus:ring-blue-500">
                       </div>
                       
                       <div>
-                          <label class="text-xs uppercase text-gray-400 font-bold block mb-1">Updated By</label>
+                          <label for="editor-mobile-${r.id}" class="text-xs uppercase text-gray-400 font-bold block mb-1">Updated By</label>
                           <input type="text" id="editor-mobile-${r.id}" placeholder="Your Name" value="${escapeHtml(r.updated_by || '')}" class="w-full text-sm border-gray-300 rounded px-3 py-2 focus:border-blue-500 focus:ring-blue-500">
                       </div>
                   </div>

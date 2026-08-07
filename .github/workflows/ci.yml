@@ -244,3 +244,54 @@ jobs:
         run: npm run test:setup
       - name: Run admin accessibility regression suite
         run: npm run test:a11y:admin
+
+  # Edge Function deploys were entirely manual until now (see HANDOVER.md's
+  # "Deploying an Edge Function" section and its PR #152 Gotcha - the
+  # disposable test project once served Edge Functions two days stale,
+  # making integration-tests fail against genuinely stale code, not a flaky
+  # shared DB, because nothing kept it in sync automatically). This closes
+  # that gap for production, the same way Vercel already auto-deploys the
+  # frontend on every push to main - not for the test project, which stays
+  # a separate, smaller residual manual step for now.
+  #
+  # Deliberately deploys every function on every push rather than trying to
+  # detect which ones changed, mirroring css-build-check's own "just rebuild
+  # everything and diff" philosophy above: idempotent, simple, and a stale
+  # subset is a worse failure mode than a few redundant deploys.
+  #
+  # Gated behind every other job passing on this push-triggered run, not
+  # just the pull_request run that already happened before merge - belt and
+  # suspenders, since this is deploying to the live project.
+  deploy-functions:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    needs: [grep-guard, typecheck, css-build-check, accessibility-tests, rls-grants-check, integration-tests, admin-accessibility-tests]
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.109.1
+      - name: Link to the live project
+        run: supabase link --project-ref rsnxhuhibglieofikkpo
+      - name: Deploy every Edge Function
+        run: |
+          # Four functions are public, no admin session - the exact set
+          # HANDOVER.md's manual-deploy instructions have always called out.
+          # Keep this list in sync with that doc if it ever changes; a new
+          # function's own auth requirement is a deliberate choice per
+          # function, never inferred. Every other function deploys with no
+          # flag, which defaults to requiring a JWT - the correct, existing
+          # setting for all of them, confirmed live against production
+          # during the v1.0 Release Readiness Audit.
+          NO_VERIFY_JWT="submit-booking cancel-booking stripe-webhook get-payment-link"
+          for dir in supabase/functions/*/; do
+            fn=$(basename "$dir")
+            [ -f "${dir}index.ts" ] || continue
+            if echo "$NO_VERIFY_JWT" | grep -qw "$fn"; then
+              supabase functions deploy "$fn" --no-verify-jwt
+            else
+              supabase functions deploy "$fn"
+            fi
+          done

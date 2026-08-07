@@ -87,12 +87,28 @@ async function ensureFoundationRows() {
   if (evtErr) throw new Error(`Failed to upsert events: ${evtErr.message}`);
   console.log('Ensured events row: event_default');
 
-  // Clean up any temporary test organisations/settings created during previous test runs
-  await admin.from('settings').delete().neq('org_id', 'org_default');
-  await admin.from('email_templates').delete().neq('org_id', 'org_default');
-  await admin.from('sms_templates').delete().neq('org_id', 'org_default');
-  await admin.from('events').delete().neq('org_id', 'org_default');
-  await admin.from('organisations').delete().neq('id', 'org_default');
+  // Clean up any temporary test organisations/settings created during previous test runs.
+  // organisation_members has a real FK to organisations.id (events does too, cleaned
+  // above it) - omitting it here made the final organisations delete fail silently
+  // with a foreign-key violation for any org that had ever had a member added, which
+  // is effectively every provisioned test org. Confirmed live during the v1.0 Release
+  // Readiness Audit follow-up: 55 accumulated test organisations, none ever actually
+  // removed by this function despite it running at the start of every CI job that
+  // needs it. Every .delete() here now checks its own error rather than relying on a
+  // later step's failure to notice - the whole point of this function silently doing
+  // nothing is exactly the failure mode that let this go unnoticed.
+  const cleanupSteps = [
+    ['settings', admin.from('settings').delete().neq('org_id', 'org_default')],
+    ['email_templates', admin.from('email_templates').delete().neq('org_id', 'org_default')],
+    ['sms_templates', admin.from('sms_templates').delete().neq('org_id', 'org_default')],
+    ['organisation_members', admin.from('organisation_members').delete().neq('org_id', 'org_default')],
+    ['events', admin.from('events').delete().neq('org_id', 'org_default')],
+    ['organisations', admin.from('organisations').delete().neq('id', 'org_default')],
+  ];
+  for (const [table, promise] of cleanupSteps) {
+    const { error } = await promise;
+    if (error) throw new Error(`Failed to clean up stale ${table} rows: ${error.message}`);
+  }
 }
 
 async function ensureSettings() {
