@@ -111,7 +111,7 @@ export async function resolveBookingFormContext(loc = window.location) {
  * function returns.
  * @param {string} settingsKey - 'general_bookings_open' or 'food_bookings_open'
  * @returns {Promise<
- *   | { ok: true, orgSlug: string|undefined, eventSlug: string|undefined, bookingPrefix: string, orgName: string|undefined, eventName: string|undefined }
+ *   | { ok: true, orgSlug: string|undefined, eventSlug: string|undefined, bookingPrefix: string, orgName: string|undefined, eventName: string|undefined, regulatoryAuthorityName: string|undefined, insuranceMinimumAmount: string|undefined }
  *   | { ok: false, reason: 'not_found' }
  *   | { ok: false, reason: 'event_not_open', eventStatus: string }
  *   | { ok: false, reason: 'toggle_closed' }
@@ -134,6 +134,29 @@ export async function initPublicBookingForm(settingsKey) {
         return { ok: false, reason: 'toggle_closed' };
     }
 
+    // Version 1.1 Sprint 1, Issue 2 (Regulatory Authority) — org row first,
+    // event row overrides it, same precedence as every other org/event
+    // settings pair in this app (js/config.js's loadStallCosts() comment
+    // documents the same order). Both keys are optional: a org with no row
+    // for either gets undefined here, and the caller falls back to generic
+    // wording rather than ever inventing a specific authority/amount.
+    const declarationSettings = /** @type {Record<string, string>} */ ({});
+    const { data: orgDeclRows } = await sb
+        .from('settings')
+        .select('key, value')
+        .eq('org_id', orgId)
+        .in('key', ['regulatory_authority_name', 'insurance_minimum_amount']);
+    (orgDeclRows || []).forEach((r) => { declarationSettings[r.key] = r.value; });
+
+    if (ctx.event) {
+        const { data: eventDeclRows } = await sb
+            .from('event_settings')
+            .select('key, value')
+            .eq('event_id', ctx.event.id)
+            .in('key', ['regulatory_authority_name', 'insurance_minimum_amount']);
+        (eventDeclRows || []).forEach((r) => { declarationSettings[r.key] = r.value; });
+    }
+
     return {
         ok: true,
         orgSlug: ctx.org ? ctx.org.slug : undefined,
@@ -149,6 +172,8 @@ export async function initPublicBookingForm(settingsKey) {
         // there's a real resolved name to show instead of it.
         orgName: ctx.org ? ctx.org.name : undefined,
         eventName: ctx.event ? ctx.event.name : undefined,
+        regulatoryAuthorityName: declarationSettings.regulatory_authority_name || undefined,
+        insuranceMinimumAmount: declarationSettings.insurance_minimum_amount || undefined,
     };
 }
 

@@ -37,6 +37,14 @@ export const CONFIG = {
 
     HCC_COUNCIL_EMAIL: 'Foodand.Health&Safety@hullcc.gov.uk',
 
+    // Regulatory Authority (V1.1 Sprint 1, Issue 2) — empty until loaded from
+    // the settings table (regulatory_authority_name/insurance_minimum_amount)
+    // via applySettingsToConfig(). No hardcoded default: callers (e.g. the
+    // HCC bulk-send confirm dialog) fall back to generic wording when empty,
+    // same pattern as SENTRY_BROWSER_LOADER_URL above.
+    REGULATORY_AUTHORITY_NAME: '',
+    INSURANCE_MINIMUM_AMOUNT: '',
+
     // Displayed in the admin header (js/nav.js). Falls back to this default
     // until overridden by the festival_display_name settings-table value.
     FESTIVAL_DISPLAY_NAME: 'Ella Street Festival',
@@ -285,6 +293,10 @@ export function applySettingsToConfig(data) {
             CONFIG.BRANDING.LOGO_URL = val;
         } else if (item.key === 'logo_light_url') {
             CONFIG.BRANDING.LOGO_LIGHT_URL = val;
+        } else if (item.key === 'regulatory_authority_name') {
+            CONFIG.REGULATORY_AUTHORITY_NAME = val;
+        } else if (item.key === 'insurance_minimum_amount') {
+            CONFIG.INSURANCE_MINIMUM_AMOUNT = val;
         } else {
             // Not a silent no-op: settings/event_settings are free-form
             // key/value rows, so a typo'd key (or a key not yet wired into

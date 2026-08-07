@@ -10,7 +10,7 @@ import { escapeHtml, validateSlug, parseEdgeFunctionError } from './utils.js';
 import { renderAdminSidebar } from './platform/navigation.js';
 import { renderPageHeader } from './platform/layout.js';
 import { renderStatCard, renderCard } from './platform/cards.js';
-import { renderInputField, renderToggleField, renderFormSaveBar } from './platform/forms.js';
+import { renderInputField, renderToggleField, renderFormSaveBar, renderSecretField, bindSecretFieldToggles } from './platform/forms.js';
 import { renderDataTable, renderStatusBadge } from './platform/tables.js';
 import { openDialog } from './platform/dialogs.js';
 import { notify, renderAlert } from './platform/notifications.js';
@@ -1025,6 +1025,10 @@ async function renderSettingsSection(container) {
                 ${renderInputField({ id: 'setCancelUrl', label: 'Cancellation URL', value: currentSettings.cancel_url || 'https://app.ellastreet.co.uk/cancel_booking.html' })}
                 ${renderInputField({ id: 'setBucketName', label: 'Documents Storage Bucket', value: currentSettings.bucket_name || 'esf-documents' })}
             </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+                ${renderInputField({ id: 'setRegulatoryAuthorityName', label: 'Regulatory Authority', value: currentSettings.regulatory_authority_name || '', placeholder: 'e.g. Hull City Council', helpText: 'Shown on the public food-stall declaration. Leave blank for generic wording ("all applicable food and hygiene regulations").' })}
+                ${renderInputField({ id: 'setInsuranceMinimumAmount', label: 'Insurance Minimum Amount', value: currentSettings.insurance_minimum_amount || '', placeholder: 'e.g. £5,000,000', helpText: 'Shown on the public food-stall declaration. Leave blank for generic wording ("appropriate for this event").' })}
+            </div>
             ${renderFormSaveBar({ submitId: 'btnSaveCatSettings', submitLabel: 'Save General Settings' })}
         </form>`;
     } else if (activeSettingsTab === 'bookings') {
@@ -1049,8 +1053,8 @@ async function renderSettingsSection(container) {
         tabFormHtml = `
         <form id="settingsCategoryForm">
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                ${renderInputField({ id: 'setStripeKeyTest', label: 'Stripe Test Secret Key', value: currentSettings.stripe_secret_key_test || '', placeholder: 'sk_test_...' })}
-                ${renderInputField({ id: 'setStripeWebhookTest', label: 'Stripe Test Webhook Secret', value: currentSettings.stripe_webhook_secret_test || '', placeholder: 'whsec_...' })}
+                ${renderSecretField({ id: 'setStripeKeyTest', label: 'Stripe Test Secret Key', value: currentSettings.stripe_secret_key_test || '', placeholder: 'sk_test_...' })}
+                ${renderSecretField({ id: 'setStripeWebhookTest', label: 'Stripe Test Webhook Secret', value: currentSettings.stripe_webhook_secret_test || '', placeholder: 'whsec_...' })}
             </div>
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-2">
                 ${renderInputField({ id: 'setBankName', label: 'Bank Account Name', value: currentSettings.bank_account_name || 'Ella Street Festival' })}
@@ -1074,6 +1078,8 @@ async function renderSettingsSection(container) {
     });
 
     container.innerHTML = headerHtml + cardHtml; // innerhtml-safe: component HTML built with internal escapeHtml calls
+
+    bindSecretFieldToggles(container);
 
     container.querySelectorAll('.btn-settings-tab').forEach(btn => {
         btn.addEventListener('click', (e) => {
@@ -1104,7 +1110,9 @@ async function saveCategorySettings(currentSettings) {
             { key: 'festival_display_name', value: (/** @type {HTMLInputElement} */ (document.getElementById('setFestivalName'))).value.trim() },
             { key: 'booking_prefix', value: (/** @type {HTMLInputElement} */ (document.getElementById('setBookingPrefix'))).value.trim() },
             { key: 'cancel_url', value: (/** @type {HTMLInputElement} */ (document.getElementById('setCancelUrl'))).value.trim() },
-            { key: 'bucket_name', value: (/** @type {HTMLInputElement} */ (document.getElementById('setBucketName'))).value.trim() }
+            { key: 'bucket_name', value: (/** @type {HTMLInputElement} */ (document.getElementById('setBucketName'))).value.trim() },
+            { key: 'regulatory_authority_name', value: (/** @type {HTMLInputElement} */ (document.getElementById('setRegulatoryAuthorityName'))).value.trim() },
+            { key: 'insurance_minimum_amount', value: (/** @type {HTMLInputElement} */ (document.getElementById('setInsuranceMinimumAmount'))).value.trim() }
         );
     } else if (activeSettingsTab === 'bookings') {
         // food_bookings_open / general_bookings_open are the keys every

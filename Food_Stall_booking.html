@@ -247,14 +247,18 @@
           <div class="space-y-4">
             <label class="flex items-start">
               <input type="checkbox" name="pli_check" required class="mt-1 mr-3 text-red-600 rounded h-5 w-5">
-              <span class="text-sm">I confirm I hold <strong>Public Liability Insurance</strong> with a minimum
-                indemnity of <strong>£5,000,000</strong>.</span>
+              <span class="text-sm">I confirm I hold <strong>Public Liability Insurance</strong> with <span
+                  id="insuranceMinimumText">a minimum indemnity appropriate for this event</span>.</span>
+              <!-- #insuranceMinimumText/#regulatoryAuthorityText below: this
+                   generic wording is a fallback only - page-food-booking.js
+                   overwrites both spans with the resolved org/event value
+                   once initPublicBookingForm() resolves. -->
             </label>
 
             <label class="flex items-start">
               <input type="checkbox" name="hygiene_check" required class="mt-1 mr-3 text-red-600 rounded h-5 w-5">
-              <span class="text-sm">I agree to abide by all <strong>Hull City Council Food and Hygiene
-                  Regulations</strong> and will provide my own hand-washing facilities.</span>
+              <span class="text-sm">I agree to abide by <span id="regulatoryAuthorityText">all applicable food and
+                  hygiene regulations for this event</span> and will provide my own hand-washing facilities.</span>
             </label>
 
             <div class="mt-6 pt-4 border-t border-gray-200">

@@ -367,6 +367,9 @@
   .top-14 {
     top: calc(var(--spacing) * 14);
   }
+  .right-0 {
+    right: 0px;
+  }
   .right-3 {
     right: calc(var(--spacing) * 3);
   }
@@ -1656,6 +1659,9 @@
   .pr-8 {
     padding-right: calc(var(--spacing) * 8);
   }
+  .pr-11 {
+    padding-right: calc(var(--spacing) * 11);
+  }
   .pb-1 {
     padding-bottom: var(--spacing);
   }
@@ -2464,6 +2470,9 @@
     }
     .hover\:opacity-80:hover {
       opacity: 80%;
+    }
+    .hover\:opacity-90:hover {
+      opacity: 90%;
     }
     .hover\:shadow:hover {
       --tw-shadow: 0 1px 3px 0 var(--tw-shadow-color, rgb(0 0 0 / 0.1)), 0 1px 2px -1px var(--tw-shadow-color, rgb(0 0 0 / 0.1));

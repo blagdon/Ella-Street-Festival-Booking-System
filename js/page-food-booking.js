@@ -46,6 +46,18 @@ initPublicPage(async function () {
         document.title = `Food & Drink Trader Application — ${boot.eventName}`;
     }
 
+    // Regulatory Authority (V1.1 Sprint 1, Issue 2) — only touches the DOM
+    // when the org/event actually has a configured value; otherwise the
+    // static generic fallback text already in the HTML stands as-is.
+    if (boot.regulatoryAuthorityName) {
+        const el = document.getElementById('regulatoryAuthorityText');
+        if (el) el.innerHTML = `all <strong>${escapeHtml(boot.regulatoryAuthorityName)} Food and Hygiene Regulations</strong>`; // innerhtml-safe: escapeHtml applied
+    }
+    if (boot.insuranceMinimumAmount) {
+        const el = document.getElementById('insuranceMinimumText');
+        if (el) el.innerHTML = `a minimum indemnity of <strong>${escapeHtml(boot.insuranceMinimumAmount)}</strong>`; // innerhtml-safe: escapeHtml applied
+    }
+
     const sb = getPublicSupabaseClient();
 
     // Bind Turnstile Key from database dynamically
@@ -203,8 +215,8 @@ initPublicPage(async function () {
 
                 // Construct checklist string
                 let checklistArr = [];
-                if (formData.get('pli_check')) checklistArr.push("Public Liability Insurance (£5m)");
-                if (formData.get('hygiene_check')) checklistArr.push("Agreed to Hull City Council Hygiene Regs");
+                if (formData.get('pli_check')) checklistArr.push(`Public Liability Insurance${boot.insuranceMinimumAmount ? ` (${boot.insuranceMinimumAmount})` : ''}`);
+                if (formData.get('hygiene_check')) checklistArr.push(`Agreed to ${boot.regulatoryAuthorityName || 'applicable'} Hygiene Regs`);
                 if (formData.get('data_protection_check')) checklistArr.push("Agreed to Data Protection Notice");
 
                 const sbData = {
