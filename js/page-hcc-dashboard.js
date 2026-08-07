@@ -1,6 +1,6 @@
 // @ts-check
 import { initAdminPage, getSupabaseClient } from './supabase.js';
-import { CONFIG } from './config.js';
+import { CONFIG, getCurrentOrgId } from './config.js';
 import { showToast, showConfirm } from './ui.js';
 import { safeError, escapeHtml } from './utils.js';
 import { sendEmailDirect } from './api.js';
@@ -446,6 +446,7 @@ async function sendBulkEmail() {
                 const { data: template, error: templateErr } = await sb
                     .from('email_templates')
                     .select('subject, body_html')
+                    .eq('org_id', getCurrentOrgId())
                     .eq('id', 'hcc_batch_check')
                     .single();
 

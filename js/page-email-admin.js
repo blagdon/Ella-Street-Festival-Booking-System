@@ -2,6 +2,7 @@
 import { getSupabaseClient } from './supabase.js';
 import { showToast, registerModalClose, trapFocus } from './ui.js';
 import { escapeHtml } from './utils.js';
+import { getCurrentOrgId } from './config.js';
 
 // Formerly a standalone page (email_admin.html), now one pane of
 // comms_admin.html (see page-comms-admin.js, which imports initEmailAdmin()
@@ -47,7 +48,7 @@ export function initEmailAdmin() {
 
 async function loadTemplates() {
     try {
-        const { data, error } = await sb.from('email_templates').select('*').order('id');
+        const { data, error } = await sb.from('email_templates').select('*').eq('org_id', getCurrentOrgId()).order('id');
         if (error) throw error;
 
         allTemplates = data;
@@ -134,6 +135,7 @@ async function saveTemplate() {
                 body_html: newBody,
                 updated_at: new Date().toISOString()
             })
+            .eq('org_id', getCurrentOrgId())
             .eq('id', currentTemplateId);
 
         if (error) throw error;
