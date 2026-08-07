@@ -9,7 +9,19 @@
 > verification first, and the short list that needs an explicit instruction every
 > time. Default to acting.
 > Last updated: 2026-08-07.
-> Current release: **v7.22.1** — closes the one outstanding finding from the Architecture Compliance
+> Current release: **v1.0.0-rc1** — first Version 1.0 Release Candidate. Architecture frozen as of the
+> Architecture Compliance Audit (Fully Compliant, zero open findings — `DECISIONS.md`). Closes both
+> conditions the Release Readiness Audit required before tagging an RC — three orphaned Edge Functions
+> live on production with no source in this repo (#183), and newly-provisioned organisations silently
+> missing more than half their email/SMS templates (#183) — plus a related cross-tenant data-integrity
+> bug the template fix itself exposed (three admin queries with no organisation filter), and every other
+> item that audit found down to Low severity (#184): CI now deploys Edge Functions to production
+> automatically, the disposable test project's own broken fixture cleanup is fixed at the root (not just
+> the ~55 organisations it had let accumulate), two stale documentation claims are corrected, and a real
+> accessibility gap on `hcc_dashboard.html` is fixed. See `CHANGELOG.md`'s `[1.0.0-rc1]` entry for the
+> full breakdown.
+>
+> Previous release: **v7.22.1** — closes the one outstanding finding from the Architecture Compliance
 > Audit against `DECISIONS.md`: six `SECURITY DEFINER` RPCs (`rpc_add_organisation_member`,
 > `rpc_record_bank_transfer_payment`, `rpc_record_refund`, `rpc_set_booking_locations`,
 > `rpc_get_next_misc_id`, `rpc_initialise_tenant_defaults`) still gated themselves on the legacy
@@ -18,7 +30,7 @@
 > Live-proven exploitable as cross-tenant privilege escalation with direct financial consequences (#180).
 > See `CHANGELOG.md`'s `[7.22.1]` entry for the full breakdown.
 >
-> Previous release: **v7.22.0** ("Epic 4 Complete" — closes out Epic 4 (Phases 4A–4D) together with three
+> Before that: **v7.22.0** ("Epic 4 Complete" — closes out Epic 4 (Phases 4A–4D) together with three
 > rounds of live operational certification against the Epic 1–4 multi-tenant rollout and everything they
 > found: the RC Operational Certification (ten findings, PRs #165–170), the shared modal-trap refactor
 > (#172), the Round 2/3 certification fixes (#173), the Launch Readiness Review's five Must-Fix
