@@ -1,6 +1,6 @@
 {
   "name": "ella-street-festival-booking-system",
-  "version": "7.22.1",
+  "version": "1.0.0-rc1",
   "description": "",
   "main": "js/config.js",
   "scripts": {
