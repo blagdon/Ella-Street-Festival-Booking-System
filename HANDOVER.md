@@ -8,8 +8,17 @@
 > including applying additive migrations to production), which require specific
 > verification first, and the short list that needs an explicit instruction every
 > time. Default to acting.
-> Last updated: 2026-08-06.
-> Current release: **v7.22.0** ("Epic 4 Complete" — closes out Epic 4 (Phases 4A–4D) together with three
+> Last updated: 2026-08-07.
+> Current release: **v7.22.1** — closes the one outstanding finding from the Architecture Compliance
+> Audit against `DECISIONS.md`: six `SECURITY DEFINER` RPCs (`rpc_add_organisation_member`,
+> `rpc_record_bank_transfer_payment`, `rpc_record_refund`, `rpc_set_booking_locations`,
+> `rpc_get_next_misc_id`, `rpc_initialise_tenant_defaults`) still gated themselves on the legacy
+> global-fallback role check Decision 4 replaced everywhere else, invisible to that fix's own
+> `pg_policies`-based verification since the gap was inside function bodies, not declarative policies.
+> Live-proven exploitable as cross-tenant privilege escalation with direct financial consequences (#180).
+> See `CHANGELOG.md`'s `[7.22.1]` entry for the full breakdown.
+>
+> Previous release: **v7.22.0** ("Epic 4 Complete" — closes out Epic 4 (Phases 4A–4D) together with three
 > rounds of live operational certification against the Epic 1–4 multi-tenant rollout and everything they
 > found: the RC Operational Certification (ten findings, PRs #165–170), the shared modal-trap refactor
 > (#172), the Round 2/3 certification fixes (#173), the Launch Readiness Review's five Must-Fix

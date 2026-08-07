@@ -4,6 +4,14 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [7.22.1] - 2026-08-07
+
+Closes the one outstanding finding from the Architecture Compliance Audit run against `DECISIONS.md`: Decision 4 (`has_org_role()` replacing the legacy global-fallback role check) was verified complete for all thirteen tenant-scoped tables' RLS policies, but six `SECURITY DEFINER` RPCs still gated themselves on the same legacy pattern internally — invisible to the audit's own `pg_policies`-based verification method, which only sees declarative policies, not logic inside a function body.
+
+### Fixed
+
+- **Six RPCs authorised against the wrong entity, live-proven exploitable as cross-tenant privilege escalation with direct financial consequences.** `rpc_add_organisation_member`, `rpc_record_bank_transfer_payment`, `rpc_record_refund`, `rpc_set_booking_locations`, `rpc_get_next_misc_id`, and `rpc_initialise_tenant_defaults` checked a legacy global role column instead of `has_org_role()` against the specific organisation each action targets. Live-proven on the disposable test project: an admin of Org A, once granted admin/steward access to a second, unrelated Org B, could record bank-transfer payments, issue refunds, reassign booking locations, or overwrite a display name against Org A's own data — the same defect class the RLS-policy fix already closed everywhere else, in a code surface that fix never reached. The three booking-scoped RPCs needed more than a like-for-like swap: the protected resource is a specific booking, not the caller's session organisation, so each now looks up the booking's own `org_id` first and authorises against that, not `get_current_org_id()`. All six also gained an `is_platform_admin()` bypass, needed to keep the platform-admin "View As" workflow working. 12 new permanent regression tests (`tests/rpc-authorisation.test.mjs`), confirmed red against the six RPCs before the fix and green after.
+
 ## [7.22.0] - 2026-08-06
 
 "Epic 4 Complete" plus three rounds of live operational certification against the
