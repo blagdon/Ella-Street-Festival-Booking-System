@@ -22,6 +22,27 @@ set -eu
 
 cd "$(dirname "$0")/.."
 
+# The snapshot only means anything relative to the live project it claims to
+# describe (production). CI always links explicitly before calling this
+# script (see .github/workflows/ci.yml's rls-grants-check job), but a local
+# run relies on the operator having remembered to `supabase link` to the
+# right project first - get this wrong and either the compare reports a
+# false diff (linked to test, which has known storage-policy drift) or,
+# worse, `--update` silently overwrites the committed production baseline
+# with test-project data. Refuse rather than guess.
+PROD_PROJECT_REF="rsnxhuhibglieofikkpo"
+LINKED_REF_FILE="supabase/.temp/project-ref"
+if [ ! -f "$LINKED_REF_FILE" ]; then
+  echo "Not linked to any Supabase project. Run 'supabase link --project-ref $PROD_PROJECT_REF' first." >&2
+  exit 1
+fi
+LINKED_REF=$(cat "$LINKED_REF_FILE")
+if [ "$LINKED_REF" != "$PROD_PROJECT_REF" ]; then
+  echo "Linked to '$LINKED_REF', not production ('$PROD_PROJECT_REF')." >&2
+  echo "This snapshot is only meaningful against production. Run 'supabase link --project-ref $PROD_PROJECT_REF' first, then relink back to test when you're done." >&2
+  exit 1
+fi
+
 TMPFILE=$(mktemp)
 trap 'rm -f "$TMPFILE"' EXIT
 

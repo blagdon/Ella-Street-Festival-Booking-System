@@ -547,11 +547,13 @@ adoption proceed file by file.
 
 **Consequences.** A new `.js` file starts unchecked until it adds its own
 `// @ts-check` comment — this is intentional, not an oversight to "eventually fix."
-As of 2026-07-31 every file under `js/` had in fact opted in and passed clean (full
-current coverage), and `typecheck` is now a required CI check on that basis — but
-the per-file mechanism stays even at full coverage, since it's also what lets a
-newly added file start unchecked without breaking the invariant that every *checked*
-file is checked on purpose.
+As of 2026-07-31, 73 of `js/`'s 74 first-party files had opted in and passed clean;
+the one exception, `js/vendor/supabase.js`, is a vendored third-party bundle, which
+is standard practice to leave unchecked rather than fighting its own type shape.
+`typecheck` is a required CI check on that basis — but the per-file mechanism stays
+even at this near-total coverage, since it's also what lets a newly added file start
+unchecked without breaking the invariant that every *checked* file is checked on
+purpose.
 
 ---
 

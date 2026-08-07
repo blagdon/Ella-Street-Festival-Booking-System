@@ -61,6 +61,7 @@ GRANT ALL ON FUNCTION "public"."get_current_org_id"() TO "service_role";
 GRANT ALL ON FUNCTION "public"."get_next_booking_id"("p_prefix" "text") TO "service_role";
 GRANT ALL ON FUNCTION "public"."has_org_role"("p_org_id" "text", "p_roles" "text"[]) TO "authenticated";
 GRANT ALL ON FUNCTION "public"."has_org_role"("p_org_id" "text", "p_roles" "text"[]) TO "service_role";
+GRANT ALL ON FUNCTION "public"."is_authorised_for_org"("p_org_id" "text", "p_roles" "text"[]) TO "service_role";
 GRANT ALL ON FUNCTION "public"."is_booking_confirmed"("p_booking_id" "text") TO "anon";
 GRANT ALL ON FUNCTION "public"."is_booking_confirmed"("p_booking_id" "text") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."is_booking_confirmed"("p_booking_id" "text") TO "service_role";
