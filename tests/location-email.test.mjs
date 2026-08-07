@@ -33,10 +33,11 @@ before(async () => {
   if (error) throw new Error(`Failed to sign in as test admin (run scripts/seed-test-project.mjs first): ${error.message}`);
 
   await service.from('email_templates').upsert({
+    org_id: 'org_default',
     id: 'location_update',
     subject: 'Your pitch location (Ref: {{booking_id}})',
     body_html: 'Dear {{owner_name}}, {{business_name}} has been allocated to {{location_display}}.',
-  }, { onConflict: 'id' });
+  }, { onConflict: 'org_id,id' });
 
   await service.from('audit_logs').delete().eq('target_id', bookingId);
   await service.from('email_queue').delete().eq('recipient', RECIPIENT);
@@ -84,6 +85,7 @@ describe('location allocation email: template fetched -> email queued -> audit l
     const { data: template, error: templateErr } = await authed
       .from('email_templates')
       .select('subject, body_html')
+      .eq('org_id', 'org_default')
       .eq('id', 'location_update')
       .single();
     assert.equal(templateErr, null, templateErr?.message);

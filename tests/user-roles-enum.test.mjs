@@ -42,7 +42,7 @@ before(async () => {
   if (error) throw new Error(`Failed to sign in as test admin (run scripts/seed-test-project.mjs first): ${error.message}`);
   adminUserId = data.user.id;
 
-  await service.from('email_templates').update({ subject: 'Role enum test baseline' }).eq('id', 'application_received');
+  await service.from('email_templates').update({ subject: 'Role enum test baseline' }).eq('org_id', 'org_default').eq('id', 'application_received');
   await service.from('bookings').delete().like('id', `${PREFIX}%`);
   await service.from('settings').delete().in('key', ['role_enum_test_key', 'role_enum_test_key_steward']);
 });
@@ -55,7 +55,7 @@ after(async () => {
 
 describe('the six directly-rewritten policies (previously plain text, now user_role)', () => {
   test('admin can write email_templates (Admin manage email_templates)', async () => {
-    const { error } = await authed.from('email_templates').update({ subject: 'Role enum test' }).eq('id', 'application_received');
+    const { error } = await authed.from('email_templates').update({ subject: 'Role enum test' }).eq('org_id', 'org_default').eq('id', 'application_received');
     assert.equal(error, null, `admin update must succeed: ${error?.message}`);
   });
 

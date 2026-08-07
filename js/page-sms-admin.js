@@ -2,6 +2,7 @@
 import { getSupabaseClient } from './supabase.js';
 import { showToast, registerModalClose, trapFocus } from './ui.js';
 import { escapeHtml, countSmsSegments } from './utils.js';
+import { getCurrentOrgId } from './config.js';
 
 // SMS twin of page-email-admin.js. Same sidebar/editor/mobile-toggle/preview
 // shape; the differences are all because SMS is plain text, not HTML:
@@ -52,7 +53,7 @@ export function initSmsAdmin() {
 
 async function loadTemplates() {
     try {
-        const { data, error } = await sb.from('sms_templates').select('*').order('id');
+        const { data, error } = await sb.from('sms_templates').select('*').eq('org_id', getCurrentOrgId()).order('id');
         if (error) throw error;
 
         allTemplates = data;
@@ -132,6 +133,7 @@ async function saveTemplate() {
                 body: newBody,
                 updated_at: new Date().toISOString()
             })
+            .eq('org_id', getCurrentOrgId())
             .eq('id', currentTemplateId);
 
         if (error) throw error;
