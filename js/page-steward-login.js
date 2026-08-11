@@ -35,14 +35,22 @@ initPublicPage(async () => {
     try {
         initSentryBrowser(await fetchSentryBrowserLoaderUrl(getSupabaseClient()));
 
-        // Check for unauthorized access error from RBAC redirect
+        // Check for an error from RBAC/organisation-resolution redirects
+        // (js/supabase.js's requireAuth()) - reusing the same errorMsg element
+        // and query-param convention for all three reasons, not a new UI.
         const params = new URLSearchParams(window.location.search);
-        const isUnauthorized = params.get('error') === 'unauthorized';
+        const errorReason = params.get('error');
 
-        if (isUnauthorized) {
+        if (errorReason) {
             const errorMsg = document.getElementById('errorMsg');
             if (errorMsg) {
-                errorMsg.innerText = 'You do not have steward privileges.';
+                if (errorReason === 'no_organisation') {
+                    errorMsg.innerText = 'Your account isn\'t linked to an organisation. Contact your administrator.';
+                } else if (errorReason === 'multiple_organisations') {
+                    errorMsg.innerText = 'Your account belongs to more than one organisation. Contact your administrator to resolve this before signing in as a steward.';
+                } else {
+                    errorMsg.innerText = 'You do not have steward privileges.';
+                }
                 errorMsg.classList.remove('hidden');
             }
         }
@@ -51,7 +59,7 @@ initPublicPage(async () => {
         try {
             const sb = getSupabaseClient();
             const { data: { session } } = await sb.auth.getSession();
-            if (session && !isUnauthorized) {
+            if (session && !errorReason) {
                 window.location.href = 'steward.html';
                 return;
             }

@@ -27,10 +27,22 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
-  reporter: process.env.CI ? 'line' : 'list',
+  // CI keeps the 'line' reporter for a readable live log and adds 'html' so
+  // a failure leaves a browsable report behind - previously CI generated no
+  // report at all, only the raw log. Local runs are unaffected (still just
+  // 'list') - this is diagnostics for CI failures specifically, not a
+  // change to the everyday local dev workflow.
+  reporter: process.env.CI ? [['line'], ['html', { open: 'never', outputFolder: 'playwright-report' }]] : 'list',
   use: {
     baseURL: 'http://localhost:8080',
     trace: 'retain-on-failure',
+    // Screenshot/video were never configured before (Playwright defaults
+    // both to 'off'), so a CI failure had nothing but the trace - and the
+    // trace itself was never uploaded anywhere either (see ci.yml). Both
+    // are failure-only, matching trace's own policy, so a normal green run
+    // costs nothing extra.
+    screenshot: 'only-on-failure',
+    video: 'retain-on-failure',
   },
   // Reuses `npm run dev` (scripts/dev-server.mjs) - the same static server
   // used for manual local testing throughout this project. Locally, reuses
@@ -53,7 +65,7 @@ export default defineConfig({
     { name: 'setup', testMatch: /\/admin\.setup\.mjs$/ },
     {
       name: 'admin',
-      testMatch: /\/(admin-accessibility|focus-trap|provisioning|event-configuration|public-booking-routing|event-page-cta|settings-secrets|steward-login-race)\.spec\.mjs$/,
+      testMatch: /\/(admin-accessibility|focus-trap|provisioning|event-configuration|public-booking-routing|event-page-cta|settings-secrets|steward-tenant-isolation|steward-login-race)\.spec\.mjs$/,
       dependencies: ['setup'],
       use: { storageState: 'e2e/.auth/admin.json' },
     },

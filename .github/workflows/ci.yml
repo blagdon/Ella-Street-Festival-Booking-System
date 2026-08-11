@@ -244,6 +244,21 @@ jobs:
         run: npm run test:setup
       - name: Run admin accessibility regression suite
         run: npm run test:a11y:admin
+      # Diagnostics only - never ran before this, so a failure had nothing
+      # but the raw log to go on (see the steward-login CI failure this was
+      # added for). Failure-gated deliberately: a green run has nothing
+      # worth keeping, and uploading every run's trace/video for 47+ tests
+      # would be needless storage for no diagnostic value.
+      - name: Upload Playwright diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-admin-accessibility
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 7
+          if-no-files-found: ignore
 
   # Edge Function deploys were entirely manual until now (see HANDOVER.md's
   # "Deploying an Edge Function" section and its PR #152 Gotcha - the
