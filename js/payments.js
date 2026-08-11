@@ -3,8 +3,8 @@ import { fetchPayments, updatePayment, resendPaymentRequest, recordBankTransferP
 import { manualSendPaymentReminder } from './shared.js';
 import { getEmailFromTemplate, getSmsFromTemplate } from './message-templates.js';
 import { showToast, showConfirm, notifyIfTruncated, registerModalClose, trapFocus } from './ui.js';
-import { escapeHtml } from './utils.js';
-import { CONFIG } from './config.js';
+import { escapeHtml, formatCurrency } from './utils.js';
+import { CONFIG, getActiveBookingPrefix } from './config.js';
 
 let allRecords = [];
 // Tracked separately from btn-save-refund's own disabled state: closeRefundModal
@@ -180,15 +180,15 @@ function renderTable() {
     // Update Totals Display
     const elPaid = document.getElementById('total-paid');
     const elOut = document.getElementById('total-outstanding');
-    if (elPaid) elPaid.innerText = "£" + totalPaid.toLocaleString('en-GB', { minimumFractionDigits: 2 });
-    if (elOut) elOut.innerText = "£" + totalOutstanding.toLocaleString('en-GB', { minimumFractionDigits: 2 });
+    if (elPaid) elPaid.innerText = formatCurrency(totalPaid);
+    if (elOut) elOut.innerText = formatCurrency(totalOutstanding);
 
     // Refunded is shown only when there is something to show. Netting it out
     // of Paid above would otherwise make money silently disappear from the
     // header with nothing accounting for where it went.
     const elRefunded = document.getElementById('total-refunded');
     const elRefundedWrap = document.getElementById('total-refunded-wrap');
-    if (elRefunded) elRefunded.innerText = "£" + totalRefunded.toLocaleString('en-GB', { minimumFractionDigits: 2 });
+    if (elRefunded) elRefunded.innerText = formatCurrency(totalRefunded);
     if (elRefundedWrap) elRefundedWrap.classList.toggle('hidden', totalRefunded === 0);
 
     // Update Count
@@ -238,7 +238,7 @@ function renderTable() {
                     <div class="text-sm text-gray-500">${escapeHtml(r.owner || r.owner_name)}</div>
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-mono">
-                    ${r.stall_cost != null ? `£${Number(r.stall_cost).toFixed(2)}` : '—'}
+                    ${formatCurrency(r.stall_cost)}
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap text-center">
                     <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${paidClass}">
@@ -250,7 +250,7 @@ function renderTable() {
                         </div>` : ''}
                     ${r.refunded ? `
                         <div class="mt-1 text-[10px] text-gray-500">
-                            £${Number(r.refund_amount).toFixed(2)} on ${escapeHtml(r.refunded_at ? new Date(r.refunded_at).toLocaleDateString('en-GB') : '')}
+                            ${formatCurrency(r.refund_amount)} on ${escapeHtml(r.refunded_at ? new Date(r.refunded_at).toLocaleDateString('en-GB') : '')}
                         </div>` : ''}
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -314,7 +314,7 @@ function renderTable() {
                 <div class="grid grid-cols-2 gap-3 mb-3">
                     <div>
                         <span class="text-xs uppercase text-gray-400 font-bold block mb-1">Amount</span>
-                        <p class="text-lg font-bold text-gray-900">${r.stall_cost != null ? `£${Number(r.stall_cost).toFixed(2)}` : '—'}</p>
+                        <p class="text-lg font-bold text-gray-900">${formatCurrency(r.stall_cost)}</p>
                     </div>
                     <div>
                         <span class="text-xs uppercase text-gray-400 font-bold block mb-1">Status</span>
@@ -405,7 +405,7 @@ function openBankTransferModal(id) {
 
     (/** @type {HTMLInputElement} */ (document.getElementById('bt-modal-id'))).value = r.id;
     document.getElementById('bt-modal-booking-display').innerText = `${r.business || r.business_name} (${r.id})`;
-    document.getElementById('bt-modal-amount-display').innerText = r.stall_cost != null ? `£${parseFloat(r.stall_cost).toFixed(2)}` : '—';
+    document.getElementById('bt-modal-amount-display').innerText = formatCurrency(r.stall_cost);
     // Payment reference defaults to the booking ID, per spec — editable if the
     // stallholder actually used a different reference on their transfer.
     (/** @type {HTMLInputElement} */ (document.getElementById('bt-modal-reference'))).value = r.id;
@@ -511,7 +511,7 @@ function openRefundModal(id) {
 
     (/** @type {HTMLInputElement} */ (document.getElementById('refund-modal-id'))).value = r.id;
     document.getElementById('refund-modal-booking-display').innerText = `${r.business || r.business_name} (${r.id})`;
-    document.getElementById('refund-modal-paid-display').innerText = paidAmount != null ? `£${paidAmount.toFixed(2)}` : '—';
+    document.getElementById('refund-modal-paid-display').innerText = formatCurrency(paidAmount);
     document.getElementById('refund-modal-method-display').innerText =
         r.payment_method === 'stripe' ? 'Stripe' + (isStripe ? '' : ' (no payment intent recorded — manual refund only)')
             : r.payment_method === 'bank_transfer' ? 'Bank transfer'
@@ -592,7 +592,7 @@ async function saveRefund() {
     if (isStripe) {
         showConfirm(
             'Issue Stripe refund?',
-            `This will immediately refund £${parsedAmount.toFixed(2)} to the trader's card via Stripe. This cannot be undone from here.`,
+            `This will immediately refund ${formatCurrency(parsedAmount)} to the trader's card via Stripe. This cannot be undone from here.`,
             () => performRefund(id, parsedAmount, reference, notes, true)
         );
         return;
@@ -620,7 +620,7 @@ async function performRefund(id, parsedAmount, reference, notes, isStripe) {
             });
             refundInFlight = false;
             closeRefundModal();
-            showToast(`Refund of £${parsedAmount.toFixed(2)} issued via Stripe (${result?.refund_id || 'no id returned'}).`);
+            showToast(`Refund of ${formatCurrency(parsedAmount)} issued via Stripe (${result?.refund_id || 'no id returned'}).`);
         } else {
             await recordRefund({
                 booking_id: id,
@@ -753,7 +753,7 @@ function csvEscape(val) {
  * strings. Shared by the per-booking export and the summary export, so the
  * filename convention and download mechanics can't drift between them.
  * @param {string} filenameSuffix e.g. 'Refunded', 'Summary' - inserted into
- *   the same ESF26_Payments_<instance>_<suffix>_<date>.csv shape.
+ *   the same <prefix>_Payments_<instance>_<suffix>_<date>.csv shape.
  */
 function downloadCsv(headers, rows, filenameSuffix) {
     const csv = [headers.join(','), ...rows].join('\n');
@@ -763,7 +763,7 @@ function downloadCsv(headers, rows, filenameSuffix) {
     const instance = localStorage.getItem('ESF_INSTANCE') || 'DEV';
     const suffix = filenameSuffix ? `_${filenameSuffix}` : '';
     a.href = url;
-    a.download = `ESF26_Payments_${instance}${suffix}_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `${getActiveBookingPrefix()}_Payments_${instance}${suffix}_${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
 }

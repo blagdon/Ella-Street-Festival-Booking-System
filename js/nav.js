@@ -205,6 +205,40 @@ export async function initNavigation() {
                 window.location.reload();
             });
         });
+
+        // This RPC's response is the only place the admin side already
+        // resolves an org id to its real organisation-table name - both the
+        // tenant badge (V1.1 Sprint 2, Issue 4) and the page title (Issue 3)
+        // use it below rather than CONFIG.FESTIVAL_DISPLAY_NAME, which
+        // defaults to the literal string 'Ella Street Festival' until an
+        // admin explicitly sets it and would reintroduce the same wrong-tenant
+        // leak for any newly-provisioned org that hasn't visited Settings yet
+        // - see HANDOVER's Sprint 2 write-up for the resulting (pre-existing,
+        // out-of-scope-here) inconsistency against the nav header text, which
+        // still reads FESTIVAL_DISPLAY_NAME directly and is untouched by this.
+        const resolvedOrgName = list.find(o => o.id === ctx.orgId)?.name || ctx.orgId;
+
+        // Tenant badge (V1.1 Sprint 2, Issue 4) - both halves (name + event
+        // prefix) are written together so the badge never shows a name
+        // paired with stale event text.
+        const tenantBadge = document.getElementById('tenantBadge');
+        if (tenantBadge) {
+            const resolvedEvt = getCurrentEvent();
+            tenantBadge.textContent = `${resolvedOrgName} | ${resolvedEvt.booking_prefix || ctx.eventId}`;
+        }
+
+        // Dynamic page title (V1.1 Sprint 2, Issue 3) - replaces the old
+        // ESF26-substring-replace hack, which silently missed titles like
+        // payments.html's "...- ESF2026" (no literal "ESF26" substring) and
+        // could never have produced an org NAME anyway, only a booking
+        // prefix. Every admin page's static <title> is now just its section
+        // name (e.g. "Kanban", "Payments" - see each page's own <title> tag),
+        // so prepending the resolved org name here is the entire mechanism;
+        // guarded so a second initNavigation() call (there isn't one today)
+        // couldn't double-prepend.
+        if (!document.title.startsWith(`${resolvedOrgName} — `)) {
+            document.title = `${resolvedOrgName} — ${document.title}`;
+        }
     });
 
     // Populate Event Selector
@@ -226,20 +260,13 @@ export async function initNavigation() {
                 }
             });
         }
-
-        const tenantBadge = document.getElementById('tenantBadge');
-        if (tenantBadge) {
-            const resolvedEvt = getCurrentEvent();
-            tenantBadge.textContent = `${ctx.orgId} | ${resolvedEvt.booking_prefix || ctx.eventId}`;
-        }
+        // Tenant badge is fully handled by the rpc_list_switchable_organisations
+        // callback above, which has the resolved org name this block never did.
     } catch (e) {
         console.warn('Failed to fetch events for nav:', e);
     }
-
-    // Dynamically update document title to use current prefix
-    if (document.title.includes('ESF26')) {
-        document.title = document.title.replace('ESF26', prefix);
-    }
+    // Page title is now set from the resolved org name inside the
+    // rpc_list_switchable_organisations callback above (V1.1 Sprint 2).
 
     // Instance Selectors
     const setInstance = (val) => {

@@ -86,13 +86,15 @@ export async function resolvePublicContext(orgSlug, eventSlug) {
  * without the other - a plain nullable-field shape narrows cleanly on
  * `if (ctx.event)`, unlike a custom isDefault discriminant.
  * @param {Location} [loc]
- * @returns {Promise<{org: PublicOrg, event: PublicEvent, branding: Record<string, string>} | {org: null, event: null} | null>}
+ * @returns {Promise<{org: PublicOrg, event: PublicEvent, branding: Record<string, string>} | {org: null, event: null, branding: Record<string, string>} | null>}
  *   null means a slug WAS present in the URL but didn't resolve to a real
  *   organisation/event - a broken or stale link, not the default case.
+ *   branding is always present (empty for the legacy default case) so
+ *   callers never need an org-presence check just to read a settings key.
  */
 export async function resolveBookingFormContext(loc = window.location) {
     const { orgSlug, eventSlug } = readSlugsFromLocation(loc);
-    if (!orgSlug || !eventSlug) return { org: null, event: null };
+    if (!orgSlug || !eventSlug) return { org: null, event: null, branding: {} };
 
     const ctx = await resolvePublicContext(orgSlug, eventSlug);
     if (!ctx) return null;
@@ -111,7 +113,7 @@ export async function resolveBookingFormContext(loc = window.location) {
  * function returns.
  * @param {string} settingsKey - 'general_bookings_open' or 'food_bookings_open'
  * @returns {Promise<
- *   | { ok: true, orgSlug: string|undefined, eventSlug: string|undefined, bookingPrefix: string, orgName: string|undefined, eventName: string|undefined, regulatoryAuthorityName: string|undefined, insuranceMinimumAmount: string|undefined }
+ *   | { ok: true, orgSlug: string|undefined, eventSlug: string|undefined, bookingPrefix: string, orgName: string|undefined, eventName: string|undefined, regulatoryAuthorityName: string|undefined, insuranceMinimumAmount: string|undefined, logoUrl: string|undefined, primaryColor: string|undefined }
  *   | { ok: false, reason: 'not_found' }
  *   | { ok: false, reason: 'event_not_open', eventStatus: string }
  *   | { ok: false, reason: 'toggle_closed' }
@@ -174,6 +176,14 @@ export async function initPublicBookingForm(settingsKey) {
         eventName: ctx.event ? ctx.event.name : undefined,
         regulatoryAuthorityName: declarationSettings.regulatory_authority_name || undefined,
         insuranceMinimumAmount: declarationSettings.insurance_minimum_amount || undefined,
+        // V1.1 Sprint 2, Issue 2 - ctx.branding is resolvePublicContext()'s
+        // full org+event settings merge (already fetched above to resolve
+        // this same ctx, not a new query) - empty (not absent) for the
+        // legacy default case, so undefined here just means "no value set",
+        // same "only touch the DOM when there's a real value" convention as
+        // orgName/eventName above.
+        logoUrl: ctx.branding.logo_url || undefined,
+        primaryColor: ctx.branding.brand_primary_color || undefined,
     };
 }
 

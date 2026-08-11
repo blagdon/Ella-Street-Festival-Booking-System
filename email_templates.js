@@ -1,5 +1,5 @@
 import { ESF_PUBLIC_CONFIG } from './supabase-public.js';
-import { escapeHtml } from './js/utils.js';
+import { escapeHtml, formatCurrency } from './js/utils.js';
 
 const EmailConfig = {
     BANK_DETAILS: ESF_PUBLIC_CONFIG.BANK_DETAILS,
@@ -61,7 +61,7 @@ export const ESF_EMAIL_TEMPLATES = {
     confirmed_chargeable: function (b) {
         const cancelLink = this._getCancelLink(b.cancel_token);
         // Uses 'amount' if available, otherwise defaults to generic message
-        const cost = b.amount ? `£${parseFloat(b.amount).toFixed(2)}` : "the agreed fee";
+        const cost = b.amount ? formatCurrency(b.amount) : "the agreed fee";
 
         return {
             subject: `Booking Confirmed - Payment Required (ID: ${b.id})`,
@@ -215,7 +215,7 @@ export const ESF_EMAIL_TEMPLATES = {
         const cancelLink = this._getCancelLink(b.cancel_token);
         // Fallback to stall_cost if amount is missing
         const amount = b.amount || b.stall_cost || 0;
-        const cost = amount ? `£${parseFloat(amount).toFixed(2)}` : "the agreed fee";
+        const cost = amount ? formatCurrency(amount) : "the agreed fee";
 
         return {
             subject: `Payment Reminder: Booking (ID: ${b.id})`,

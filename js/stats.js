@@ -1,13 +1,25 @@
 // @ts-check
 import { fetchStatsData, STATS_CAP } from './api.js';
-import { getStallCost } from './config.js';
+import { CONFIG, getStallCost } from './config.js';
 import { showToast, notifyIfTruncated } from './ui.js';
-import { escapeHtml } from './utils.js';
+import { escapeHtml, formatCurrency } from './utils.js';
 
-// Constants for Prefixes
+// Constants for Prefixes. FOOD/NONFOOD are redundant fallbacks only - the
+// booking_type OR-condition on foodData/nonFoodData below already handles
+// every organisation correctly (submit-booking always sets booking_type
+// from the prefix's own FOOD/NONFOOD content, not the org's specific
+// prefix), so these two never actually need to match for a non-ESF26 org.
+// DEV has no such booking_type fallback available: unlike food/general,
+// nothing in the app ever sets booking_type to a value that reliably means
+// "this is a DEV-instance booking" - 'dev' is just the bookings table's
+// default for any insert that omits booking_type entirely (confirmed live:
+// a genuine Misc entry via add_misc.html gets booking_type 'dev', not
+// 'misc' or anything DEV-specific). instance_prefix ending in "-DEV-" is
+// the only reliable signal, so it's resolved per-org via CONFIG.INSTANCE_MAP
+// (the same mechanism js/page-steward.js already uses) instead of a
+// hardcoded ESF26 literal.
 const PREFIX_FOOD = 'ESF26-FOOD-';
 const PREFIX_NONFOOD = 'ESF26-NONFOOD-';
-const PREFIX_DEV = 'ESF26-DEV-';
 
 let statusChartInstance = null;
 let instanceChartInstance = null;
@@ -69,6 +81,7 @@ export async function loadGlobalStats() {
     try {
         const allRows = await fetchStatsData();
         notifyIfTruncated(allRows, STATS_CAP, 'bookings — charts and totals only reflect these');
+        const devPrefix = CONFIG.INSTANCE_MAP.DEV;
 
         // 2. Segment Data (normalised booking_type with instance_prefix fallback)
         const foodData = allRows.filter(r => r.booking_type === 'food' || r.instance_prefix === PREFIX_FOOD);
@@ -82,7 +95,7 @@ export async function loadGlobalStats() {
             r.booking_type !== 'dev' &&
             r.instance_prefix !== PREFIX_FOOD &&
             r.instance_prefix !== PREFIX_NONFOOD &&
-            r.instance_prefix !== PREFIX_DEV
+            r.instance_prefix !== devPrefix
         );
 
         // 3. Render Charts
@@ -333,8 +346,9 @@ function renderCharts(allRows, combinedData, foodData, nonFoodData) {
     // with. Deliberately NOT netted out of the confirmed bar: a refunded
     // cancellation has status Cancelled and is already outside that forecast,
     // so netting would double-count the deduction.
+    const devPrefix = CONFIG.INSTANCE_MAP.DEV;
     const refundedRows = allRows.filter(r =>
-        r.instance_prefix !== PREFIX_DEV && getRefundAmount(r) > 0);
+        r.instance_prefix !== devPrefix && getRefundAmount(r) > 0);
     const refundedTotal = refundedRows.reduce((sum, r) => sum + getRefundAmount(r), 0);
     setText('revenue-refunded', fmtGBP(refundedTotal));
     setText('revenue-refunded-count', refundedRows.length);
@@ -515,10 +529,10 @@ function renderPanel(containerId, data, title, headerClass, borderClass) {
 
 // One format for every money figure on the page. Always pence: partial
 // refunds make whole-pound rounding lossy, and mixing £425 with £275.00
-// in the same card looked accidental.
-function fmtGBP(n) {
-    return `£${n.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
+// in the same card looked accidental. Now the shared formatCurrency()
+// (V1.1 Sprint 2, Issue 8) — this was that helper's own origin, duplicated
+// independently in ~15 other places across the app before Sprint 2.
+const fmtGBP = formatCurrency;
 
 /**
  * A booking that still exists as far as festival planning is concerned.

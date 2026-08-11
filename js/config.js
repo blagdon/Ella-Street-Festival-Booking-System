@@ -282,7 +282,15 @@ export function applySettingsToConfig(data) {
         } else if (item.key === 'hcc_council_email') {
             CONFIG.HCC_COUNCIL_EMAIL = val;
         } else if (item.key === 'festival_display_name') {
-            CONFIG.FESTIVAL_DISPLAY_NAME = val;
+            // V1.1 Sprint 2: Settings -> General no longer pre-fills this
+            // field with 'Ella Street Festival' for an org that hasn't set
+            // one (js/page-admin.js), so an explicit empty save is now a
+            // real possibility, not just a hypothetical. An empty value
+            // keeps the hardcoded CONFIG default above rather than blanking
+            // the nav header/page titles - every other org/event settings
+            // pair in this app already treats "row exists but empty" the
+            // same as "no row" for exactly this reason.
+            if (val) CONFIG.FESTIVAL_DISPLAY_NAME = val;
         } else if (item.key === 'allowed_stall_types') {
             CONFIG.UI.ALLOWED_TYPES = val.split(',').map(s => s.trim()).filter(Boolean);
         } else if (item.key === 'booking_prefix') {

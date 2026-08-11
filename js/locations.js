@@ -3,6 +3,7 @@ import { fetchLocationData, updateLocation, LIST_CAP } from './api.js';
 import { queueLocationEmail, queueLocationSms } from './shared.js';
 import { showToast, notifyIfTruncated, registerModalClose, trapFocus } from './ui.js';
 import { escapeHtml, sortBookings } from './utils.js';
+import { getActiveBookingPrefix } from './config.js';
 
 let allBookings = [];
 let allLocations = [];
@@ -440,7 +441,7 @@ export async function downloadLocationsForMyMaps() {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `ESF26_Locations_MyMaps_AllInstances_${new Date().toISOString().slice(0, 10)}.csv`;
+        a.download = `${getActiveBookingPrefix()}_Locations_MyMaps_AllInstances_${new Date().toISOString().slice(0, 10)}.csv`;
         a.click();
         URL.revokeObjectURL(url);
 

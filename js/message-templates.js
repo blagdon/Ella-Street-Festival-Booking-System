@@ -1,6 +1,6 @@
 // @ts-check
 import { getSupabaseClient } from './supabase.js';
-import { escapeHtml } from './utils.js';
+import { escapeHtml, formatCurrency } from './utils.js';
 import { getStallCost, CONFIG, getCurrentOrgId } from './config.js';
 
 /**
@@ -35,10 +35,10 @@ export async function getEmailFromTemplate(templateId, booking, id, extraVars = 
     // Cost calculation logic safely duplicated or imported
     let costStr;
     if (booking.stall_cost !== undefined && booking.stall_cost !== null) {
-        costStr = `£${parseFloat(booking.stall_cost).toFixed(2)}`;
+        costStr = formatCurrency(booking.stall_cost);
     } else {
         const prefix = booking.instance_prefix || CONFIG.INSTANCE_MAP['DEV'];
-        costStr = `£${getStallCost(prefix).toFixed(2)}`;
+        costStr = formatCurrency(getStallCost(prefix));
     }
 
     let cancelToken = booking.cancel_token || '';
@@ -127,10 +127,10 @@ export async function getSmsFromTemplate(templateId, booking, id, extraVars = {}
 
     let costStr;
     if (booking.stall_cost !== undefined && booking.stall_cost !== null) {
-        costStr = `£${parseFloat(booking.stall_cost).toFixed(2)}`;
+        costStr = formatCurrency(booking.stall_cost);
     } else {
         const prefix = booking.instance_prefix || CONFIG.INSTANCE_MAP['DEV'];
-        costStr = `£${getStallCost(prefix).toFixed(2)}`;
+        costStr = formatCurrency(getStallCost(prefix));
     }
 
     let reason = extraVars.reason || 'Oversubscribed / Category Full';

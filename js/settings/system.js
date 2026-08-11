@@ -113,15 +113,34 @@ export async function initSystemConstants() {
 
     if (!txtFestivalName || !txtTurnstile || !txtBaseUrl || !txtCancelUrl || !txtPortalUrl || !txtCouncilEmail || !txtBucket || !txtPrefix || !btnSave) return;
 
-    // Load active settings from public config and CONFIG
-    txtFestivalName.value = CONFIG.FESTIVAL_DISPLAY_NAME || '';
-    txtTurnstile.value = ESF_PUBLIC_CONFIG?.TURNSTILE_SITE_KEY || '';
-    txtBaseUrl.value = ESF_PUBLIC_CONFIG?.BASE_URL || '';
-    txtCancelUrl.value = ESF_PUBLIC_CONFIG?.CANCEL_URL || '';
-    txtPortalUrl.value = ESF_PUBLIC_CONFIG?.PORTAL_URL || '';
-    txtBucket.value = ESF_PUBLIC_CONFIG?.BUCKET_NAME || '';
-    txtPrefix.value = ESF_PUBLIC_CONFIG?.BOOKING_PREFIX || '';
-    txtCouncilEmail.value = CONFIG.HCC_COUNCIL_EMAIL || '';
+    // Load this org's own settings rows directly (same pattern as
+    // initSentrySettings()/initSerpApiSettings() below) rather than through
+    // CONFIG/ESF_PUBLIC_CONFIG's getters: those carry hardcoded
+    // platform-identity fallbacks (FESTIVAL_DISPLAY_NAME defaults to 'Ella
+    // Street Festival', BOOKING_PREFIX to 'ESF26') meant for contexts where
+    // *something* must always render before settings load. Here that would
+    // present the platform's own defaults as if they were this org's actual
+    // configured values - and risk silently persisting them on save. An org
+    // with nothing configured for these keys sees a genuinely empty field.
+    try {
+        const { data, error } = await sb.from('settings')
+            .select('key, value')
+            .eq('org_id', getCurrentOrgId())
+            .in('key', ['festival_display_name', 'turnstile_site_key', 'base_url', 'cancel_url', 'portal_url', 'hcc_council_email', 'bucket_name', 'booking_prefix']);
+        if (error) throw error;
+
+        const row = (key) => (data || []).find(r => r.key === key)?.value;
+        txtFestivalName.value = row('festival_display_name') || '';
+        txtTurnstile.value = row('turnstile_site_key') || '';
+        txtBaseUrl.value = row('base_url') || '';
+        txtCancelUrl.value = row('cancel_url') || '';
+        txtPortalUrl.value = row('portal_url') || '';
+        txtBucket.value = row('bucket_name') || '';
+        txtPrefix.value = row('booking_prefix') || '';
+        txtCouncilEmail.value = row('hcc_council_email') || '';
+    } catch (err) {
+        showToast("Failed to load System Constants: " + err.message, 'error');
+    }
 
     btnSave.addEventListener('click', async () => {
         const valFestivalName = txtFestivalName.value.trim();

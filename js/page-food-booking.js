@@ -58,6 +58,27 @@ initPublicPage(async function () {
         if (el) el.innerHTML = `a minimum indemnity of <strong>${escapeHtml(boot.insuranceMinimumAmount)}</strong>`; // innerhtml-safe: escapeHtml applied
     }
 
+    // Tenant branding (V1.1 Sprint 2, Issue 2) — this form previously showed
+    // no organisation identity at all beyond the text subtitle above, even
+    // when the org had a logo/colour configured. Only touches the DOM when a
+    // value is actually set; an unbranded org sees exactly today's page.
+    if (boot.logoUrl) {
+        const logo = /** @type {HTMLImageElement|null} */ (document.getElementById('bookingOrgLogo'));
+        if (logo) {
+            logo.alt = boot.orgName || '';
+            logo.src = boot.logoUrl;
+            logo.classList.remove('hidden');
+            // addEventListener, not onerror= — this app's CSP has no
+            // 'unsafe-inline' for script-src (see js/page-event.js's org
+            // logo for the same pattern).
+            logo.addEventListener('error', () => logo.classList.add('hidden'));
+        }
+    }
+    if (boot.primaryColor) {
+        const btn = document.getElementById('submitBtn');
+        if (btn) btn.style.backgroundColor = boot.primaryColor;
+    }
+
     const sb = getPublicSupabaseClient();
 
     // Bind Turnstile Key from database dynamically

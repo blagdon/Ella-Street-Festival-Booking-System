@@ -149,6 +149,32 @@ export function validateStatus(s) {
 }
 
 // ===================================================================
+// === Currency Presentation ===
+// ===================================================================
+/**
+ * Formats a monetary amount for display. GBP only, matching what the
+ * platform actually operates in — Stripe payments are hardcoded to
+ * `currency: 'gbp'` (supabase/functions/get-payment-link) and there is no
+ * per-organisation/event currency setting anywhere in the schema. This is a
+ * presentation-consistency helper (V1.1 Sprint 2, Issue 8), not multi-currency
+ * support — it replaces what had become ~15 independent
+ * `` `£${n.toFixed(2)}` ``/`.toLocaleString('en-GB', ...)` call sites with
+ * one formatting rule, so a future inconsistency (£25.5 next to £25.50) can't
+ * quietly reappear in a sixteenth.
+ * @param {number|string|null|undefined} amount
+ * @param {{ emptyPlaceholder?: string }} [options] - shown for null/undefined/
+ *   unparseable input. Defaults to '—', the existing convention for "no
+ *   amount" table cells (js/payments.js).
+ * @returns {string}
+ */
+export function formatCurrency(amount, { emptyPlaceholder = '—' } = {}) {
+    if (amount === null || amount === undefined || amount === '') return emptyPlaceholder;
+    const n = typeof amount === 'string' ? parseFloat(amount) : amount;
+    if (!Number.isFinite(n)) return emptyPlaceholder;
+    return `£${n.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+// ===================================================================
 // === SECURITY: Safe Error Messages ===
 // ===================================================================
 export function safeError(err) {

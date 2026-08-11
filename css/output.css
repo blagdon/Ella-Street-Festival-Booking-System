@@ -766,6 +766,9 @@
   .max-w-\[85\%\] {
     max-width: 85%;
   }
+  .max-w-\[120px\] {
+    max-width: 120px;
+  }
   .max-w-\[140px\] {
     max-width: 140px;
   }
@@ -1643,6 +1646,9 @@
   }
   .pt-5 {
     padding-top: calc(var(--spacing) * 5);
+  }
+  .pt-6 {
+    padding-top: calc(var(--spacing) * 6);
   }
   .pt-8 {
     padding-top: calc(var(--spacing) * 8);
