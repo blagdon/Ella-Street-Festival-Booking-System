@@ -53,7 +53,7 @@ export default defineConfig({
     { name: 'setup', testMatch: /\/admin\.setup\.mjs$/ },
     {
       name: 'admin',
-      testMatch: /\/(admin-accessibility|focus-trap|provisioning|event-configuration|public-booking-routing|event-page-cta|settings-secrets)\.spec\.mjs$/,
+      testMatch: /\/(admin-accessibility|focus-trap|provisioning|event-configuration|public-booking-routing|event-page-cta|settings-secrets|steward-login-race)\.spec\.mjs$/,
       dependencies: ['setup'],
       use: { storageState: 'e2e/.auth/admin.json' },
     },

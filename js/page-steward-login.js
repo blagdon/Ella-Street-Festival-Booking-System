@@ -7,43 +7,69 @@ import { initPublicPage, fetchSentryBrowserLoaderUrl } from '../supabase-public.
 let loginAttempts = 0;
 let lockoutUntil = 0;
 
+// CI proved (trace evidence, admin-accessibility-tests run 31469497463) that
+// attaching this listener at the end of the async init chain below is a
+// race: on a slow enough runner, a click can land on #loginBtn before the
+// Sentry-loader fetch + getSession() check resolve, and with no listener
+// attached yet the browser falls through to native <form> submission (no
+// method/action -> GET to the current URL), reloading the page and silently
+// dropping the login attempt. Attaching synchronously - before any async
+// work, as soon as the module runs - means e.preventDefault() always wins
+// that race, regardless of timing. #loginBtn is also disabled until init
+// completes (see the finally block below), so a real user can't trigger a
+// login before the handler is actually ready to do anything with it; the
+// initReady guard in handleLogin() is the same check enforced in JS, as a
+// second, independent line of defence.
+let initReady = false;
+
+const loginForm = document.getElementById('loginForm');
+if (loginForm) {
+    loginForm.addEventListener('submit', handleLogin);
+}
+
 // loadSettings: false — this page reads no OTHER public settings; keep it
 // free of the DB round-trip. sentry_browser_loader_url gets its own scoped
 // fetch below instead of coming along for free.
 initPublicPage(async () => {
-    initSentryBrowser(await fetchSentryBrowserLoaderUrl(getSupabaseClient()));
-
-    // Check for unauthorized access error from RBAC redirect
-    const params = new URLSearchParams(window.location.search);
-    const isUnauthorized = params.get('error') === 'unauthorized';
-
-    if (isUnauthorized) {
-        const errorMsg = document.getElementById('errorMsg');
-        if (errorMsg) {
-            errorMsg.innerText = 'You do not have steward privileges.';
-            errorMsg.classList.remove('hidden');
-        }
-    }
-
-    // Auto-redirect check
+    const btn = /** @type {HTMLButtonElement | null} */ (document.getElementById('loginBtn'));
     try {
-        const sb = getSupabaseClient();
-        const { data: { session } } = await sb.auth.getSession();
-        if (session && !isUnauthorized) {
-            window.location.href = 'steward.html';
-        }
-    } catch (e) {
-        console.error("Auto-redirect check failed:", e);
-    }
+        initSentryBrowser(await fetchSentryBrowserLoaderUrl(getSupabaseClient()));
 
-    const loginForm = document.getElementById('loginForm');
-    if (loginForm) {
-        loginForm.addEventListener('submit', handleLogin);
+        // Check for unauthorized access error from RBAC redirect
+        const params = new URLSearchParams(window.location.search);
+        const isUnauthorized = params.get('error') === 'unauthorized';
+
+        if (isUnauthorized) {
+            const errorMsg = document.getElementById('errorMsg');
+            if (errorMsg) {
+                errorMsg.innerText = 'You do not have steward privileges.';
+                errorMsg.classList.remove('hidden');
+            }
+        }
+
+        // Auto-redirect check
+        try {
+            const sb = getSupabaseClient();
+            const { data: { session } } = await sb.auth.getSession();
+            if (session && !isUnauthorized) {
+                window.location.href = 'steward.html';
+                return;
+            }
+        } catch (e) {
+            console.error("Auto-redirect check failed:", e);
+        }
+    } finally {
+        // Always run, even if the Sentry loader fetch or getSession() threw -
+        // a non-essential init failure must not leave the form permanently
+        // disabled with no way for a real user to sign in.
+        initReady = true;
+        if (btn) btn.disabled = false;
     }
 }, { loadSettings: false });
 
 async function handleLogin(e) {
     e.preventDefault();
+    if (!initReady) return;
 
     const email = (/** @type {HTMLInputElement} */ (document.getElementById('email'))).value.trim();
     const password = (/** @type {HTMLInputElement} */ (document.getElementById('password'))).value; // Fix #7: No .trim() on password
