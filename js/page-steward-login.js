@@ -63,7 +63,10 @@ initPublicPage(async () => {
         // a non-essential init failure must not leave the form permanently
         // disabled with no way for a real user to sign in.
         initReady = true;
-        if (btn) btn.disabled = false;
+        if (btn) {
+            btn.disabled = false;
+            btn.innerText = 'Sign In';
+        }
     }
 }, { loadSettings: false });
 
