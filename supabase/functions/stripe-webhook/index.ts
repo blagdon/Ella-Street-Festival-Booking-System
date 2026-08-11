@@ -3,7 +3,7 @@ import Stripe from 'https://esm.sh/stripe@17.5.0?target=deno'
 import { sendViaZoho } from '../_shared/zoho.ts'
 import { sendViaSms, normalizePhone } from '../_shared/sms.ts'
 import { getStripeClient, getStripeWebhookSecret, loadStripeSettings, type StripeMode } from '../_shared/stripe.ts'
-import { escapeHtml } from '../_shared/format.ts'
+import { escapeHtml, formatCurrency } from '../_shared/format.ts'
 import { captureAndFlush } from '../_shared/sentry.ts'
 
 /**
@@ -49,7 +49,7 @@ async function sendConfirmationEmail(supabaseAdmin: ReturnType<typeof createClie
   ;(settingsRows || []).forEach((r: any) => { settingsMap[r.key] = r.value })
 
   const costStr = (booking.stall_cost !== undefined && booking.stall_cost !== null)
-    ? `£${parseFloat(booking.stall_cost).toFixed(2)}`
+    ? formatCurrency(parseFloat(booking.stall_cost))
     : 'the agreed fee'
   const cancelBase = settingsMap['cancel_url'] || ''
   const cancelLink = (booking.cancel_token && cancelBase)
@@ -150,7 +150,7 @@ async function sendConfirmationSms(supabaseAdmin: ReturnType<typeof createClient
   ;(settingsRows || []).forEach((r: any) => { settingsMap[r.key] = r.value })
 
   const costStr = (booking.stall_cost !== undefined && booking.stall_cost !== null)
-    ? `£${parseFloat(booking.stall_cost).toFixed(2)}`
+    ? formatCurrency(parseFloat(booking.stall_cost))
     : 'the agreed fee'
   const cancelBase = settingsMap['cancel_url'] || ''
   const cancelLink = (booking.cancel_token && cancelBase)

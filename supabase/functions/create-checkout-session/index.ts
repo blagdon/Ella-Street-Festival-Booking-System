@@ -2,7 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { sendViaZoho } from '../_shared/zoho.ts'
 import { sendViaSms, normalizePhone } from '../_shared/sms.ts'
 import { ALLOWED_ORIGIN } from '../_shared/cors.ts'
-import { escapeHtml } from '../_shared/format.ts'
+import { escapeHtml, formatCurrency } from '../_shared/format.ts'
 import { captureAndFlush } from '../_shared/sentry.ts'
 import { resolveStripeMode, getStripeClient, loadStripeSettings } from '../_shared/stripe.ts'
 
@@ -231,7 +231,7 @@ Deno.serve(async (req) => {
         throw new Error('Could not load "payment_requested" email template: ' + (templateErr?.message || 'not found'))
       }
 
-      const costStr = `£${cost.toFixed(2)}`
+      const costStr = formatCurrency(cost)
       const cancelBase = settingsMap['cancel_url'] || ''
       const cancelLink = (booking.cancel_token && cancelBase)
         ? `${cancelBase}?token=${encodeURIComponent(booking.cancel_token)}`
@@ -298,7 +298,7 @@ Deno.serve(async (req) => {
           throw new Error('Could not load "payment_requested" SMS template: ' + (smsTemplateErr?.message || 'not found'))
         }
 
-        const costStr = `£${cost.toFixed(2)}`
+        const costStr = formatCurrency(cost)
         const smsBody = smsTemplateData.body
           .replace(/\{\{owner_name\}\}/g, booking.owner_name || 'Trader')
           .replace(/\{\{business_name\}\}/g, booking.business_name || 'your business')

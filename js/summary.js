@@ -3,7 +3,7 @@ import { fetchKanbanData, addNote, sendEmail, sendBookingSms, queueBulkEmail, qu
 import { sharedUpdateStatus, populateDetailPane, initComposeSmsToggle, initBulkSmsToggle, readOptionalSmsBody, resetSmsToggle, readStatusSmsChecked, resetStatusSmsCheckbox } from './shared.js';
 import { showToast, showConfirm, notifyIfTruncated, trapModal, releaseModal } from './ui.js';
 import { escapeHtml, sortBookings } from './utils.js';
-import { CONFIG, getStallCost, isFoodPrefix } from './config.js';
+import { CONFIG, getStallCost, isFoodPrefix, getActiveBookingPrefix } from './config.js';
 
 let allBookings = [];
 let currentId = null;
@@ -837,7 +837,7 @@ window.exportCSV = function () {
     const a = document.createElement('a');
     const instance = localStorage.getItem('ESF_INSTANCE') || 'DEV';
     a.href = url;
-    a.download = `ESF26_Bookings_${instance}_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `${getActiveBookingPrefix()}_Bookings_${instance}_${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
     showToast(`Exported ${filtered.length} records.`);

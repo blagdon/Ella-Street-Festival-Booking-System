@@ -2,7 +2,7 @@
 import { fetchStatsData, STATS_CAP } from './api.js';
 import { getStallCost } from './config.js';
 import { showToast, notifyIfTruncated } from './ui.js';
-import { escapeHtml } from './utils.js';
+import { escapeHtml, formatCurrency } from './utils.js';
 
 // Constants for Prefixes
 const PREFIX_FOOD = 'ESF26-FOOD-';
@@ -515,10 +515,10 @@ function renderPanel(containerId, data, title, headerClass, borderClass) {
 
 // One format for every money figure on the page. Always pence: partial
 // refunds make whole-pound rounding lossy, and mixing £425 with £275.00
-// in the same card looked accidental.
-function fmtGBP(n) {
-    return `£${n.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
+// in the same card looked accidental. Now the shared formatCurrency()
+// (V1.1 Sprint 2, Issue 8) — this was that helper's own origin, duplicated
+// independently in ~15 other places across the app before Sprint 2.
+const fmtGBP = formatCurrency;
 
 /**
  * A booking that still exists as far as festival planning is concerned.

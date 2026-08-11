@@ -5,7 +5,7 @@
  * Manages section view switching (Organisation, Events, Members, Branding, Settings, Audit).
  */
 import { initAdminPage, getSupabaseClient } from './supabase.js';
-import { getPlatformContext, setCurrentOrgId } from './config.js';
+import { getPlatformContext, setCurrentOrgId, CONFIG } from './config.js';
 import { escapeHtml, validateSlug, parseEdgeFunctionError } from './utils.js';
 import { renderAdminSidebar } from './platform/navigation.js';
 import { renderPageHeader } from './platform/layout.js';
@@ -905,7 +905,26 @@ async function renderBrandingSection(container) {
             <textarea id="emailFooterText" rows="3" placeholder="Your Organisation Name | Registered status" class="w-full px-3.5 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500">${escapeHtml(brandingSettings.email_footer_text || '')}</textarea>
         </div>
         ${renderFormSaveBar({ submitId: 'btnSaveBranding', submitLabel: 'Save Branding Settings' })}
-    </form>`;
+    </form>
+    <div class="mt-6 pt-6 border-t border-gray-200">
+        <h3 class="text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">Preview</h3>
+        <p class="text-xs text-gray-500 mb-3">
+            Approximates how your logo and primary colour appear on the admin header and your public event page today. Updates as you type.
+        </p>
+        <div id="brandingPreviewHeader" class="flex items-center gap-3 p-4 bg-white border border-gray-200 rounded-lg">
+            <img id="brandingPreviewLogo" alt="" class="h-8 w-auto max-w-[140px] object-contain hidden">
+            <div id="brandingPreviewLogoFallback" class="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center text-xs font-bold text-gray-500" aria-hidden="true">🏢</div>
+            <span id="brandingPreviewName" class="text-base font-bold text-gray-900"></span>
+        </div>
+        <div class="mt-3 flex flex-wrap items-center gap-3">
+            <span id="brandingPreviewButton" class="inline-flex items-center justify-center px-4 py-2 rounded-lg font-bold text-white text-sm shadow-sm">Apply for a Food Stall</span>
+            <span class="text-xs text-gray-500">Primary colour, as used on your public event page's booking buttons.</span>
+        </div>
+        <div class="mt-3 flex items-center gap-2">
+            <span id="brandingPreviewAccentSwatch" class="h-5 w-5 rounded border border-gray-300 shrink-0"></span>
+            <span class="text-xs text-gray-500">Secondary colour: <span id="brandingPreviewAccentValue" class="font-mono">not set</span> — saved, but not currently applied anywhere in the interface.</span>
+        </div>
+    </div>`;
 
     const cardHtml = renderCard({
         title: 'Organisation Identity',
@@ -919,6 +938,93 @@ async function renderBrandingSection(container) {
         e.preventDefault();
         await saveBrandingSettings();
     });
+
+    initBrandingPreview();
+}
+
+/**
+ * Live preview for Settings -> Branding & Identity (V1.1 Sprint 2, Issue 1).
+ * Reads straight from the same form fields saveBrandingSettings() reads from
+ * - no separate state, no new fetch. Updates on every keystroke so an admin
+ * sees the effect before saving. Deliberately does NOT wire brand_accent_color
+ * into the mock button or anything else: it has no real consumer anywhere in
+ * the app today, and inventing one here would make the preview lie about
+ * what the app actually does with it (see HANDOVER's Sprint 2 write-up).
+ */
+function initBrandingPreview() {
+    const logoInput = /** @type {HTMLInputElement|null} */ (document.getElementById('logoUrl'));
+    const primaryInput = /** @type {HTMLInputElement|null} */ (document.getElementById('brandPrimaryColor'));
+    const accentInput = /** @type {HTMLInputElement|null} */ (document.getElementById('brandAccentColor'));
+
+    const previewLogo = /** @type {HTMLImageElement|null} */ (document.getElementById('brandingPreviewLogo'));
+    const previewLogoFallback = document.getElementById('brandingPreviewLogoFallback');
+    const previewName = document.getElementById('brandingPreviewName');
+    const previewButton = document.getElementById('brandingPreviewButton');
+    const previewAccentSwatch = document.getElementById('brandingPreviewAccentSwatch');
+    const previewAccentValue = document.getElementById('brandingPreviewAccentValue');
+
+    if (!logoInput || !primaryInput || !accentInput || !previewLogo || !previewName || !previewButton || !previewAccentSwatch || !previewAccentValue) return;
+
+    // Same display name shown today in the real nav header (js/nav.js) and
+    // browser tab title - the preview should match what's actually visible
+    // elsewhere on this same page load, not a separately-fetched name.
+    if (previewName) previewName.textContent = CONFIG.FESTIVAL_DISPLAY_NAME || 'Your Organisation';
+
+    // Neutral fallback so an invalid CSS colour value doesn't just silently
+    // vanish (browsers ignore an invalid color assignment rather than
+    // throwing) - the swatch/button always show *something*.
+    const FALLBACK_COLOR = '#9CA3AF';
+
+    /** @param {string} value @returns {boolean} */
+    function isValidCssColor(value) {
+        if (!value || !value.trim()) return false;
+        const probe = document.createElement('div');
+        probe.style.color = '';
+        probe.style.color = value.trim();
+        return probe.style.color !== '';
+    }
+
+    function updateLogoPreview() {
+        const url = logoInput.value.trim();
+        if (!url) {
+            previewLogo.classList.add('hidden');
+            previewLogoFallback?.classList.remove('hidden');
+            return;
+        }
+        previewLogo.alt = previewName?.textContent || '';
+        previewLogo.src = url;
+        previewLogo.classList.remove('hidden');
+        previewLogoFallback?.classList.add('hidden');
+    }
+
+    // CSP here has no 'unsafe-inline' for script-src, so this must be a real
+    // listener, not an onerror= attribute (see js/page-event.js's identical
+    // comment on its own org-logo image for the incident this refers to).
+    previewLogo.addEventListener('error', () => {
+        previewLogo.classList.add('hidden');
+        previewLogoFallback?.classList.remove('hidden');
+    });
+
+    function updatePrimaryPreview() {
+        const value = primaryInput.value.trim();
+        const color = isValidCssColor(value) ? value : FALLBACK_COLOR;
+        if (previewButton) previewButton.style.backgroundColor = color;
+    }
+
+    function updateAccentPreview() {
+        const value = accentInput.value.trim();
+        const valid = isValidCssColor(value);
+        if (previewAccentSwatch) previewAccentSwatch.style.backgroundColor = valid ? value : FALLBACK_COLOR;
+        if (previewAccentValue) previewAccentValue.textContent = valid ? value : 'not set';
+    }
+
+    updateLogoPreview();
+    updatePrimaryPreview();
+    updateAccentPreview();
+
+    logoInput.addEventListener('input', updateLogoPreview);
+    primaryInput.addEventListener('input', updatePrimaryPreview);
+    accentInput.addEventListener('input', updateAccentPreview);
 }
 
 async function saveBrandingSettings() {
@@ -1018,7 +1124,7 @@ async function renderSettingsSection(container) {
         tabFormHtml = `
         <form id="settingsCategoryForm">
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                ${renderInputField({ id: 'setFestivalName', label: 'Festival Display Name', value: currentSettings.festival_display_name || 'Ella Street Festival' })}
+                ${renderInputField({ id: 'setFestivalName', label: 'Festival Display Name', value: currentSettings.festival_display_name || '', placeholder: 'e.g. Riverside Community Festival' })}
                 ${renderInputField({ id: 'setBookingPrefix', label: 'Default Booking Prefix', value: currentSettings.booking_prefix || 'ESF26' })}
             </div>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
@@ -1057,7 +1163,7 @@ async function renderSettingsSection(container) {
                 ${renderSecretField({ id: 'setStripeWebhookTest', label: 'Stripe Test Webhook Secret', value: currentSettings.stripe_webhook_secret_test || '', placeholder: 'whsec_...' })}
             </div>
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-2">
-                ${renderInputField({ id: 'setBankName', label: 'Bank Account Name', value: currentSettings.bank_account_name || 'Ella Street Festival' })}
+                ${renderInputField({ id: 'setBankName', label: 'Bank Account Name', value: currentSettings.bank_account_name || '', placeholder: 'e.g. Riverside Community Festival' })}
                 ${renderInputField({ id: 'setBankSortCode', label: 'Sort Code', value: currentSettings.bank_sort_code || '12-34-56' })}
                 ${renderInputField({ id: 'setBankAccountNo', label: 'Account Number', value: currentSettings.bank_account_number || '12345678' })}
             </div>

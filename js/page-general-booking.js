@@ -46,6 +46,22 @@ initPublicPage(async function () {
         document.title = `General Trader Application — ${boot.eventName}`;
     }
 
+    // Tenant branding (V1.1 Sprint 2, Issue 2) — see page-food-booking.js's
+    // identical block; only touches the DOM when a value is actually set.
+    if (boot.logoUrl) {
+        const logo = /** @type {HTMLImageElement|null} */ (document.getElementById('bookingOrgLogo'));
+        if (logo) {
+            logo.alt = boot.orgName || '';
+            logo.src = boot.logoUrl;
+            logo.classList.remove('hidden');
+            logo.addEventListener('error', () => logo.classList.add('hidden'));
+        }
+    }
+    if (boot.primaryColor) {
+        const btn = document.getElementById('submitBtn');
+        if (btn) btn.style.backgroundColor = boot.primaryColor;
+    }
+
     const sb = getPublicSupabaseClient();
 
     // Bind Turnstile Key from database dynamically
