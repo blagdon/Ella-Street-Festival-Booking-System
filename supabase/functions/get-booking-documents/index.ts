@@ -2,6 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { getBucketName } from '../_shared/bucket.ts'
 import { ALLOWED_ORIGIN } from '../_shared/cors.ts'
 import { captureAndFlush } from '../_shared/sentry.ts'
+import { resolveCallerAdminScope } from '../_shared/tenant-auth.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
@@ -44,13 +45,12 @@ Deno.serve(async (req) => {
       })
     }
 
-    const { data: roleData, error: roleError } = await supabaseClient
-      .from('user_roles')
-      .select('role')
-      .eq('id', user.id)
-      .single()
-
-    if (roleError || !roleData || roleData.role !== 'admin') {
+    // organisation_members-based - see queue-bulk-email's identical comment.
+    // user_roles.role is NOT org-scoped (every org's admin gets a row there),
+    // so checking it alone would let any organisation's admin read any
+    // OTHER organisation's uploaded documents.
+    const callerScope = await resolveCallerAdminScope(supabaseClient, user.id)
+    if (!callerScope.isPlatformAdmin && callerScope.orgIds.length === 0) {
       return new Response(JSON.stringify({ error: 'Forbidden: Admin role required' }), {
         status: 403,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -65,11 +65,20 @@ Deno.serve(async (req) => {
       })
     }
 
-    const { data: booking, error: bookingErr } = await supabaseClient
+    // org_id is selected so it can be derived from the booking itself below
+    // (never from client input) for the bucket lookup. The org filter is
+    // applied to the query itself (same pattern as retry-queued-sms and
+    // refund-payment) rather than checked after the fact, so a cross-tenant
+    // booking id reads as a plain 404 - it never even reveals that the
+    // booking exists.
+    let bookingQuery = supabaseClient
       .from('bookings')
-      .select('documents')
+      .select('org_id, documents')
       .eq('id', bookingId)
-      .single()
+    if (!callerScope.isPlatformAdmin) {
+      bookingQuery = bookingQuery.in('org_id', callerScope.orgIds)
+    }
+    const { data: booking, error: bookingErr } = await bookingQuery.single()
 
     if (bookingErr || !booking) {
       return new Response(JSON.stringify({ error: 'Booking not found.' }), {
@@ -86,7 +95,7 @@ Deno.serve(async (req) => {
       })
     }
 
-    const bucketName = await getBucketName(supabaseClient)
+    const bucketName = await getBucketName(supabaseClient, booking.org_id)
     const { data: signedData, error: signErr } = await supabaseClient.storage
       .from(bucketName)
       .createSignedUrls(paths, SIGNED_URL_EXPIRY_SECONDS)

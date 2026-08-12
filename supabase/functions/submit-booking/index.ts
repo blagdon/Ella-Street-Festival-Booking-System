@@ -420,7 +420,7 @@ Deno.serve(async (req) => {
         }
       }
 
-      const bucketName = await getBucketName(supabaseAdmin)
+      const bucketName = await getBucketName(supabaseAdmin, newBooking.org_id)
       const movedPaths = []
 
       for (const fileName of fileNames) {
