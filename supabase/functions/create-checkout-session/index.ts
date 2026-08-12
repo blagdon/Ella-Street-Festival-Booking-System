@@ -5,6 +5,7 @@ import { ALLOWED_ORIGIN } from '../_shared/cors.ts'
 import { escapeHtml, formatCurrency } from '../_shared/format.ts'
 import { captureAndFlush } from '../_shared/sentry.ts'
 import { resolveStripeMode, getStripeClient, loadStripeSettings } from '../_shared/stripe.ts'
+import { resolveCallerAdminScope } from '../_shared/tenant-auth.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
@@ -51,24 +52,12 @@ Deno.serve(async (req) => {
       })
     }
 
-    const { data: memberData } = await supabaseClient
-      .from('organisation_members')
-      .select('role')
-      .eq('user_id', user.id)
-      .eq('role', 'admin')
-      .maybeSingle()
-
-    let isAdmin = !!memberData
-    if (!isAdmin) {
-      const { data: roleData } = await supabaseClient
-        .from('user_roles')
-        .select('role')
-        .eq('id', user.id)
-        .maybeSingle()
-      isAdmin = roleData?.role === 'admin'
-    }
-
-    if (!isAdmin) {
+    // organisation_members-based - see queue-bulk-email's identical comment.
+    // user_roles.role is NOT org-scoped (every org's admin gets a row there),
+    // so checking it alone would let any organisation's admin request payment
+    // against any OTHER organisation's booking.
+    const callerScope = await resolveCallerAdminScope(supabaseClient, user.id)
+    if (!callerScope.isPlatformAdmin && callerScope.orgIds.length === 0) {
       return new Response(JSON.stringify({ error: 'Forbidden: Admin role required' }), {
         status: 403,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -83,11 +72,18 @@ Deno.serve(async (req) => {
       })
     }
 
-    const { data: booking, error: bookingErr } = await supabaseClient
+    // The org filter is applied to the query itself (same pattern as
+    // get-booking-documents/refund-payment) rather than checked after the
+    // fact, so a cross-tenant booking id reads as a plain 404 - it never
+    // even reveals that the booking exists.
+    let bookingQuery = supabaseClient
       .from('bookings')
       .select('id, org_id, status, stall_cost, instance_prefix, business_name, owner_name, email, phone, stripe_payment_requested_at, stripe_checkout_session_id, cancel_token, payment_link_code')
       .eq('id', booking_id)
-      .single()
+    if (!callerScope.isPlatformAdmin) {
+      bookingQuery = bookingQuery.in('org_id', callerScope.orgIds)
+    }
+    const { data: booking, error: bookingErr } = await bookingQuery.single()
 
     if (bookingErr || !booking) {
       return new Response(JSON.stringify({ error: 'Booking not found.' }), {
