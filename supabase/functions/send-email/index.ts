@@ -2,6 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { sendViaZoho } from '../_shared/zoho.ts'
 import { ALLOWED_ORIGIN } from '../_shared/cors.ts'
 import { captureAndFlush } from '../_shared/sentry.ts'
+import { resolveCallerAdminScope, type CallerAdminScope } from '../_shared/tenant-auth.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
@@ -35,6 +36,12 @@ Deno.serve(async (req) => {
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     const isTrustedServiceCall = !!serviceRoleKey && token === serviceRoleKey
 
+    // Populated only for a real authenticated admin (stays null for a
+    // trusted service-role call, which has no caller organisation of its
+    // own) - get_accounts below uses this to determine which single
+    // organisation's Zoho settings it may write to.
+    let callerScope: CallerAdminScope | null = null
+
     if (!isTrustedServiceCall) {
       const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token)
       if (authError || !user) {
@@ -44,14 +51,14 @@ Deno.serve(async (req) => {
         })
       }
 
-      // Verify user has admin role in database
-      const { data: roleData, error: roleError } = await supabaseClient
-        .from('user_roles')
-        .select('role')
-        .eq('id', user.id)
-        .single()
-
-      if (roleError || !roleData || roleData.role !== 'admin') {
+      // organisation_members-based - see queue-bulk-email's identical
+      // comment. user_roles.role is NOT org-scoped (every organisation's
+      // admin gets a row there), so checking it alone - the previous
+      // behaviour - let any organisation's admin reach get_accounts below
+      // and overwrite ANY other organisation's cached Zoho access token,
+      // including org_default's (E5-25).
+      callerScope = await resolveCallerAdminScope(supabaseClient, user.id)
+      if (!callerScope.isPlatformAdmin && callerScope.orgIds.length === 0) {
         return new Response(JSON.stringify({ error: 'Forbidden: Admin role required' }), {
           status: 403,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -67,6 +74,48 @@ Deno.serve(async (req) => {
     // ACTION: GET_ACCOUNTS (Retrieve numeric account IDs for user config)
     // -------------------------------------------------------------
     if (action === 'get_accounts') {
+      // The organisation this call may cache a Zoho access token for is
+      // derived entirely from the caller's own real membership, never from
+      // the request body - this is the fix for E5-25: the token cache below
+      // used to have no org_id at all, which meant it silently wrote to
+      // whichever organisation the settings table's own DEFAULT happens to
+      // be (org_default), regardless of which organisation's admin - or
+      // whose Zoho credentials - actually triggered it.
+      //
+      // No service-role/internal caller of get_accounts exists anywhere in
+      // this codebase (confirmed by grep - every other Zoho-sending
+      // function calls sendViaZoho() directly in-process rather than
+      // invoking send-email over HTTP), and there is no legitimate
+      // *system*-generated reason to exchange freshly user-supplied OAuth
+      // credentials, so a trusted service-role call is refused here rather
+      // than guessing an organisation for it.
+      if (!callerScope) {
+        return new Response(JSON.stringify({ error: 'get_accounts requires an authenticated admin session.' }), {
+          status: 403,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        })
+      }
+      // A genuine platform admin configuring org_default's own Zoho
+      // integration is the one case already confirmed live in production
+      // (HANDOVER.md) - resolved deterministically rather than via
+      // orgIds.length, since a platform admin could in principle also hold
+      // a second organisation's membership. An ordinary tenant admin must
+      // belong to exactly one organisation for this to be unambiguous;
+      // there is no established multi-org-admin flow to disambiguate
+      // against, so that shape is refused rather than guessed at.
+      const targetOrgId = callerScope.isPlatformAdmin
+        ? 'org_default'
+        : (callerScope.orgIds.length === 1 ? callerScope.orgIds[0] : null)
+
+      if (!targetOrgId) {
+        return new Response(JSON.stringify({
+          error: 'Ambiguous organisation: this admin account belongs to more than one organisation, and get_accounts cannot determine which one to configure Zoho for.'
+        }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        })
+      }
+
       const { clientId, clientSecret, refreshToken, accountsDomain, apiDomain } = reqBody
       if (!clientId || !clientSecret || !refreshToken) {
         return new Response(JSON.stringify({ error: 'Missing Client ID, Secret, or Refresh Token' }), {
@@ -109,9 +158,9 @@ Deno.serve(async (req) => {
       const { error: saveError } = await supabaseClient
         .from('settings')
         .upsert([
-          { key: 'zoho_access_token', value: accessToken, updated_at: nowStr, updated_by: 'system_edge_function' },
-          { key: 'zoho_access_token_expires_at', value: expiresAt, updated_at: nowStr, updated_by: 'system_edge_function' }
-        ])
+          { org_id: targetOrgId, key: 'zoho_access_token', value: accessToken, updated_at: nowStr, updated_by: 'system_edge_function' },
+          { org_id: targetOrgId, key: 'zoho_access_token_expires_at', value: expiresAt, updated_at: nowStr, updated_by: 'system_edge_function' }
+        ], { onConflict: 'org_id,key' })
       if (saveError) {
         console.warn('Failed to cache Zoho access token in database during get_accounts:', saveError.message)
       }
