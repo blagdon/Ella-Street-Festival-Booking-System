@@ -1,6 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { ALLOWED_ORIGIN } from '../_shared/cors.ts'
 import { validateSlug } from '../_shared/slugs.ts'
+import { resolveCallerAdminScope } from '../_shared/tenant-auth.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
@@ -82,24 +83,25 @@ Deno.serve(async (req) => {
       }
 
       if (!isServiceRole && user) {
-        const { data: memberRole } = await supabaseAdmin
-          .from('organisation_members')
-          .select('role')
-          .eq('user_id', user.id)
-          .eq('role', 'admin')
-          .maybeSingle()
+        // Provisioning creates a brand-new organisation, so there is no
+        // existing org to scope a check against - unlike every other
+        // resolveCallerAdminScope() call site in this codebase (which allow
+        // an org's own admin to act within callerScope.orgIds), this one
+        // requires callerScope.isPlatformAdmin outright, with no org-scoped
+        // fallback. The organisations table's own INSERT RLS policy already
+        // enforces exactly this (`WITH CHECK (is_platform_admin())`,
+        // 20260805000000_membership_scope_org_visibility.sql) - this
+        // service-role Edge Function bypasses that RLS policy entirely, so
+        // it must re-implement the identical rule rather than the more
+        // permissive "any organisation's admin" check this used to have,
+        // which let any tenant's own admin provision arbitrary new
+        // organisations and trigger a real, platform-branded invite email
+        // to an address of their choosing (E5-27).
+        const callerScope = await resolveCallerAdminScope(supabaseAdmin, user.id)
 
-        const { data: userRole } = await supabaseAdmin
-          .from('user_roles')
-          .select('role')
-          .eq('id', user.id)
-          .single()
-
-        const isAdmin = memberRole?.role === 'admin' || userRole?.role === 'admin'
-
-        if (!isAdmin) {
+        if (!callerScope.isPlatformAdmin) {
           return new Response(
-            JSON.stringify({ error: 'Forbidden: Admin role required for provisioning' }),
+            JSON.stringify({ error: 'Forbidden: Platform admin role required for provisioning' }),
             { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           )
         }
