@@ -2,6 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { resolveStripeMode, getStripeClient, loadStripeSettings } from '../_shared/stripe.ts'
 import { ALLOWED_ORIGIN } from '../_shared/cors.ts'
 import { captureAndFlush } from '../_shared/sentry.ts'
+import { resolveCallerAdminScope } from '../_shared/tenant-auth.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
@@ -36,10 +37,19 @@ Deno.serve(async (req) => {
   }
 
   try {
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
     const supabaseAdmin = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
+      supabaseUrl,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
+
+    if (!supabaseUrl || !supabaseAnonKey) {
+      return new Response(
+        JSON.stringify({ error: 'Server misconfiguration: Supabase credentials are missing' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
 
     const authHeader = req.headers.get('Authorization')
     if (!authHeader) {
@@ -57,13 +67,12 @@ Deno.serve(async (req) => {
       })
     }
 
-    const { data: roleData, error: roleError } = await supabaseAdmin
-      .from('user_roles')
-      .select('role')
-      .eq('id', user.id)
-      .single()
-
-    if (roleError || !roleData || roleData.role !== 'admin') {
+    // organisation_members-based - see queue-bulk-email's identical comment.
+    // user_roles.role is NOT org-scoped (every org's admin gets a row there),
+    // so checking it alone would let any organisation's admin refund any
+    // OTHER organisation's payments.
+    const callerScope = await resolveCallerAdminScope(supabaseAdmin, user.id)
+    if (!callerScope.isPlatformAdmin && callerScope.orgIds.length === 0) {
       return new Response(JSON.stringify({ error: 'Forbidden: Admin role required' }), {
         status: 403,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -79,11 +88,20 @@ Deno.serve(async (req) => {
       })
     }
 
-    const { data: booking, error: bookingErr } = await supabaseAdmin
+    // org_id is selected so it can be derived from the booking itself below
+    // (never from client input) for both the Stripe credential lookup and
+    // the rpc_record_refund authorization check. The org filter is applied
+    // to the query itself (same pattern as retry-queued-sms) rather than
+    // checked after the fact, so a cross-tenant booking id reads as a plain
+    // 404 - it never even reveals that the booking exists.
+    let bookingQuery = supabaseAdmin
       .from('bookings')
-      .select('id, instance_prefix, stall_cost, stripe_payment_intent_id')
+      .select('id, org_id, instance_prefix, stall_cost, stripe_payment_intent_id')
       .eq('id', booking_id)
-      .single()
+    if (!callerScope.isPlatformAdmin) {
+      bookingQuery = bookingQuery.in('org_id', callerScope.orgIds)
+    }
+    const { data: booking, error: bookingErr } = await bookingQuery.single()
 
     if (bookingErr || !booking) {
       return new Response(JSON.stringify({ error: 'Booking not found.' }), {
@@ -164,7 +182,16 @@ Deno.serve(async (req) => {
       metadata: { booking_id: booking.id }
     })
 
-    const { error: recordErr } = await supabaseAdmin.rpc('rpc_record_refund', {
+    // Invoked as the caller (not the bare service-role client) so
+    // rpc_record_refund's own auth.uid()-based org check - is_authorised_for_org
+    // against the booking's actual org_id - actually executes, instead of
+    // silently taking the unauthenticated/system branch. Same pattern as
+    // invite-organisation-member's callerClient.
+    const callerClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } }
+    })
+
+    const { error: recordErr } = await callerClient.rpc('rpc_record_refund', {
       p_booking_id: booking.id,
       p_refund_amount: refundAmount,
       p_refund_reference: refund.id,
