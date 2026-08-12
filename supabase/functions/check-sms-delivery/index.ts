@@ -2,6 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { checkDeliveryStatus } from '../_shared/sms.ts'
 import { ALLOWED_ORIGIN } from '../_shared/cors.ts'
 import { captureAndFlush } from '../_shared/sentry.ts'
+import { resolveCallerAdminScope } from '../_shared/tenant-auth.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
@@ -53,13 +54,12 @@ Deno.serve(async (req) => {
       })
     }
 
-    const { data: roleData, error: roleError } = await supabaseAdmin
-      .from('user_roles')
-      .select('role')
-      .eq('id', user.id)
-      .single()
-
-    if (roleError || !roleData || roleData.role !== 'admin') {
+    // organisation_members-based - see queue-bulk-email's identical comment.
+    // user_roles.role is NOT org-scoped (every org's admin gets a row there),
+    // so checking it alone would let any organisation's admin read and
+    // overwrite any OTHER organisation's SMS delivery-status metadata.
+    const callerScope = await resolveCallerAdminScope(supabaseAdmin, user.id)
+    if (!callerScope.isPlatformAdmin && callerScope.orgIds.length === 0) {
       return new Response(JSON.stringify({ error: 'Forbidden: Admin role required' }), {
         status: 403,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -74,11 +74,18 @@ Deno.serve(async (req) => {
       })
     }
 
-    const { data: row, error: fetchErr } = await supabaseAdmin
+    // The org filter is applied to the query itself (same pattern as
+    // retry-queued-sms/get-booking-documents) rather than checked after the
+    // fact, so a cross-tenant sms_queue id reads as a plain 404 - it never
+    // even reveals that the row exists.
+    let rowQuery = supabaseAdmin
       .from('sms_queue')
-      .select('id, provider_message_id')
+      .select('id, org_id, provider_message_id')
       .eq('id', id)
-      .maybeSingle()
+    if (!callerScope.isPlatformAdmin) {
+      rowQuery = rowQuery.in('org_id', callerScope.orgIds)
+    }
+    const { data: row, error: fetchErr } = await rowQuery.maybeSingle()
 
     if (fetchErr) throw new Error('Failed to look up the queue row: ' + fetchErr.message)
     if (!row) {
