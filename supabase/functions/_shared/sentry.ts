@@ -8,6 +8,16 @@
  * empty - never blocks or breaks a function's own response just because
  * monitoring isn't configured yet.
  *
+ * Sentry is deliberately PLATFORM-level infrastructure, not a per-tenant
+ * integration (E5-19) - unlike Stripe/Zoho/SMS, every admin dashboard page's
+ * own CSP hardcodes a single Sentry ingest host in connect-src, so browser
+ * error reporting could never actually reach more than one Sentry project
+ * regardless of what any organisation configured. getDsn() below reads only
+ * org_default's row explicitly, rather than an unscoped `key` lookup, so a
+ * tenant organisation's own (inert, UI-hidden) sentry_dsn row can never be
+ * selected instead of - or cause a query failure alongside - the real
+ * platform configuration.
+ *
  * defaultIntegrations: false because the Sentry Deno SDK does not support
  * Deno.serve instrumentation - without this, integrations that assume a
  * single long-lived server process leak state (breadcrumbs, scope) across
@@ -36,7 +46,7 @@ async function getDsn(): Promise<string | null> {
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
-    const { data } = await supabaseAdmin.from('settings').select('value').eq('key', 'sentry_dsn').single()
+    const { data } = await supabaseAdmin.from('settings').select('value').eq('org_id', 'org_default').eq('key', 'sentry_dsn').single()
     cachedDsn = data?.value || null
   } catch {
     // Settings read failed (network hiccup, row missing pre-migration) -
