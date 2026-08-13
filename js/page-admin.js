@@ -765,9 +765,12 @@ async function submitAddMember() {
         // brand-new member gets a real Supabase invite email, not just a
         // placeholder row nobody's ever told about. The Edge Function still
         // calls rpc_add_organisation_member itself, as the caller, so the
-        // authorization/org-scoping there is unchanged.
+        // authorization/org-scoping there is unchanged. ctx.orgId is passed
+        // explicitly (E5-23) - the Edge Function no longer infers the target
+        // organisation ambiently, so this is now the actual source of truth
+        // for which org the member is added to, not just an audit-log label.
         const { data, error } = await sb.functions.invoke('invite-organisation-member', {
-            body: { email, role }
+            body: { email, role, orgId: ctx.orgId }
         });
 
         if (error) {
@@ -776,7 +779,11 @@ async function submitAddMember() {
         }
         if (data?.error) throw new Error(data.error);
 
-        await auditLog('add_member', 'organisation_members', { org_id: ctx.orgId, email, role, user_id: data?.user_id, invite_sent: data?.invite_sent });
+        // The RPC's own returned org_id (the organisation it actually
+        // authorised against and wrote the membership into) is authoritative
+        // - falls back to ctx.orgId only if the response shape is ever
+        // unexpected, so the audit record is never simply blank.
+        await auditLog('add_member', 'organisation_members', { org_id: data?.org_id || ctx.orgId, email, role, user_id: data?.user_id, invite_sent: data?.invite_sent });
         notify(
             data?.invite_sent
                 ? `Invite email sent to ${email}!`

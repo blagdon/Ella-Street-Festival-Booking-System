@@ -71,6 +71,12 @@ before(async () => {
   // ORG_B already has a real, configured display name — simulating an
   // established customer, not a brand-new org mid-provisioning.
   await service.from('settings').insert({ org_id: ORG_B, key: 'festival_display_name', value: 'Org B\'s Real Festival Name' });
+  // ORG_A needs a base_url row (E5-23, 20260813140000): rpc_add_organisation_member
+  // now requires one for a genuinely new invitee, and the regression guard
+  // below adds a brand-new email to ORG_A - unrelated to what that test
+  // actually verifies (authorisation, not invite-URL configuration), so
+  // seeding this here rather than weakening that check.
+  await service.from('settings').insert({ org_id: ORG_A, key: 'base_url', value: 'https://rpc-auth-test.example.test' });
 
   const { data: ownerCreated, error: ownerErr } = await service.auth.admin.createUser({
     email: OWNER_A_EMAIL, password: OWNER_A_PASSWORD, email_confirm: true,
@@ -192,10 +198,17 @@ describe('rpc_add_organisation_member and rpc_get_next_misc_id reject a caller w
   });
 
   test('rpc_add_organisation_member rejects a steward with a leaked global admin role', async () => {
+    // p_org_id added (E5-23, 20260813140000): rpc_add_organisation_member no
+    // longer resolves its target ambiently via get_current_org_id(), so this
+    // now also exercises is_authorised_for_org(ORG_A, ...) directly - still
+    // correctly rejected, since is_platform_admin() reads org_default
+    // membership, not this legacy user_roles column, and stewardA has
+    // neither an org_default membership row nor an admin role in ORG_A.
     const { error } = await stewardA.rpc('rpc_add_organisation_member', {
-      p_email: `rpc-auth-newmember-${RUN_ID}@example.test`, p_role: 'steward',
+      p_org_id: ORG_A, p_email: `rpc-auth-newmember-${RUN_ID}@example.test`, p_role: 'steward',
     });
     assert.ok(error, 'a steward of ORG_A must not be able to add members to ORG_A just because their GLOBAL role was set to admin elsewhere');
+    assert.notEqual(error.code, 'PGRST202', 'must be an authorisation rejection, not a missing-function error');
   });
 
   test('rpc_get_next_misc_id rejects the same leaked-role steward', async () => {
@@ -204,8 +217,9 @@ describe('rpc_add_organisation_member and rpc_get_next_misc_id reject a caller w
   });
 
   test('a real admin of their own org can still add a member (regression guard)', async () => {
+    // p_org_id added (E5-23, 20260813140000) - see comment above.
     const newEmail = `rpc-auth-real-add-${RUN_ID}@example.test`;
-    const { error } = await ownerA.rpc('rpc_add_organisation_member', { p_email: newEmail, p_role: 'steward' });
+    const { error } = await ownerA.rpc('rpc_add_organisation_member', { p_org_id: ORG_A, p_email: newEmail, p_role: 'steward' });
     assert.equal(error, null, error?.message);
     const { data: newRow } = await service.from('user_roles').select('id').eq('email', newEmail).single();
     if (newRow) {
