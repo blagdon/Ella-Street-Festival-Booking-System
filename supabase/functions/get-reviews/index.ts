@@ -1,7 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { ALLOWED_ORIGIN } from '../_shared/cors.ts'
 import { captureAndFlush } from '../_shared/sentry.ts'
-import { resolveCallerAdminScope } from '../_shared/tenant-auth.ts'
+import { resolveCallerAdminScope, type CallerAdminScope } from '../_shared/tenant-auth.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
@@ -38,6 +38,12 @@ Deno.serve(async (req) => {
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     const isTrustedServiceCall = !!serviceRoleKey && token === serviceRoleKey
 
+    // Populated only for a real authenticated admin (stays null for a
+    // trusted service-role call, which has no caller organisation of its
+    // own - resolvedOrgId below defaults that case to org_default, matching
+    // send-sms's identical E5-26 fallback).
+    let callerScope: CallerAdminScope | null = null
+
     if (!isTrustedServiceCall) {
       const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token)
       if (authError || !user) {
@@ -55,7 +61,7 @@ Deno.serve(async (req) => {
       // paid endpoint (E5-26). This only replaces WHO may call the
       // function; the SerpApi settings/cache scoping issue tracked
       // separately as E5-20 is untouched here.
-      const callerScope = await resolveCallerAdminScope(supabaseClient, user.id)
+      callerScope = await resolveCallerAdminScope(supabaseClient, user.id)
       if (!callerScope.isPlatformAdmin && callerScope.orgIds.length === 0) {
         return new Response(JSON.stringify({ error: 'Forbidden: Admin role required' }), {
           status: 403,
@@ -73,11 +79,38 @@ Deno.serve(async (req) => {
       })
     }
 
+    // The organisation whose SerpApi key/map-centre/cache-TTL settings this
+    // search uses is resolved entirely server-side from the caller's own
+    // authorised scope (E5-20) - never a client-supplied org_id, and never
+    // a resource-derived one, since a business_name search has no resource
+    // of its own to derive an organisation from. Bills the search to the
+    // organisation the calling admin themselves belongs to (org_default for
+    // a platform admin), exactly mirroring send-sms's identical fallback
+    // established for E5-26 - the search RESULT is identical regardless of
+    // whose key pays for it, so attributing cost to the acting admin's own
+    // organisation is the correct, simplest choice, not an approximation.
+    let settingsOrgId: string
+    if (isTrustedServiceCall) {
+      settingsOrgId = 'org_default'
+    } else if (callerScope!.isPlatformAdmin) {
+      settingsOrgId = 'org_default'
+    } else if (callerScope!.orgIds.length === 1) {
+      settingsOrgId = callerScope!.orgIds[0]
+    } else {
+      return new Response(JSON.stringify({
+        error: 'Ambiguous organisation: this admin account belongs to more than one organisation, and get-reviews cannot determine which one\'s SerpApi configuration to use.'
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
+    }
+
     // 2. Fetch SerpApi key, map center, and cache TTL from env/settings table
-    // (single query)
+    // (single query), scoped to the resolved organisation only.
     const { data: settingsRows } = await supabaseClient
       .from('settings')
       .select('key, value')
+      .eq('org_id', settingsOrgId)
       .in('key', ['serpapi_api_key', 'map_center_lat', 'map_center_lng', 'reviews_cache_ttl_hours'])
     const settingsMap = new Map((settingsRows ?? []).map((r: { key: string; value: string }) => [r.key, r.value]))
 
