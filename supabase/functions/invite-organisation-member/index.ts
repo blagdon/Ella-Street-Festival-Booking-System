@@ -7,11 +7,19 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
 
-const DEFAULT_BASE_URL = 'https://app.ellastreet.co.uk'
+// No DEFAULT_BASE_URL constant here (E5-23): unlike provision-organisation
+// (no settings exist yet mid-provisioning, so a hardcoded default is the
+// only option) and stripe-webhook (a genuinely platform-level call with no
+// org context), this function always has an explicit target organisation -
+// falling back to a shared URL when that org has no base_url of its own
+// would undermine the exact invariant this fix establishes. Enforced inside
+// rpc_add_organisation_member itself, not here - see that migration's
+// header comment for why.
 
 /**
- * Adds a member to the caller's current organisation and, if they don't
- * already have a real login, sends them a genuine Supabase invite email.
+ * Adds a member to an explicitly-named target organisation and, if they
+ * don't already have a real login, sends them a genuine Supabase invite
+ * email pointing at that organisation's own base_url.
  *
  * rpc_add_organisation_member alone (still the thing that actually inserts
  * the user_roles/organisation_members rows - called here, unchanged, AS the
@@ -22,10 +30,18 @@ const DEFAULT_BASE_URL = 'https://app.ellastreet.co.uk'
  * email, hence this Edge Function wrapper around the existing RPC.
  *
  * The RPC is invoked with the caller's own JWT (not the service role) so
- * its existing check_user_role('admin') / get_current_org_id() checks - the
- * real authorization boundary for "which org does this add to" - are reused
+ * its existing is_authorised_for_org(p_org_id, ...) check - the real
+ * authorization boundary for "which org does this add to" - is reused
  * exactly as the client-side "Add Member" dialog already relies on, rather
  * than re-derived here and risking a second, subtly different answer.
+ *
+ * E5-23: the target organisation is now an explicit orgId in the request
+ * body, not resolved ambiently. get_current_org_id() (a platform admin's
+ * own session context, not necessarily the org they've selected in the
+ * UI's org-switcher) is deliberately never consulted here - the RPC's own
+ * returned org_id (the organisation it actually authorised against and
+ * wrote the membership into) is what drives the base_url lookup below, not
+ * a second, independent derivation of "current org".
  */
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -55,10 +71,18 @@ Deno.serve(async (req) => {
     const body = await req.json()
     const email = String(body?.email || '').trim()
     const role = String(body?.role || '').trim()
+    const orgId = String(body?.orgId || '').trim()
 
     if (!email || !role) {
       return new Response(
         JSON.stringify({ error: 'email and role are required' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    if (!orgId) {
+      return new Response(
+        JSON.stringify({ error: 'orgId is required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
@@ -68,6 +92,7 @@ Deno.serve(async (req) => {
     })
 
     const { data: rpcResult, error: rpcErr } = await callerClient.rpc('rpc_add_organisation_member', {
+      p_org_id: orgId,
       p_email: email,
       p_role: role
     })
@@ -79,30 +104,46 @@ Deno.serve(async (req) => {
       )
     }
 
+    // The organisation the RPC actually authorised against and wrote the
+    // membership into - not orgId re-read from the request, and not
+    // get_current_org_id() - is what the invite link's base_url must match.
+    const targetOrgId = rpcResult?.org_id
     const userId = rpcResult?.user_id
+    // Whether this invitee is genuinely new (no real login yet) is now
+    // decided once, inside the RPC's own transaction (E5-23 revision) - the
+    // RPC already refuses the whole call for a new invitee whose target org
+    // has no base_url, so by the time control reaches here, a new invitee
+    // is guaranteed to have a usable base_url. No second getUserById lookup
+    // needed to re-derive what the RPC already determined authoritatively.
+    const isNewInvitee = rpcResult?.is_new_invitee === true
     let inviteSent = false
 
-    if (userId) {
+    if (userId && isNewInvitee) {
       const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey)
 
-      // A placeholder id from the RPC (brand new invitee, or one still
-      // waiting on their first sign-up) doesn't exist in auth.users yet -
-      // getUserById errors for it rather than returning null data, so the
-      // absence of a user is what "needs an invite" actually looks like.
-      const { data: existing } = await supabaseAdmin.auth.admin.getUserById(userId).catch(() => ({ data: null }))
+      // The target org's own base_url - never the caller's organisation,
+      // never a shared platform default, never org_default unless
+      // targetOrgId literally is org_default (E5-23). Guaranteed present at
+      // this point for a new invitee (the RPC already enforced that); this
+      // lookup exists only to get the actual value for the redirect URL.
+      const { data: settingsRow } = await supabaseAdmin
+        .from('settings')
+        .select('value')
+        .eq('org_id', targetOrgId)
+        .eq('key', 'base_url')
+        .single()
+      const baseUrl = settingsRow?.value
 
-      if (!existing?.user) {
-        const { error: inviteErr } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
-          redirectTo: `${DEFAULT_BASE_URL}/index.html`
-        })
-        if (inviteErr) {
-          // Not fatal - the member row is already created, and the existing
-          // link_pending_user_roles_on_signup trigger still re-links this
-          // placeholder id if they ever do sign up independently later.
-          console.warn('[invite-organisation-member] inviteUserByEmail failed:', inviteErr.message)
-        } else {
-          inviteSent = true
-        }
+      const { error: inviteErr } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
+        redirectTo: `${baseUrl}/index.html`
+      })
+      if (inviteErr) {
+        // Not fatal - the member row is already created, and the existing
+        // link_pending_user_roles_on_signup trigger still re-links this
+        // placeholder id if they ever do sign up independently later.
+        console.warn('[invite-organisation-member] inviteUserByEmail failed:', inviteErr.message)
+      } else {
+        inviteSent = true
       }
     }
 
