@@ -257,7 +257,7 @@ Deno.serve(async (req) => {
   // organisation reads these columns off the row" convention.
   let stripeSettings
   try {
-    stripeSettings = await loadStripeSettings(supabaseAdmin)
+    stripeSettings = await loadStripeSettings(supabaseAdmin, 'org_default')
   } catch (e: any) {
     console.error('Failed to load Stripe settings:', e.message)
     return new Response(JSON.stringify({ error: e.message }), {
