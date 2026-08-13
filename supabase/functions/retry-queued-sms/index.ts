@@ -119,7 +119,7 @@ Deno.serve(async (req) => {
     let providerMessageId: string | null = null
     let segments: number | null = null
     try {
-      const result = await sendViaSms(supabaseAdmin, { recipient: row.recipient, body: row.body })
+      const result = await sendViaSms(supabaseAdmin, { recipient: row.recipient, body: row.body }, row.org_id)
       providerMessageId = result.providerMessageId
       segments = result.segments
     } catch (e: any) {

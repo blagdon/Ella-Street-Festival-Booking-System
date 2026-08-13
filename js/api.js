@@ -190,13 +190,17 @@ export async function addNote(id, note) {
  * @param {string} subject
  * @param {string} body
  * @param {string|null} bcc
+ * @param {string|null} orgId when supplied, which organisation's Zoho
+ *   credentials to send with — validated server-side against the caller's
+ *   own membership, never trusted blindly. Omit for the caller's own
+ *   current-org default (see sendEmailDirect's docstring).
  */
-export async function sendEmailViaZoho(recipient, subject, body, bcc = null) {
+export async function sendEmailViaZoho(recipient, subject, body, bcc = null, orgId = null) {
     const sb = getSupabaseClient();
-    
+
     // Call the Edge Function using the Supabase client
     const { data, error } = await sb.functions.invoke('send-email', {
-        body: { recipient, subject, body, bcc }
+        body: { recipient, subject, body, bcc, orgId }
     });
 
     if (error) {
@@ -230,7 +234,7 @@ export async function sendEmailDirect(recipient, subject, body, bookingId = null
     let errorMessage = null;
 
     try {
-        await sendEmailViaZoho(recipient, subject, body, bcc);
+        await sendEmailViaZoho(recipient, subject, body, bcc, orgId);
     } catch (e) {
         status = 'Error';
         errorMessage = e.message;

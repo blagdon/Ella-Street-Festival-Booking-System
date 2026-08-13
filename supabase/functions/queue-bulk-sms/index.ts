@@ -32,14 +32,18 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
  */
 async function sendOneSms(
   supabaseAdmin: ReturnType<typeof createClient>,
-  row: { recipient: string; body: string }
+  row: { recipient: string; body: string; org_id: string }
 ): Promise<{ status: string; errorMessage: string | null; providerMessageId: string | null; segments: number | null }> {
   const MAX_ATTEMPTS = 2
   let lastErrorMessage = 'Unknown error'
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
-      const result = await sendViaSms(supabaseAdmin, { recipient: row.recipient, body: row.body })
+      // Each row carries its own org_id from claim_pending_sms — a single
+      // drain batch can span multiple organisations, so this must stay
+      // per-row rather than a request-level variable (queue-bulk-sms/
+      // queue-bulk-email org-propagation fix).
+      const result = await sendViaSms(supabaseAdmin, { recipient: row.recipient, body: row.body }, row.org_id)
       return { status: 'Sent', errorMessage: null, providerMessageId: result.providerMessageId, segments: result.segments }
     } catch (e: any) {
       lastErrorMessage = e.message

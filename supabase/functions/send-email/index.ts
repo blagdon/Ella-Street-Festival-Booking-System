@@ -2,7 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { sendViaZoho } from '../_shared/zoho.ts'
 import { ALLOWED_ORIGIN } from '../_shared/cors.ts'
 import { captureAndFlush } from '../_shared/sentry.ts'
-import { resolveCallerAdminScope, type CallerAdminScope } from '../_shared/tenant-auth.ts'
+import { resolveCallerAdminScope, isAuthorizedForOrg, type CallerAdminScope } from '../_shared/tenant-auth.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
@@ -188,8 +188,39 @@ Deno.serve(async (req) => {
     // -------------------------------------------------------------
     // ACTION: DEFAULT (Send Email)
     // -------------------------------------------------------------
-    const { recipient, subject, body, bcc } = reqBody
-    const result = await sendViaZoho(supabaseClient, { recipient, subject, body, bcc })
+    const { recipient, subject, body, bcc, orgId } = reqBody
+
+    // Which organisation's Zoho credentials this send actually uses is never
+    // trusted blindly from the client. js/api.js's sendEmail(id, ...) is the
+    // real resource-derived caller: it resolves orgId itself from the target
+    // booking's own row (RLS-scoped to organisations the caller can already
+    // see) before calling sendEmailDirect(), so for every legitimate call
+    // this validation is a no-op — it only rejects a forged value that
+    // doesn't match who the caller actually is. Mirrors send-sms's identical
+    // resolution exactly (E5-26).
+    let resolvedOrgId: string
+    if (isTrustedServiceCall) {
+      resolvedOrgId = (typeof orgId === 'string' && orgId) ? orgId : 'org_default'
+    } else if (typeof orgId === 'string' && orgId) {
+      if (!isAuthorizedForOrg(callerScope!, orgId)) {
+        return new Response(JSON.stringify({ error: 'Forbidden: not authorised for the requested organisation.' }), {
+          status: 403,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        })
+      }
+      resolvedOrgId = orgId
+    } else if (callerScope!.isPlatformAdmin) {
+      resolvedOrgId = 'org_default'
+    } else if (callerScope!.orgIds.length === 1) {
+      resolvedOrgId = callerScope!.orgIds[0]
+    } else {
+      return new Response(JSON.stringify({ error: 'Ambiguous organisation: this admin account belongs to more than one organisation, and no orgId was supplied to disambiguate.' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
+    }
+
+    const result = await sendViaZoho(supabaseClient, { recipient, subject, body, bcc }, resolvedOrgId)
 
     return new Response(JSON.stringify(result), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
