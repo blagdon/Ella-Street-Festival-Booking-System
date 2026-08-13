@@ -45,9 +45,18 @@ const STRIPE_SETTINGS_KEYS = [
   'stripe_test_mode'
 ]
 
+/**
+ * orgId is required, not defaulted: every real caller already resolves the
+ * correct organisation (a resource's own org_id) before reaching this
+ * point, and a silently-defaulted org_id is exactly the class of bug the
+ * org-propagation fix (PR #200) closed for the SMS/email siblings.
+ * stripe-webhook's pre-signature-verification load is the one genuinely
+ * platform-level exception, and passes 'org_default' explicitly rather
+ * than relying on a default.
+ */
 export async function loadStripeSettings(
   supabaseAdmin: ReturnType<typeof createClient>,
-  orgId: string = 'org_default'
+  orgId: string
 ): Promise<StripeSettings> {
   const { data, error } = await supabaseAdmin
     .from('settings')

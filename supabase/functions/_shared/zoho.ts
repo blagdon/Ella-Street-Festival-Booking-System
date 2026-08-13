@@ -10,11 +10,18 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
  * hammering the same sibling function with many rapid sequential
  * invocations. Behavior here is unchanged from the original — same
  * settings, same token caching/refresh, same Zoho payload shape.
+ *
+ * orgId is required, not defaulted: every real caller already resolves the
+ * correct organisation (a resource's own org_id, or a validated/resolved
+ * caller org) before reaching this point, and a silently-defaulted org_id
+ * is exactly the class of bug the org-propagation fix (PR #200) closed.
+ * Callers that are genuinely platform-level must pass 'org_default'
+ * explicitly.
  */
 export async function sendViaZoho(
   supabaseAdmin: ReturnType<typeof createClient>,
   params: { recipient: string; subject: string; body: string; bcc?: string | null },
-  orgId: string = 'org_default'
+  orgId: string
 ): Promise<{ success: true; data: any }> {
   const { recipient, subject, body, bcc } = params
   if (!recipient || !subject || !body) {

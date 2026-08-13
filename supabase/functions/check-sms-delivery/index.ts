@@ -111,7 +111,12 @@ Deno.serve(async (req) => {
     }
 
     const nowIso = new Date().toISOString()
-    const result = await checkDeliveryStatus(supabaseAdmin, row.provider_message_id)
+    // row.org_id - already authorised above via the org-scoped query - is
+    // threaded through so the delivery check uses THIS row's own
+    // organisation's SMS Works credentials, not org_default's regardless of
+    // whose message it actually is (post-Epic-5 hardening: checkDeliveryStatus
+    // previously had no orgId parameter at all).
+    const result = await checkDeliveryStatus(supabaseAdmin, row.provider_message_id, row.org_id)
 
     const { error: updateErr } = await supabaseAdmin
       .from('sms_queue')

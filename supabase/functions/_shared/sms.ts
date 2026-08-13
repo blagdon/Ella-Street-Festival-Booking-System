@@ -50,7 +50,7 @@ const SETTINGS_KEYS = [
 
 async function loadSmsSettings(
   supabaseAdmin: ReturnType<typeof createClient>,
-  orgId: string = 'org_default'
+  orgId: string
 ): Promise<SmsSettings> {
   const { data, error } = await supabaseAdmin
     .from('settings')
@@ -211,12 +211,19 @@ export interface DeliveryStatusResult {
  * this throws if `sms_provider` isn't 'thesmsworks' rather than silently
  * doing nothing, so checking an old message after switching providers fails
  * loudly instead of looking like a no-op success.
+ *
+ * orgId is the authorised sms_queue row's own org_id (check-sms-delivery
+ * already resolves and org-scopes that row before calling this) — required,
+ * not defaulted, so a message belonging to one organisation is always
+ * checked against that organisation's own SMS Works credentials, never
+ * org_default's regardless of who the message actually belongs to.
  */
 export async function checkDeliveryStatus(
   supabaseAdmin: ReturnType<typeof createClient>,
-  providerMessageId: string
+  providerMessageId: string,
+  orgId: string
 ): Promise<DeliveryStatusResult> {
-  const settings = await loadSmsSettings(supabaseAdmin)
+  const settings = await loadSmsSettings(supabaseAdmin, orgId)
   if (settings.provider !== 'thesmsworks') {
     throw new Error(
       `Delivery status checking is only implemented for The SMS Works; the ` +
@@ -288,11 +295,18 @@ const ADAPTERS: Record<string, SmsAdapter> = {
  * Send one SMS via whichever provider `settings.sms_provider` names. Returns a
  * result the caller writes to sms_queue (provider_message_id + segments);
  * throws on failure so the caller records status='Error' with e.message.
+ *
+ * orgId is required, not defaulted: every real caller already resolves the
+ * correct organisation (a resource's own org_id, or a validated/resolved
+ * caller org) before reaching this point, and a silently-defaulted org_id
+ * is exactly the class of bug the org-propagation fix (PR #200) closed.
+ * Callers that are genuinely platform-level must pass 'org_default'
+ * explicitly.
  */
 export async function sendViaSms(
   supabaseAdmin: ReturnType<typeof createClient>,
   params: { recipient: string; body: string },
-  orgId: string = 'org_default'
+  orgId: string
 ): Promise<SmsSendResult> {
   const { recipient, body } = params
   if (!recipient || !body) {
