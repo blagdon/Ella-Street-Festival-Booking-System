@@ -1,6 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { ALLOWED_ORIGIN } from '../_shared/cors.ts'
 import { captureAndFlush } from '../_shared/sentry.ts'
+import { resolveCallerAdminScope } from '../_shared/tenant-auth.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
@@ -46,13 +47,16 @@ Deno.serve(async (req) => {
         })
       }
 
-      const { data: roleData, error: roleError } = await supabaseClient
-        .from('user_roles')
-        .select('role')
-        .eq('id', user.id)
-        .single()
-
-      if (roleError || !roleData || roleData.role !== 'admin') {
+      // organisation_members-based - see queue-bulk-email's identical
+      // comment. user_roles.role is NOT org-scoped (every organisation's
+      // admin gets a row there, including a stale legacy row with no real
+      // organisation_members membership at all), so checking it alone - the
+      // previous behaviour - let any such identity invoke this metered,
+      // paid endpoint (E5-26). This only replaces WHO may call the
+      // function; the SerpApi settings/cache scoping issue tracked
+      // separately as E5-20 is untouched here.
+      const callerScope = await resolveCallerAdminScope(supabaseClient, user.id)
+      if (!callerScope.isPlatformAdmin && callerScope.orgIds.length === 0) {
         return new Response(JSON.stringify({ error: 'Forbidden: Admin role required' }), {
           status: 403,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
