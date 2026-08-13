@@ -38,14 +38,18 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 // talking to Zoho itself), which is a different, much rarer failure mode.
 async function sendOneEmail(
   supabaseAdmin: ReturnType<typeof createClient>,
-  row: { recipient: string; subject: string; body: string }
+  row: { recipient: string; subject: string; body: string; org_id: string }
 ): Promise<{ status: string; errorMessage: string | null }> {
   const MAX_ATTEMPTS = 2
   let lastErrorMessage = 'Unknown error'
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
-      await sendViaZoho(supabaseAdmin, { recipient: row.recipient, subject: row.subject, body: row.body })
+      // Each row carries its own org_id from claim_pending_emails — a single
+      // drain batch can span multiple organisations, so this must stay
+      // per-row rather than a request-level variable (queue-bulk-sms/
+      // queue-bulk-email org-propagation fix).
+      await sendViaZoho(supabaseAdmin, { recipient: row.recipient, subject: row.subject, body: row.body }, row.org_id)
       return { status: 'Sent', errorMessage: null }
     } catch (e: any) {
       lastErrorMessage = e.message

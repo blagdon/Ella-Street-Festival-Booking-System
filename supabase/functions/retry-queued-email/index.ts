@@ -152,7 +152,7 @@ Deno.serve(async (req) => {
         recipient: row.recipient,
         subject: row.subject,
         body: row.body,
-      })
+      }, row.org_id)
     } catch (e: any) {
       status = 'Error'
       errorMessage = e.message
