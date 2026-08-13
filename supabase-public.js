@@ -226,10 +226,18 @@ if (typeof window !== 'undefined') {
  * (that's exactly where auth failures happen). Anon-readable since
  * 20260731150000 — as safe as turnstile_site_key, both designed to be
  * embedded in client-visible code.
+ *
+ * Reads only org_default's row explicitly (E5-19) — Sentry is platform-level
+ * infrastructure, not per-tenant, matching _shared/sentry.ts's identical
+ * fix. Every page's CSP hardcodes one Sentry ingest host regardless, so a
+ * tenant organisation's own row could never actually be used here even
+ * before this fix — but an unscoped `key`-only lookup could still fail
+ * outright (or resolve the wrong org's value) the moment a second
+ * organisation had any row for this key at all.
  */
 export async function fetchSentryBrowserLoaderUrl(sb) {
     try {
-        const { data } = await sb.from('settings').select('value').eq('key', 'sentry_browser_loader_url').single();
+        const { data } = await sb.from('settings').select('value').eq('org_id', 'org_default').eq('key', 'sentry_browser_loader_url').single();
         return data?.value || '';
     } catch (e) {
         console.warn('Failed to load sentry_browser_loader_url:', e.message);

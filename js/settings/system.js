@@ -222,18 +222,38 @@ export async function initSystemConstants() {
  * field is write-only: Sentry DSNs and loader URLs are designed to be
  * embedded in client-visible code, so there's nothing to hide by not
  * re-displaying the stored value.
+ *
+ * Platform-level infrastructure, not per-tenant (E5-19): every admin page's
+ * CSP hardcodes one Sentry ingest host, so a tenant organisation's own
+ * sentry_dsn/sentry_browser_loader_url row could never actually be used -
+ * both _shared/sentry.ts and supabase-public.js's fetchSentryBrowserLoaderUrl()
+ * now read org_default's row explicitly regardless of which organisation's
+ * admin (or which "View As" context) triggers them. This card always shows
+ * and saves org_default's own values - never getCurrentOrgId() - and is
+ * hidden outright for anyone who isn't a genuine platform admin, using the
+ * same rpc_list_switchable_organisations() scope check js/nav.js's org
+ * switcher already relies on, rather than a new permission mechanism.
  */
 export async function initSentrySettings() {
+    const card = document.getElementById('sentryMonitoringCard');
     const txtDsn = /** @type {HTMLInputElement | null} */ (document.getElementById('sentry-dsn'));
     const txtLoaderUrl = /** @type {HTMLInputElement | null} */ (document.getElementById('sentry-browser-loader-url'));
     const btnSave = /** @type {HTMLButtonElement | null} */ (document.getElementById('btn-save-sentry'));
 
     if (!txtDsn || !txtLoaderUrl || !btnSave) return;
 
+    const { data: scopeResult } = await sb.rpc('rpc_list_switchable_organisations');
+    if (scopeResult?.scope !== 'platform_admin') {
+        card?.classList.add('hidden');
+        return;
+    }
+
+    const PLATFORM_ORG_ID = 'org_default';
+
     try {
         const { data, error } = await sb.from('settings')
             .select('key, value')
-            .eq('org_id', getCurrentOrgId())
+            .eq('org_id', PLATFORM_ORG_ID)
             .in('key', ['sentry_dsn', 'sentry_browser_loader_url']);
         if (error) throw error;
 
@@ -256,10 +276,9 @@ export async function initSentrySettings() {
             const userEmail = session?.user?.email || 'admin';
             const now = new Date().toISOString();
 
-            const orgId = getCurrentOrgId();
             const { error } = await sb.from('settings').upsert([
-                { org_id: orgId, key: 'sentry_dsn', value: valDsn, updated_at: now, updated_by: userEmail },
-                { org_id: orgId, key: 'sentry_browser_loader_url', value: valLoaderUrl, updated_at: now, updated_by: userEmail },
+                { org_id: PLATFORM_ORG_ID, key: 'sentry_dsn', value: valDsn, updated_at: now, updated_by: userEmail },
+                { org_id: PLATFORM_ORG_ID, key: 'sentry_browser_loader_url', value: valLoaderUrl, updated_at: now, updated_by: userEmail },
             ]);
             if (error) throw error;
 

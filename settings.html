@@ -474,8 +474,8 @@
                 </button>
             </div>
 
-            <!-- Error Monitoring (Sentry) Settings Card -->
-            <div class="bg-white p-6 rounded-xl border border-gray-200 shadow-sm hover-card col-span-1 md:col-span-2">
+            <!-- Error Monitoring (Sentry) Settings Card - platform-admin only (E5-19), hidden for a tenant admin by js/settings/system.js's initSentrySettings() -->
+            <div id="sentryMonitoringCard" class="bg-white p-6 rounded-xl border border-gray-200 shadow-sm hover-card col-span-1 md:col-span-2">
                 <div class="flex items-start justify-between mb-4">
                     <div class="icon-box bg-gray-100 text-gray-600 p-3 rounded-lg">
                         <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">

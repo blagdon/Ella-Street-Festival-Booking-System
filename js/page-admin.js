@@ -1099,12 +1099,23 @@ async function renderSettingsSection(container) {
         console.warn('[Settings Hub] Error loading settings:', e);
     }
 
+    // The "advanced" tab currently holds only the Sentry Loader URL field,
+    // which is platform-level infrastructure, not per-tenant (E5-19) - every
+    // admin page's CSP hardcodes one Sentry ingest host, so a tenant
+    // organisation's own value here could never actually be used. Hidden
+    // outright for anyone who isn't a genuine platform admin, using the same
+    // rpc_list_switchable_organisations() scope check js/nav.js's org
+    // switcher and js/settings/system.js's initSentrySettings() both use.
+    const { data: scopeResult } = await sb.rpc('rpc_list_switchable_organisations');
+    const isPlatformAdmin = scopeResult?.scope === 'platform_admin';
+    if (!isPlatformAdmin && activeSettingsTab === 'advanced') activeSettingsTab = 'general';
+
     const tabs = [
         { id: 'general', label: 'General' },
         { id: 'bookings', label: 'Bookings' },
         { id: 'comms', label: 'Communications' },
         { id: 'payments', label: 'Payments' },
-        { id: 'advanced', label: 'Advanced' }
+        ...(isPlatformAdmin ? [{ id: 'advanced', label: 'Advanced' }] : [])
     ];
 
     const tabNavHtml = `
@@ -1208,7 +1219,7 @@ async function saveCategorySettings(currentSettings) {
     const ctx = getPlatformContext();
     const btn = /** @type {HTMLButtonElement|null} */ (document.getElementById('btnSaveCatSettings'));
 
-    /** @type {{ key: string, value: string }[]} */
+    /** @type {{ key: string, value: string, org_id?: string }[]} */
     const updates = [];
 
     if (activeSettingsTab === 'general') {
@@ -1249,9 +1260,15 @@ async function saveCategorySettings(currentSettings) {
         );
     } else {
         // sentry_browser_loader_url is the key config.js/system.js actually
-        // read - same mismatch as the bookings tab above.
+        // read - same mismatch as the bookings tab above. Platform-level
+        // infrastructure, not per-tenant (E5-19): always targets org_default
+        // explicitly, regardless of the admin's current "View As" context,
+        // matching js/settings/system.js's initSentrySettings(). The
+        // "advanced" tab itself is hidden from a non-platform-admin (see
+        // renderSettingsSection above), so only a genuine platform admin
+        // ever reaches this branch.
         updates.push(
-            { key: 'sentry_browser_loader_url', value: (/** @type {HTMLInputElement} */ (document.getElementById('setSentryUrl'))).value.trim() }
+            { key: 'sentry_browser_loader_url', value: (/** @type {HTMLInputElement} */ (document.getElementById('setSentryUrl'))).value.trim(), org_id: 'org_default' }
         );
     }
 
@@ -1262,7 +1279,7 @@ async function saveCategorySettings(currentSettings) {
 
     try {
         const rows = updates.map(item => ({
-            org_id: ctx.orgId,
+            org_id: item.org_id || ctx.orgId,
             key: item.key,
             value: item.value
         }));
