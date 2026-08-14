@@ -130,7 +130,20 @@ export async function fetchAvailableEvents() {
             // Cached event id doesn't match anything real either - same
             // situation as the empty-list case above, just with other real
             // events available to fall back to instead of none.
-            const activeEvt = data.find(e => e.is_active) || data[0];
+            //
+            // Multi-Event Phase 2: is_active and is_default are now
+            // database-enforced unique per organisation (at most one true
+            // each), so neither .find() can silently pick "the first of
+            // several" anymore - it's either the one, or none. Preferring
+            // is_active (the org's operational event for this context)
+            // over is_default (the org's public-booking default) over
+            // data[0] (most recently created, the final, now-rare
+            // fallback for an org with neither set) is a deliberate order,
+            // not arbitrary - every caller of fetchAvailableEvents() only
+            // consumes the side-effect (setCurrentEvent) or the full
+            // unfiltered list, never depends on this fallback's specific
+            // choice beyond "some real event of this org, if one exists".
+            const activeEvt = data.find(e => e.is_active) || data.find(e => e.is_default) || data[0];
             if (activeEvt) {
                 setCurrentEvent(activeEvt);
             }

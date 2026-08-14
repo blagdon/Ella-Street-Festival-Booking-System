@@ -37,14 +37,15 @@ test('Epic 3 — Platform Provisioning Suite', async (t) => {
         const testOrgId = 'org_default';
         const testEventId = `evt_lifecycle_${Date.now()}`;
 
-        // Insert event in 'draft' status
+        // Insert event in 'draft' status. is_active omitted (Multi-Event
+        // Phase 2: unique per org, and org_default already has one) - this
+        // test only exercises status transitions, never reads is_active.
         const { error: insertErr } = await supabaseAdmin.from('events').insert({
             id: testEventId,
             org_id: testOrgId,
             name: 'Lifecycle Test Event',
             slug: testEventId,
             booking_prefix: `LC${Date.now().toString().slice(-4)}`,
-            is_active: true,
             status: 'draft'
         });
         assert.ifError(insertErr, 'Event insertion with status draft should succeed');
@@ -131,7 +132,24 @@ test('Epic 3 — Platform Provisioning Suite', async (t) => {
         assert.equal(data.org_id, testSlug);
         assert.equal(data.event_status, 'draft');
 
+        // Multi-Event Phase 2: the provisioning audit_logs entry must carry
+        // the NEW organisation's own org_id/event_id as real columns, not
+        // silently default to org_default/event_default (details.org_id
+        // alone was never enough - RLS/filtering key on the top-level
+        // columns, not the JSON blob).
+        const { data: auditRow, error: auditErr } = await supabaseAdmin
+            .from('audit_logs')
+            .select('org_id, event_id')
+            .eq('action', 'provision_organisation')
+            .eq('org_id', testSlug)
+            .maybeSingle();
+        assert.ifError(auditErr);
+        assert.ok(auditRow, 'expected a provision_organisation audit_logs row for this org');
+        assert.equal(auditRow.org_id, testSlug, 'must be tagged with the newly-provisioned org, not org_default');
+        assert.equal(auditRow.event_id, data.event_id, 'must be tagged with the newly-created event, not event_default');
+
         // Cleanup
+        await supabaseAdmin.from('audit_logs').delete().eq('org_id', testSlug);
         await supabaseAdmin.from('events').delete().eq('org_id', testSlug);
         await supabaseAdmin.from('settings').delete().eq('org_id', testSlug);
         await supabaseAdmin.from('email_templates').delete().eq('org_id', testSlug);

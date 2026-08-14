@@ -369,6 +369,7 @@ function renderEventsSection(container) {
         { key: 'booking_prefix', label: 'Booking Prefix' },
         { key: 'slug', label: 'Slug' },
         { key: 'status', label: 'Lifecycle State' },
+        { key: 'flags', label: 'Active / Default' },
         { key: 'actions', label: 'Actions' }
     ];
 
@@ -384,6 +385,11 @@ function renderEventsSection(container) {
                 const st = row.status || (row.is_active ? 'open' : 'archived');
                 const badgeType = st === 'open' ? 'active' : st === 'draft' ? 'warning' : 'inactive';
                 return renderStatusBadge(st.toUpperCase(), badgeType);
+            }
+            if (colKey === 'flags') {
+                const activeBadge = row.is_active ? renderStatusBadge('ACTIVE', 'active') : '';
+                const defaultBadge = row.is_default ? renderStatusBadge('DEFAULT', 'active') : '';
+                return `<div class="flex flex-col gap-1 items-start">${activeBadge}${defaultBadge}</div>`;
             }
             if (colKey === 'actions') {
                 const currentStatus = row.status || (row.is_active ? 'open' : 'archived');
@@ -401,8 +407,14 @@ function renderEventsSection(container) {
                     nextStatus = 'open';
                 }
 
+                const setActiveBtn = row.is_active ? '' :
+                    `<button data-event-id="${escapeHtml(row.id)}" class="btn-set-active-event text-xs font-semibold text-purple-600 hover:text-purple-800 mr-3">Set Active</button>`;
+                const setDefaultBtn = row.is_default ? '' :
+                    `<button data-event-id="${escapeHtml(row.id)}" class="btn-set-default-event text-xs font-semibold text-purple-600 hover:text-purple-800 mr-3">Set Default</button>`;
+
                 return `
                 <button data-event-id="${escapeHtml(row.id)}" class="btn-edit-event text-xs font-semibold text-blue-600 hover:text-blue-800 mr-3">Edit</button>
+                ${setActiveBtn}${setDefaultBtn}
                 <button data-event-id="${escapeHtml(row.id)}" data-next-status="${nextStatus}" class="btn-toggle-event text-xs font-semibold text-emerald-600 hover:text-emerald-800">
                     ${toggleAction}
                 </button>`;
@@ -427,6 +439,22 @@ function renderEventsSection(container) {
             const evtId = (/** @type {HTMLElement} */ (e.currentTarget)).getAttribute('data-event-id');
             const evt = eventsList.find(x => x.id === evtId);
             if (evt) openEditEventDialog(evt);
+        });
+    });
+
+    container.querySelectorAll('.btn-set-active-event').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            const evtId = (/** @type {HTMLElement} */ (e.currentTarget)).getAttribute('data-event-id');
+            const evt = eventsList.find(x => x.id === evtId);
+            if (evt) await setActiveEvent(evt);
+        });
+    });
+
+    container.querySelectorAll('.btn-set-default-event').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            const evtId = (/** @type {HTMLElement} */ (e.currentTarget)).getAttribute('data-event-id');
+            const evt = eventsList.find(x => x.id === evtId);
+            if (evt) await setDefaultEvent(evt);
         });
     });
 
@@ -488,13 +516,17 @@ async function submitCreateEvent() {
     const newId = `event_${Date.now()}`;
 
     try {
+        // is_active left at its false default (Multi-Event Phase 2): it's
+        // now unique per org, so hardcoding true here would fail outright
+        // the moment this org already has one - a newly created event has
+        // nothing to be "the operational one" for yet anyway. Promoting it
+        // to active (or default) is now an explicit, separate action.
         const { error } = await sb.from('events').insert({
             id: newId,
             org_id: ctx.orgId,
             name,
             slug,
-            booking_prefix: prefix,
-            is_active: true
+            booking_prefix: prefix
         });
 
         if (error) throw error;
@@ -600,12 +632,17 @@ async function submitEditEvent(eventId) {
 
 async function toggleEventStatus(evt, targetStatus = 'open') {
     const sb = getSupabaseClient();
-    const isNowActive = targetStatus === 'open' || targetStatus === 'ready';
 
     try {
+        // is_active is no longer derived from status (Multi-Event Phase
+        // 2) - it's now an explicit, separate designation (see
+        // setActiveEvent/setDefaultEvent below), not something every
+        // open/ready transition should silently claim. Archiving an
+        // event that is still the organisation's is_default one is
+        // rejected by events_default_lifecycle_check - caught below with
+        // a clear message rather than a raw constraint error.
         const { error } = await sb.from('events').update({
-            status: targetStatus,
-            is_active: isNowActive
+            status: targetStatus
         }).eq('id', evt.id);
 
         if (error) throw error;
@@ -615,7 +652,51 @@ async function toggleEventStatus(evt, targetStatus = 'open') {
         await loadWorkspaceData();
         renderActiveSection();
     } catch (err) {
-        notify(`Failed to change event status: ${err.message}`, 'error');
+        const message = err.code === '23514' && /events_default_lifecycle_check/.test(err.message || err.details || '')
+            ? `Cannot set this event to '${targetStatus.toUpperCase()}' while it is the organisation's default event - set a different default first.`
+            : `Failed to change event status: ${err.message}`;
+        notify(message, 'error');
+    }
+}
+
+/**
+ * Promotes an event to be its organisation's single active event
+ * (rpc_set_active_event) - atomic clear-then-set server-side, since a
+ * client-side two-step update would race against events_org_active_unique.
+ * @param {Record<string, any>} evt
+ */
+async function setActiveEvent(evt) {
+    const sb = getSupabaseClient();
+    try {
+        const { error } = await sb.rpc('rpc_set_active_event', { p_event_id: evt.id });
+        if (error) throw error;
+        await auditLog('set_active_event', 'events', { event_id: evt.id, org_id: evt.org_id });
+        notify(`'${evt.name}' is now the active event!`, 'success');
+        await loadWorkspaceData();
+        renderActiveSection();
+    } catch (err) {
+        notify(`Failed to set active event: ${err.message}`, 'error');
+    }
+}
+
+/**
+ * Promotes an event to be its organisation's single default event
+ * (rpc_set_default_event) - same atomic clear-then-set reasoning as
+ * setActiveEvent, plus a server-side lifecycle check (draft/archived
+ * events are rejected with a clear message, not a raw constraint error).
+ * @param {Record<string, any>} evt
+ */
+async function setDefaultEvent(evt) {
+    const sb = getSupabaseClient();
+    try {
+        const { error } = await sb.rpc('rpc_set_default_event', { p_event_id: evt.id });
+        if (error) throw error;
+        await auditLog('set_default_event', 'events', { event_id: evt.id, org_id: evt.org_id });
+        notify(`'${evt.name}' is now the default event!`, 'success');
+        await loadWorkspaceData();
+        renderActiveSection();
+    } catch (err) {
+        notify(`Failed to set default event: ${err.message}`, 'error');
     }
 }
 

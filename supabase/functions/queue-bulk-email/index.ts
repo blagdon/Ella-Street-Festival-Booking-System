@@ -157,7 +157,7 @@ Deno.serve(async (req) => {
     // emails — only actually-Confirmed bookings with a real email are used.
     let bookingsQuery = supabaseClient
       .from('bookings')
-      .select('id, email, instance_prefix, org_id')
+      .select('id, email, instance_prefix, org_id, event_id')
       .in('id', bookingIds)
       .eq('status', 'Confirmed')
 
@@ -174,6 +174,21 @@ Deno.serve(async (req) => {
 
     if (bookingsErr) {
       throw new Error('Failed to look up bookings: ' + bookingsErr.message)
+    }
+
+    // Multi-Event Phase 2: reject rather than silently narrow if the
+    // resolved bookings span more than one event - the caller selected
+    // these bookings expecting all of them included, not some silently
+    // dropped. Not reachable through the current admin UI (Kanban is
+    // already event-scoped before a bulk-send selection is ever made), but
+    // this Edge Function is a direct API surface regardless of what the
+    // UI currently sends it.
+    const distinctEventIds = new Set((bookings || []).map((b) => b.event_id))
+    if (distinctEventIds.size > 1) {
+      return new Response(JSON.stringify({ error: 'Selected bookings span more than one event and cannot be bulk-messaged together.' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
     }
 
     const rows = (bookings || [])

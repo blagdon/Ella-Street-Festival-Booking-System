@@ -99,6 +99,8 @@ export async function ensureFoundationRows(sb) {
         slug: 'esf-2026',
         booking_prefix: 'ESF26',
         is_active: true,
+        is_default: true,
+        status: 'open',
       },
       {
         id: 'event_demo',
@@ -107,6 +109,8 @@ export async function ensureFoundationRows(sb) {
         slug: 'demo-2026',
         booking_prefix: 'DEMO26',
         is_active: true,
+        is_default: true,
+        status: 'open',
       },
     ],
     { onConflict: 'id', ignoreDuplicates: true }
