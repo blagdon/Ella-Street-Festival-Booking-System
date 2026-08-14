@@ -88,8 +88,14 @@ async function syncDown() {
             // without it, a steward would see Confirmed bookings from every
             // event of their org mixed together once a second one exists.
             sb.from('bookings').select('id, business_name, owner_name, email, phone').eq('event_id', getCurrentEventId()).in('status', ['Confirmed']).in('instance_prefix', [CONFIG.INSTANCE_MAP.FOOD, CONFIG.INSTANCE_MAP.GENERAL, CONFIG.INSTANCE_MAP.MISC]),
+            // event_id added (Multi-Event Phase 2): without it, this
+            // steward's local location cache could include locations from
+            // every event of their org once a second one exists - org_id
+            // is left off, RLS already enforces that half (same pattern
+            // the bookings query above relies on).
             sb.from('locations')
                 .select('id')
+                .eq('event_id', getCurrentEventId())
                 .eq('dataset', 'LIVE')
                 .order('id', { ascending: true })
         ]);

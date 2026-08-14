@@ -138,7 +138,12 @@ export async function updateBookingStatus(id, status, reason = null) {
     // Fetch booking details before updating if moving to HCC Checks
     let bookingDetails = null;
     if (status === 'HCC Checks') {
-        const { data: bData, error: bErr } = await sb.from(TBL_BOOKINGS).select('business_name, owner_name, registered_business_name, org_id').eq('id', id).single();
+        // event_id added (Multi-Event Phase 2): the hcc_checks insert below
+        // needs the booking's own event_id, not just org_id - previously
+        // absent from both this SELECT and that INSERT, so every hcc_checks
+        // row silently took the column's own event_default fallback
+        // regardless of which event the booking actually belonged to.
+        const { data: bData, error: bErr } = await sb.from(TBL_BOOKINGS).select('business_name, owner_name, registered_business_name, org_id, event_id').eq('id', id).single();
         if (bErr) throw bErr;
         bookingDetails = bData;
     }
@@ -161,7 +166,8 @@ export async function updateBookingStatus(id, status, reason = null) {
             const { error: hccErr } = await sb.from('hcc_checks').insert({
                 booking_id: id,
                 council_status: 'Pending',
-                org_id: bookingDetails.org_id
+                org_id: bookingDetails.org_id,
+                event_id: bookingDetails.event_id
             });
             if (hccErr) console.warn("Failed to insert into hcc_checks:", hccErr);
         }

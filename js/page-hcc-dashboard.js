@@ -1,6 +1,6 @@
 // @ts-check
 import { initAdminPage, getSupabaseClient } from './supabase.js';
-import { CONFIG, getCurrentOrgId } from './config.js';
+import { CONFIG, getCurrentOrgId, getCurrentEventId } from './config.js';
 import { showToast, showConfirm } from './ui.js';
 import { safeError, escapeHtml } from './utils.js';
 import { sendEmailDirect } from './api.js';
@@ -66,9 +66,15 @@ async function loadData(reset = true) {
 
     try {
         // We use a JOIN to fetch email, phone, status, business_name, owner_name, and registered_business_name from the referenced 'bookings' table
+        // event_id added (Multi-Event Phase 2): without it, HCC compliance
+        // records from every event of this org were shown merged together
+        // once a second one exists - the same pattern every other admin
+        // query (Kanban/Payments/Locations) already applies.
         const { data, error } = await sb
             .from('hcc_checks')
             .select('*, bookings(business_name, owner_name, registered_business_name, email, phone, status)')
+            .eq('org_id', getCurrentOrgId())
+            .eq('event_id', getCurrentEventId())
             .order('submitted_at', { ascending: false })
             .range(offset, offset + limit - 1);
 

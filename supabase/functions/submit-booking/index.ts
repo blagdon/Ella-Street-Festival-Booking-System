@@ -72,11 +72,21 @@ function sanitizeCharityStatus(val: unknown): string {
  * those views' status<>'draft' filter, so routing through them first would
  * be redundant.
  *
- * No org/event slug in the request is not an error — it's the legacy
- * single-tenant case every booking form supported before Phase 4D — so it
- * resolves the well-known org_default/event_default pair instead of
- * rejecting. That pair goes through this exact same lookup and status
- * check, not a bypass: event_default's status must be 'open' too.
+ * Org and event resolution are deliberately independent (Multi-Event
+ * Phase 2) — a request can legitimately supply an orgSlug without an
+ * eventSlug. The previous version conflated the two: a missing eventSlug
+ * fell through a single combined condition that also discarded any
+ * supplied orgSlug and hardcoded org_default, silently mis-routing a
+ * request for a real, non-default organisation. No orgSlug at all is still
+ * not an error — the legacy single-tenant case every booking form
+ * supported before Phase 4D — and resolves org_default same as before.
+ *
+ * No eventSlug is also not an error: it resolves the target organisation's
+ * own is_default event (Decision 6) rather than a hardcoded event_default
+ * literal, which was only ever meaningful for org_default itself. If the
+ * organisation has no default event configured, this fails clearly rather
+ * than silently guessing one — a missing default is a real configuration
+ * gap the org's admin needs to fix, not something to paper over.
  */
 async function resolvePublicBookingContext(
   supabaseAdmin: ReturnType<typeof createClient>,
@@ -84,27 +94,34 @@ async function resolvePublicBookingContext(
   eventSlug: unknown
 ): Promise<{ orgId: string; eventId: string; bookingPrefix: string }> {
   let orgId: string
-  let event: { id: string; org_id: string; status: string; booking_prefix: string } | null
 
-  if (typeof orgSlug === 'string' && orgSlug && typeof eventSlug === 'string' && eventSlug) {
+  if (typeof orgSlug === 'string' && orgSlug) {
     const { data: org } = await supabaseAdmin.from('organisations').select('id').eq('slug', orgSlug).maybeSingle()
     if (!org) throw new PublicError('This booking link is no longer valid — the organisation could not be found.')
+    orgId = org.id
+  } else {
+    orgId = 'org_default'
+  }
+
+  let event: { id: string; org_id: string; status: string; booking_prefix: string } | null
+
+  if (typeof eventSlug === 'string' && eventSlug) {
     const { data: eventRow } = await supabaseAdmin
       .from('events')
       .select('id, org_id, status, booking_prefix')
-      .eq('org_id', org.id)
+      .eq('org_id', orgId)
       .eq('slug', eventSlug)
       .maybeSingle()
     if (!eventRow) throw new PublicError('This booking link is no longer valid — the event could not be found.')
-    orgId = org.id
     event = eventRow
   } else {
-    orgId = 'org_default'
     const { data: eventRow } = await supabaseAdmin
       .from('events')
       .select('id, org_id, status, booking_prefix')
-      .eq('id', 'event_default')
+      .eq('org_id', orgId)
+      .eq('is_default', true)
       .maybeSingle()
+    if (!eventRow) throw new PublicError('Booking is not currently available for this organisation — no default event is configured.')
     event = eventRow
   }
 

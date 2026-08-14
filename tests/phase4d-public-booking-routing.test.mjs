@@ -66,10 +66,15 @@ describe('submit-booking resolves org/event from a trusted slug pair', () => {
 
     before(async () => {
         await service.from('organisations').insert({ id: orgId, name: 'Phase 4D Org', slug: orgSlug });
-        await service.from('events').insert([
+        // is_active is now unique per org (Multi-Event Phase 2) - only
+        // eventId keeps it; draftEventId doesn't need it for anything this
+        // describe block actually tests (slug resolution and status
+        // rejection, never is_active).
+        const { error: eventsErr } = await service.from('events').insert([
             { id: eventId, org_id: orgId, name: 'Phase 4D Event', slug: eventSlug, booking_prefix: bookingPrefix, is_active: true, status: 'open' },
-            { id: draftEventId, org_id: orgId, name: 'Phase 4D Draft Event', slug: draftEventSlug, booking_prefix: draftBookingPrefix, is_active: true, status: 'draft' },
+            { id: draftEventId, org_id: orgId, name: 'Phase 4D Draft Event', slug: draftEventSlug, booking_prefix: draftBookingPrefix, is_active: false, status: 'draft' },
         ]);
+        assert.ifError(eventsErr);
     });
 
     after(async () => {
@@ -117,10 +122,20 @@ describe('submit-booking resolves org/event from a trusted slug pair', () => {
         assert.equal(booking.event_id, eventId);
     });
 
-    it('falls back to the legacy org_default/event_default pair when no slug is given at all', async () => {
-        // Relies on 20260804140000_open_default_event.sql having set
-        // event_default's status to 'open' - this is the exact regression
-        // that migration exists to prevent (see its own header comment).
+    it('falls back to org_default\'s is_default event when no slug is given at all', async () => {
+        // Multi-Event Phase 2: resolves via events.is_default now, not a
+        // hardcoded event_default literal - ensureFoundationRows() sets
+        // event_default as org_default's is_default event, so the outcome
+        // is unchanged for this specific org, but via the new mechanism.
+        // This is also the backwards-compatibility case the migration's
+        // own data-driven promotion UPDATE exists for (see
+        // e5-multi-event-phase1.test.mjs section 24): in production, this
+        // exact outcome (event_default remaining org_default's default)
+        // comes from that UPDATE, not from a test-only fixture helper -
+        // js/public-context.js's own comment documents this no-slug path
+        // as "the legacy single-tenant case every booking form supported
+        // before Phase 4D", a genuinely live entry point this test proves
+        // keeps working.
         const { status, json } = await callEdgeFunction('submit-booking', submitPayload('ESF26-FOOD-', 'E'));
         assert.equal(status, 200, JSON.stringify(json));
         const booking = json.data[0];
@@ -128,6 +143,88 @@ describe('submit-booking resolves org/event from a trusted slug pair', () => {
 
         assert.equal(booking.org_id, 'org_default');
         assert.equal(booking.event_id, 'event_default');
+    });
+});
+
+describe('submit-booking independent org/event resolution (Multi-Event Phase 2)', () => {
+    const orgId = `org_4d_p2_${Date.now()}`;
+    const orgSlug = `org-4d-p2-${Date.now()}`;
+    const openEventId = `event_4d_p2_open_${Date.now()}`;
+    const openEventSlug = `event-4d-p2-open-${Date.now()}`;
+    const closedDefaultOrgId = `org_4d_p2_closed_${Date.now()}`;
+    const closedDefaultOrgSlug = `org-4d-p2-closed-${Date.now()}`;
+    const closedDefaultEventId = `event_4d_p2_closed_${Date.now()}`;
+    const noDefaultOrgId = `org_4d_p2_nodef_${Date.now()}`;
+    const noDefaultOrgSlug = `org-4d-p2-nodef-${Date.now()}`;
+    const noDefaultEventId = `event_4d_p2_nodef_${Date.now()}`;
+    const bookingPrefix = `D4P${Date.now().toString().slice(-3)}`;
+    const closedPrefix = `D4C${Date.now().toString().slice(-3)}`;
+    const noDefPrefix = `D4N${Date.now().toString().slice(-3)}`;
+
+    before(async () => {
+        await service.from('organisations').insert({ id: orgId, name: 'Phase 4D Phase2 Org', slug: orgSlug });
+        await service.from('events').insert({ id: openEventId, org_id: orgId, name: 'Phase 4D Phase2 Event', slug: openEventSlug, booking_prefix: bookingPrefix, is_active: true, status: 'open' });
+        await service.from('events').update({ is_default: true }).eq('id', openEventId);
+
+        // An org whose is_default event exists but is NOT open (closed) -
+        // proves the existing status gate still applies to an is_default-
+        // resolved event, not just an explicitly-slugged one.
+        await service.from('organisations').insert({ id: closedDefaultOrgId, name: 'Phase 4D Phase2 Closed-Default Org', slug: closedDefaultOrgSlug });
+        await service.from('events').insert({ id: closedDefaultEventId, org_id: closedDefaultOrgId, name: 'Closed Default Event', slug: 'closed-default-event', booking_prefix: closedPrefix, is_active: false, status: 'closed' });
+        await service.from('events').update({ is_default: true }).eq('id', closedDefaultEventId);
+
+        // An org with a real event, but NO is_default set at all.
+        await service.from('organisations').insert({ id: noDefaultOrgId, name: 'Phase 4D Phase2 No-Default Org', slug: noDefaultOrgSlug });
+        await service.from('events').insert({ id: noDefaultEventId, org_id: noDefaultOrgId, name: 'No Default Event', slug: 'no-default-event', booking_prefix: noDefPrefix, is_active: false, status: 'open' });
+    });
+
+    after(async () => {
+        await service.from('events').delete().in('id', [openEventId, closedDefaultEventId, noDefaultEventId]);
+        await service.from('organisations').delete().in('id', [orgId, closedDefaultOrgId, noDefaultOrgId]);
+    });
+
+    it('a valid orgSlug WITHOUT an eventSlug resolves that organisation\'s own is_default event, never silently discarding the orgSlug for org_default', async () => {
+        const { status, json } = await callEdgeFunction('submit-booking', submitPayload(`${bookingPrefix}-FOOD-`, 'P2A', { orgSlug }));
+        assert.equal(status, 200, JSON.stringify(json));
+        const booking = json.data[0];
+        createdBookingIds.push(booking.id);
+
+        assert.equal(booking.org_id, orgId, 'the supplied orgSlug must resolve to its own organisation, not org_default');
+        assert.equal(booking.event_id, openEventId);
+    });
+
+    it('an explicit orgSlug + eventSlug pair is completely unaffected by the independent-resolution change', async () => {
+        const { status, json } = await callEdgeFunction('submit-booking', submitPayload(`${bookingPrefix}-FOOD-`, 'P2B', { orgSlug, eventSlug: openEventSlug }));
+        assert.equal(status, 200, JSON.stringify(json));
+        const booking = json.data[0];
+        createdBookingIds.push(booking.id);
+
+        assert.equal(booking.org_id, orgId);
+        assert.equal(booking.event_id, openEventId);
+    });
+
+    it('an invalid orgSlug alone is rejected clearly, independent of eventSlug', async () => {
+        const { status, json } = await callEdgeFunction('submit-booking', submitPayload('ESF26-FOOD-', 'P2C', { orgSlug: 'no-such-org-p2-xyz' }));
+        assert.notEqual(status, 200);
+        assert.match(json.error, /organisation could not be found/i);
+    });
+
+    it('a valid orgSlug with an invalid eventSlug is rejected clearly, distinct from an org-not-found error', async () => {
+        const { status, json } = await callEdgeFunction('submit-booking', submitPayload(`${bookingPrefix}-FOOD-`, 'P2D', { orgSlug, eventSlug: 'no-such-event-p2-xyz' }));
+        assert.notEqual(status, 200);
+        assert.match(json.error, /event could not be found/i);
+    });
+
+    it('an organisation with no is_default event configured fails clearly rather than silently guessing one', async () => {
+        const { status, json } = await callEdgeFunction('submit-booking', submitPayload(`${noDefPrefix}-FOOD-`, 'P2E', { orgSlug: noDefaultOrgSlug }));
+        assert.notEqual(status, 200);
+        assert.match(json.error, /not currently available|no default event/i);
+    });
+
+    it('an is_default event that is not open (closed) is still gated by the existing status check, naming the real status', async () => {
+        const { status, json } = await callEdgeFunction('submit-booking', submitPayload(`${closedPrefix}-FOOD-`, 'P2F', { orgSlug: closedDefaultOrgSlug }));
+        assert.notEqual(status, 200);
+        assert.match(json.error, /CLOSED/i);
     });
 });
 

@@ -31,15 +31,25 @@ const bookingPrefix = `E4D${Date.now().toString().slice(-3)}`;
 test.describe('Public booking form routing (Phase 4D)', () => {
   test.beforeAll(async () => {
     await service.from('organisations').insert({ id: orgId, name: 'E2E Phase 4D Org', slug: orgSlug });
-    await service.from('events').insert([
+    // is_active is unique per organisation (Multi-Event Phase 2) - only
+    // openEventId keeps it. is_active:false is set EXPLICITLY on the other
+    // two, not omitted: PostgREST's bulk insert builds one INSERT using the
+    // union of keys across the whole array, so a key present on one object
+    // but absent on another sends an explicit NULL for the ones missing it
+    // - not the column's own default - which violates the NOT NULL
+    // constraint outright (hit this exact same class of bug once already
+    // this session, in tests/helpers.mjs). None of these tests' assertions
+    // depend on is_active at all (they exercise status-based gating only).
+    const { error: eventsErr } = await service.from('events').insert([
       { id: openEventId, org_id: orgId, name: 'E2E Open Event', slug: openEventSlug, booking_prefix: bookingPrefix, is_active: true, status: 'open' },
-      { id: readyEventId, org_id: orgId, name: 'E2E Ready Event', slug: readyEventSlug, booking_prefix: `${bookingPrefix}R`, is_active: true, status: 'ready' },
+      { id: readyEventId, org_id: orgId, name: 'E2E Ready Event', slug: readyEventSlug, booking_prefix: `${bookingPrefix}R`, is_active: false, status: 'ready' },
       // Deliberately never queried by these tests through the public path
       // except to prove it's unreachable there - draft events are excluded
       // from public_events_info entirely (Phase 4A), so this row exists only
       // to show a draft slug resolves exactly like a nonexistent one below.
-      { id: draftEventId, org_id: orgId, name: 'E2E Draft Event', slug: draftEventSlug, booking_prefix: `${bookingPrefix}D`, is_active: true, status: 'draft' },
+      { id: draftEventId, org_id: orgId, name: 'E2E Draft Event', slug: draftEventSlug, booking_prefix: `${bookingPrefix}D`, is_active: false, status: 'draft' },
     ]);
+    if (eventsErr) throw new Error(`fixture setup failed: ${eventsErr.message}`);
   });
 
   test.afterAll(async () => {

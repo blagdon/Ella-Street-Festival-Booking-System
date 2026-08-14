@@ -288,7 +288,12 @@ Deno.serve(async (req) => {
         name: String(event_name).trim(),
         slug: cleanEventSlug,
         booking_prefix: cleanPrefix,
-        is_active: true,
+        // is_active/is_default both left at their false defaults (Multi-Event
+        // Phase 2): a brand-new draft event has nothing to be "the
+        // operational one" for yet, and events_default_lifecycle_check would
+        // reject is_default=true on a draft event anyway. Promoting this
+        // event to active/default is now an explicit, separate action
+        // (rpc_set_active_event/rpc_set_default_event) once it's ready.
         status: 'draft'
       })
 
@@ -311,11 +316,23 @@ Deno.serve(async (req) => {
     }
 
     // Step E: Record Audit Log Entry
+    //
+    // target_table removed (Multi-Event Phase 2 discovery): it is not a
+    // real column on audit_logs (the table has no such column at all -
+    // confirmed against the live schema) and this insert has never checked
+    // its own error, so every single provisioning call has silently failed
+    // to write this row at all since the feature was built (verified: zero
+    // provision_organisation rows exist in the test project despite many
+    // real provisioning calls across this whole engagement). Removing the
+    // invalid field is what makes the org_id/event_id fix below actually
+    // take effect, rather than continuing to fail silently for a different
+    // reason.
     await supabaseAdmin
       .from('audit_logs')
       .insert({
         action: 'provision_organisation',
-        target_table: 'organisations',
+        org_id: cleanOrgSlug,
+        event_id: newEventId,
         details: {
           org_id: cleanOrgSlug,
           org_name,

@@ -102,7 +102,8 @@ describe('public identity views', () => {
             name: 'Phase 4A Public Event',
             slug,
             booking_prefix: `P4A${Date.now().toString().slice(-4)}`,
-            is_active: true,
+            // is_active omitted (Multi-Event Phase 2: unique per org, and
+            // org_default already has one) - never read by this test.
             status: 'open'
         });
         assert.ifError(insErr);
@@ -129,7 +130,8 @@ describe('public identity views', () => {
             name: 'Phase 4A Draft Event',
             slug,
             booking_prefix: `P4D${Date.now().toString().slice(-4)}`,
-            is_active: true,
+            // is_active omitted (Multi-Event Phase 2: unique per org, and
+            // org_default already has one) - never read by this test.
             status: 'draft'
         });
         assert.ifError(insErr);

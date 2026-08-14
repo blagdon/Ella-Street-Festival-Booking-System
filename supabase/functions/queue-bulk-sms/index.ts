@@ -139,7 +139,7 @@ Deno.serve(async (req) => {
     // Re-derive recipients server-side — only Confirmed bookings with a phone.
     let bookingsQuery = supabaseClient
       .from('bookings')
-      .select('id, phone, instance_prefix, org_id')
+      .select('id, phone, instance_prefix, org_id, event_id')
       .in('id', bookingIds)
       .eq('status', 'Confirmed')
 
@@ -151,6 +151,17 @@ Deno.serve(async (req) => {
 
     if (bookingsErr) {
       throw new Error('Failed to look up bookings: ' + bookingsErr.message)
+    }
+
+    // Multi-Event Phase 2: reject rather than silently narrow if the
+    // resolved bookings span more than one event - same reasoning as
+    // queue-bulk-email's identical guard.
+    const distinctEventIds = new Set((bookings || []).map((b) => b.event_id))
+    if (distinctEventIds.size > 1) {
+      return new Response(JSON.stringify({ error: 'Selected bookings span more than one event and cannot be bulk-messaged together.' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
     }
 
     // Normalise each number; silently skip ones we can't turn into E.164 rather

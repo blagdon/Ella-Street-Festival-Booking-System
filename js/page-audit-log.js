@@ -1,6 +1,7 @@
 // @ts-check
 import { initAdminPage, getSupabaseClient } from './supabase.js';
-import { getCurrentOrgId } from './config.js';
+import { getCurrentOrgId, getCurrentEventId } from './config.js';
+import { fetchAvailableEvents } from './event-service.js';
 import { escapeHtml } from './utils.js';
 import { showToast } from './ui.js';
 
@@ -36,10 +37,11 @@ function friendlyAction(action) {
     return (action || '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-function initAuditLog() {
+async function initAuditLog() {
     sb = getSupabaseClient();
 
     populateActionFilter();
+    await populateEventFilter();
 
     // Deep-link support: audit_log.html?target=<bookingId>, used by the
     // "History" link in the kanban/summary booking detail pane.
@@ -53,6 +55,7 @@ function initAuditLog() {
     document.getElementById('btn-refresh').addEventListener('click', () => loadPage(true));
     document.getElementById('btn-load-more').addEventListener('click', () => loadPage(false));
     document.getElementById('actionFilter').addEventListener('change', () => loadPage(true));
+    document.getElementById('eventFilter').addEventListener('change', () => loadPage(true));
     document.getElementById('searchInput').addEventListener('input', () => {
         clearTimeout(searchDebounceTimer);
         searchDebounceTimer = setTimeout(() => loadPage(true), 400);
@@ -86,6 +89,27 @@ function populateActionFilter() {
         });
 }
 
+// audit_logs.event_id is already correctly populated on every write
+// (js/audit.js's sole writer always supplies a real event_id) - this is
+// purely a read-side filter, defaulting to the currently-selected event
+// (consistent with every other event-scoped admin view) with an explicit
+// "All Events" option for genuinely cross-event review, same pattern as
+// the existing actionFilter's "All" option (Multi-Event Phase 2).
+async function populateEventFilter() {
+    const sel = /** @type {HTMLSelectElement} */ (document.getElementById('eventFilter'));
+    const events = await fetchAvailableEvents();
+    events.forEach((evt) => {
+        const opt = document.createElement('option');
+        opt.value = evt.id;
+        opt.textContent = evt.name || evt.id;
+        sel.appendChild(opt);
+    });
+    const currentEventId = getCurrentEventId();
+    if (events.some((evt) => evt.id === currentEventId)) {
+        sel.value = currentEventId;
+    }
+}
+
 // PostgREST's .or() filter string uses commas to separate conditions and
 // parentheses for grouping - strip them so a comma/paren in a search term
 // can't corrupt the filter string. Only affects free-text search; the
@@ -111,6 +135,7 @@ async function loadPage(reset) {
     const rawTerm = (/** @type {HTMLInputElement} */ (document.getElementById('searchInput'))).value.trim();
     const term = sanitizeForOrFilter(rawTerm);
     const actionFilter = (/** @type {HTMLSelectElement} */ (document.getElementById('actionFilter'))).value;
+    const eventFilter = (/** @type {HTMLSelectElement} */ (document.getElementById('eventFilter'))).value;
 
     try {
         let query = sb.from('audit_logs').select('*').eq('org_id', getCurrentOrgId()).order('id', { ascending: false });
@@ -120,6 +145,9 @@ async function loadPage(reset) {
         }
         if (actionFilter !== 'All') {
             query = query.eq('action', actionFilter);
+        }
+        if (eventFilter !== 'All') {
+            query = query.eq('event_id', eventFilter);
         }
 
         query = query.range(offset, offset + PAGE_SIZE - 1);

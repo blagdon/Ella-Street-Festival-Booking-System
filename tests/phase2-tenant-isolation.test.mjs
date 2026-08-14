@@ -122,13 +122,15 @@ describe('tenant isolation & get_current_org_id', () => {
 
   it('admin can insert and update events', async () => {
     const eventId = `event_test_${Date.now()}`;
+    // is_active omitted (Multi-Event Phase 2: unique per org, and
+    // org_default already has one) - this test only exercises insert/update
+    // permission, never reads is_active.
     const { error: insertErr } = await admin.from('events').insert({
       id: eventId,
       org_id: 'org_default',
       name: 'Test Event Edition',
       slug: `test-event-${Date.now()}`,
-      booking_prefix: 'TEST26',
-      is_active: true
+      booking_prefix: 'TEST26'
     });
     assert.ifError(insertErr);
 

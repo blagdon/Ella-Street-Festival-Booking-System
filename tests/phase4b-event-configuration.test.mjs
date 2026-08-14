@@ -137,10 +137,15 @@ describe('event configuration across multiple events in one organisation', () =>
 
     before(async () => {
         await service.from('organisations').insert({ id: orgId, name: 'Phase 4B Multi-Event Org', slug: orgId.replace(/_/g, '-') });
-        await service.from('events').insert([
-            { id: eventX, org_id: orgId, name: 'Event X', slug: eventX.replace(/_/g, '-'), booking_prefix: `X4B${Date.now().toString().slice(-3)}`, is_active: true },
-            { id: eventY, org_id: orgId, name: 'Event Y', slug: eventY.replace(/_/g, '-'), booking_prefix: `Y4B${Date.now().toString().slice(-3)}`, is_active: true },
+        // is_active omitted on both (Multi-Event Phase 2: unique per org -
+        // two events under the same org can't both hold it, and this
+        // describe block never reads is_active, only event_settings
+        // inheritance/override).
+        const { error: eventsErr } = await service.from('events').insert([
+            { id: eventX, org_id: orgId, name: 'Event X', slug: eventX.replace(/_/g, '-'), booking_prefix: `X4B${Date.now().toString().slice(-3)}` },
+            { id: eventY, org_id: orgId, name: 'Event Y', slug: eventY.replace(/_/g, '-'), booking_prefix: `Y4B${Date.now().toString().slice(-3)}` },
         ]);
+        if (eventsErr) throw new Error(`fixture setup failed: ${eventsErr.message}`);
         await service.from('settings').insert({ org_id: orgId, key: 'festival_display_name', value: 'Org Festival' });
         await service.from('event_settings').insert({ event_id: eventX, key: 'festival_display_name', value: 'Festival X' });
         // Event Y deliberately gets no override — it must keep inheriting.
