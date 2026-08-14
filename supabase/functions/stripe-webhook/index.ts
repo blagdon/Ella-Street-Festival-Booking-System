@@ -2,7 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import Stripe from 'https://esm.sh/stripe@17.5.0?target=deno'
 import { sendViaZoho } from '../_shared/zoho.ts'
 import { sendViaSms, normalizePhone } from '../_shared/sms.ts'
-import { getStripeClient, getStripeWebhookSecret, loadStripeSettings, type StripeMode } from '../_shared/stripe.ts'
+import { getStripeClient, loadStripeSettings, type StripeMode } from '../_shared/stripe.ts'
 import { escapeHtml, formatCurrency } from '../_shared/format.ts'
 import { captureAndFlush } from '../_shared/sentry.ts'
 
@@ -237,34 +237,38 @@ Deno.serve(async (req) => {
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
   )
 
-  // Deliberately org_default only, not per-organisation like the other three
-  // Stripe call sites (create-checkout-session, get-payment-link,
-  // refund-payment - see the Launch Readiness Review's Finding 3 fix). Those
-  // three all know their booking's org_id before loading settings; this
-  // endpoint structurally cannot: Stripe signature verification must
-  // succeed BEFORE the payload can be parsed to learn which booking (and
-  // therefore which organisation) an event is even about, and Stripe posts
-  // every event to the one webhook URL registered for this deployment.
-  // Supporting a genuinely separate Stripe account per organisation would
-  // need a distinct webhook endpoint per org (its own URL, its own
-  // registered secret) - an architecture change, not a parameter fix, and
-  // out of scope here. Today every organisation shares one Stripe merchant
-  // account, so this is a real product limitation to track before offering
-  // a customer their own Stripe account, not a tenant-isolation leak: once
-  // verified, everything downstream (the booking lookup, the RPCs, the
-  // confirmation email/SMS) already correctly resolves off the booking's
-  // own org_id, per HANDOVER.md's "every consumer of a booking's own
-  // organisation reads these columns off the row" convention.
-  let stripeSettings
-  try {
-    stripeSettings = await loadStripeSettings(supabaseAdmin, 'org_default')
-  } catch (e: any) {
-    console.error('Failed to load Stripe settings:', e.message)
-    return new Response(JSON.stringify({ error: e.message }), {
+  // E5-04 Option B: one shared webhook endpoint, multiple organisations'
+  // Stripe accounts. Signature verification must succeed BEFORE the payload
+  // can be parsed to learn which booking (and therefore which organisation)
+  // an event is about, and Stripe posts every event to the one webhook URL
+  // registered for this deployment - so instead of loading one
+  // pre-selected organisation's secret, every organisation's registered
+  // webhook secret is a CANDIDATE, and whichever one actually verifies the
+  // signature is what identifies the organisation. The unverified payload
+  // itself is never consulted to select an organisation - only a
+  // successful HMAC match does that. Deliberately selects only the two
+  // webhook-secret keys here, not the API secret keys (stripe_secret_key_*)
+  // - those are loaded afterwards, only for the one matched organisation.
+  const { data: candidateRows, error: candidateErr } = await supabaseAdmin
+    .from('settings')
+    .select('org_id, key, value')
+    .in('key', ['stripe_webhook_secret_test', 'stripe_webhook_secret_live'])
+
+  if (candidateErr) {
+    console.error('Failed to load candidate webhook secrets:', candidateErr.message)
+    return new Response(JSON.stringify({ error: candidateErr.message }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' }
     })
   }
+
+  const candidates: { orgId: string; mode: StripeMode; secret: string }[] = (candidateRows || [])
+    .filter((row: any) => row.value && String(row.value).trim() !== '')
+    .map((row: any) => ({
+      orgId: row.org_id as string,
+      mode: (row.key === 'stripe_webhook_secret_test' ? 'test' : 'live') as StripeMode,
+      secret: row.value as string,
+    }))
 
   // Instantiated purely to reach the .webhooks namespace — the API key
   // itself plays no role in signature verification, which depends only on
@@ -274,30 +278,66 @@ Deno.serve(async (req) => {
   })
   const cryptoProvider = Stripe.createSubtleCryptoProvider()
 
-  // One endpoint URL receives both Test-mode and Live-mode events (Stripe
-  // supports registering the same URL separately under each dashboard,
-  // each producing its own signing secret) — try both configured secrets.
-  let event: any = null
-  // Which mode's secret actually verified the signature. That identifies the
-  // Stripe account this event came from, so any follow-up API call made while
-  // handling it (see charge.refunded below) uses the matching key — querying
-  // live Stripe about a test-mode object, or vice versa, just 404s.
-  let verifiedMode: StripeMode = 'test'
-  for (const mode of ['test', 'live'] as const) {
+  // Try EVERY candidate - deliberately do NOT stop at the first success.
+  // Stripe's HMAC scheme ties a given (payload, signature) pair to exactly
+  // the secret that produced it, so more than one candidate verifying the
+  // same signature can only happen if two candidates share an identical
+  // secret value - including, e.g., the SAME organisation's own test and
+  // live secrets accidentally being set to the same value. Collecting every
+  // match (not just the first) is what makes that detectable at all.
+  const matches: { orgId: string; mode: StripeMode; event: any }[] = []
+  for (const candidate of candidates) {
     try {
-      const secret = getStripeWebhookSecret(mode, stripeSettings)
-      event = await stripeForVerification.webhooks.constructEventAsync(rawBody, signature, secret, undefined, cryptoProvider)
-      verifiedMode = mode
-      break
+      const verifiedEvent = await stripeForVerification.webhooks.constructEventAsync(
+        rawBody, signature, candidate.secret, undefined, cryptoProvider
+      )
+      matches.push({ orgId: candidate.orgId, mode: candidate.mode, event: verifiedEvent })
     } catch (_e) {
-      // Wrong secret for this event, or that mode's secret isn't
-      // configured — try the other mode before giving up.
+      // Wrong secret for this event - try the next candidate.
     }
   }
 
-  if (!event) {
+  if (matches.length === 0) {
     return new Response(JSON.stringify({ error: 'Webhook signature verification failed.' }), {
       status: 400,
+      headers: { 'Content-Type': 'application/json' }
+    })
+  }
+
+  if (matches.length > 1) {
+    // Ambiguous by full (org_id, mode) identity, not collapsed to org_id -
+    // Org A's own test+live pair sharing a secret is exactly as ambiguous
+    // as two different organisations sharing one. Refusing to guess here
+    // is the whole point: an arbitrarily-chosen match could silently
+    // confirm a real payment under the wrong organisation. Never logs the
+    // secret itself, only which (org, mode) pairs collided.
+    const candidateDescriptor = matches.map((m) => `${m.orgId}/${m.mode}`).join(', ')
+    console.error(`stripe-webhook: signature verified against ${matches.length} distinct org+mode candidates (${candidateDescriptor}) - refusing to guess which organisation this event belongs to. Two webhook secrets are identical; regenerate one of them in its Stripe dashboard.`)
+    await captureAndFlush(
+      new Error('stripe-webhook: ambiguous signature match across multiple org+mode candidates'),
+      'stripe-webhook',
+      { candidateCount: String(matches.length), candidates: candidateDescriptor }
+    )
+    return new Response(JSON.stringify({ error: 'Webhook configuration is ambiguous and cannot be safely processed.' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' }
+    })
+  }
+
+  const { orgId: matchedOrgId, mode: verifiedMode, event } = matches[0]
+
+  // Reload the MATCHED organisation's full Stripe settings (API secret keys
+  // included) now that verification has established which org this event
+  // actually belongs to - the candidate list above deliberately only ever
+  // carried webhook secrets, never API keys, for exactly this organisation
+  // that turned out to be the wrong one until just now.
+  let stripeSettings
+  try {
+    stripeSettings = await loadStripeSettings(supabaseAdmin, matchedOrgId)
+  } catch (e: any) {
+    console.error('Failed to load Stripe settings for matched organisation:', e.message)
+    return new Response(JSON.stringify({ error: e.message }), {
+      status: 500,
       headers: { 'Content-Type': 'application/json' }
     })
   }
@@ -311,6 +351,33 @@ Deno.serve(async (req) => {
         if (!bookingId) {
           console.warn('checkout.session.completed with no booking_id metadata/client_reference_id, session:', session.id)
         } else {
+          // E5-04 Option B cross-check: the booking this event claims to be
+          // about must belong to the SAME organisation whose secret verified
+          // it. A mismatch can't be fixed by Stripe retrying the identical
+          // delivery, so this is acknowledged (not a 4xx/5xx that would make
+          // Stripe retry forever) - same "verified but not actionable"
+          // shape as the missing-bookingId case just above - but alerted via
+          // Sentry, unlike that routine case, since a mismatch here is a
+          // real, investigable inconsistency rather than a stray/old event.
+          const { data: bookingOrgRow } = await supabaseAdmin
+            .from('bookings')
+            .select('org_id')
+            .eq('id', bookingId)
+            .maybeSingle()
+
+          if (bookingOrgRow && bookingOrgRow.org_id !== matchedOrgId) {
+            console.warn(`checkout.session.completed (event ${event.id}) verified against org ${matchedOrgId} but booking ${bookingId} belongs to org ${bookingOrgRow.org_id} - acknowledging without action.`)
+            await captureAndFlush(
+              new Error('stripe-webhook: booking organisation does not match the verified webhook organisation'),
+              'stripe-webhook',
+              { matchedOrgId, bookingOrgId: bookingOrgRow.org_id, bookingId }
+            )
+            return new Response(JSON.stringify({ received: true }), {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' }
+            })
+          }
+
           const paymentIntentId: string = typeof session.payment_intent === 'string'
             ? session.payment_intent
             : (session.payment_intent?.id || session.id)
@@ -378,7 +445,7 @@ Deno.serve(async (req) => {
         // rather than by our own API call).
         const { data: booking, error: lookupErr } = await supabaseAdmin
           .from('bookings')
-          .select('id')
+          .select('id, org_id')
           .eq('stripe_payment_intent_id', paymentIntentId)
           .maybeSingle()
 
@@ -386,6 +453,18 @@ Deno.serve(async (req) => {
 
         if (!booking) {
           console.warn(`charge.refunded (event ${event.id}) for payment_intent ${paymentIntentId} matched no booking — acknowledging without action.`)
+        } else if (booking.org_id !== matchedOrgId) {
+          // E5-04 Option B cross-check - same reasoning as the
+          // checkout.session.completed branch above: acknowledge rather than
+          // trigger a Stripe retry loop for something retrying can't fix,
+          // but alert via Sentry since this is a real inconsistency to
+          // investigate, not routine missing data.
+          console.warn(`charge.refunded (event ${event.id}) verified against org ${matchedOrgId} but booking ${booking.id} belongs to org ${booking.org_id} - acknowledging without action.`)
+          await captureAndFlush(
+            new Error('stripe-webhook: booking organisation does not match the verified webhook organisation'),
+            'stripe-webhook',
+            { matchedOrgId, bookingOrgId: booking.org_id, bookingId: booking.id }
+          )
         } else {
           // Stripe reports amounts in the smallest currency unit (pence);
           // stall_cost and refund_amount are in pounds.
