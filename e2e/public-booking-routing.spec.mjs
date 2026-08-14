@@ -31,15 +31,20 @@ const bookingPrefix = `E4D${Date.now().toString().slice(-3)}`;
 test.describe('Public booking form routing (Phase 4D)', () => {
   test.beforeAll(async () => {
     await service.from('organisations').insert({ id: orgId, name: 'E2E Phase 4D Org', slug: orgSlug });
-    await service.from('events').insert([
+    // is_active is unique per organisation (Multi-Event Phase 2) - only
+    // openEventId keeps it; none of these tests' assertions depend on
+    // is_active at all (they exercise status-based gating only), so
+    // readyEventId/draftEventId simply default to false.
+    const { error: eventsErr } = await service.from('events').insert([
       { id: openEventId, org_id: orgId, name: 'E2E Open Event', slug: openEventSlug, booking_prefix: bookingPrefix, is_active: true, status: 'open' },
-      { id: readyEventId, org_id: orgId, name: 'E2E Ready Event', slug: readyEventSlug, booking_prefix: `${bookingPrefix}R`, is_active: true, status: 'ready' },
+      { id: readyEventId, org_id: orgId, name: 'E2E Ready Event', slug: readyEventSlug, booking_prefix: `${bookingPrefix}R`, status: 'ready' },
       // Deliberately never queried by these tests through the public path
       // except to prove it's unreachable there - draft events are excluded
       // from public_events_info entirely (Phase 4A), so this row exists only
       // to show a draft slug resolves exactly like a nonexistent one below.
-      { id: draftEventId, org_id: orgId, name: 'E2E Draft Event', slug: draftEventSlug, booking_prefix: `${bookingPrefix}D`, is_active: true, status: 'draft' },
+      { id: draftEventId, org_id: orgId, name: 'E2E Draft Event', slug: draftEventSlug, booking_prefix: `${bookingPrefix}D`, status: 'draft' },
     ]);
+    if (eventsErr) throw new Error(`fixture setup failed: ${eventsErr.message}`);
   });
 
   test.afterAll(async () => {
