@@ -8,8 +8,21 @@
 > including applying additive migrations to production), which require specific
 > verification first, and the short list that needs an explicit instruction every
 > time. Default to acting.
-> Last updated: 2026-08-07.
-> Current release: **v1.0.0-rc1** — first Version 1.0 Release Candidate. Architecture frozen as of the
+> Last updated: 2026-08-14.
+> Current release: **v1.0.0-rc2** — Multi-Event Architecture Phase 1. An organisation having more than
+> one event was already possible in the data model (`bookings.event_id`/`locations.event_id`) but not
+> yet safe in practice: `rpc_get_next_misc_id()` generated MISC ids from organisation-level settings
+> rather than the specific event being booked into, `events.booking_prefix` had no uniqueness constraint
+> despite both id-generation functions' max-id scans depending on it holding globally, and several
+> admin-side queries (Kanban, Payments, Locations) mixed bookings from every event of an org together.
+> All closed here, plus a regression this work's own CI run caught and fixed before merge: a steward
+> whose organisation's real event wasn't `event_default` synced zero bookings, since resolving a
+> steward's organisation cleared the cached active event with nothing to repopulate it. Deliberately
+> deferred as separate follow-ups: `rpc_get_next_misc_id()`'s table-level locking scope, and a
+> pre-existing insert-side `23505` race in the MISC booking flow. See `CHANGELOG.md`'s `[1.0.0-rc2]`
+> entry for the full breakdown.
+>
+> Previous release: **v1.0.0-rc1** — first Version 1.0 Release Candidate. Architecture frozen as of the
 > Architecture Compliance Audit (Fully Compliant, zero open findings — `DECISIONS.md`). Closes both
 > conditions the Release Readiness Audit required before tagging an RC — three orphaned Edge Functions
 > live on production with no source in this repo (#183), and newly-provisioned organisations silently
@@ -21,16 +34,15 @@
 > accessibility gap on `hcc_dashboard.html` is fixed. See `CHANGELOG.md`'s `[1.0.0-rc1]` entry for the
 > full breakdown.
 >
-> Previous release: **v7.22.1** — closes the one outstanding finding from the Architecture Compliance
+> Before that: **v7.22.1** — closes the one outstanding finding from the Architecture Compliance
 > Audit against `DECISIONS.md`: six `SECURITY DEFINER` RPCs (`rpc_add_organisation_member`,
 > `rpc_record_bank_transfer_payment`, `rpc_record_refund`, `rpc_set_booking_locations`,
 > `rpc_get_next_misc_id`, `rpc_initialise_tenant_defaults`) still gated themselves on the legacy
 > global-fallback role check Decision 4 replaced everywhere else, invisible to that fix's own
 > `pg_policies`-based verification since the gap was inside function bodies, not declarative policies.
 > Live-proven exploitable as cross-tenant privilege escalation with direct financial consequences (#180).
-> See `CHANGELOG.md`'s `[7.22.1]` entry for the full breakdown.
->
-> Before that: **v7.22.0** ("Epic 4 Complete" — closes out Epic 4 (Phases 4A–4D) together with three
+> See `CHANGELOG.md`'s `[7.22.1]` entry for the full breakdown. Before that: **v7.22.0** ("Epic 4
+> Complete" — closes out Epic 4 (Phases 4A–4D) together with three
 > rounds of live operational certification against the Epic 1–4 multi-tenant rollout and everything they
 > found: the RC Operational Certification (ten findings, PRs #165–170), the shared modal-trap refactor
 > (#172), the Round 2/3 certification fixes (#173), the Launch Readiness Review's five Must-Fix
