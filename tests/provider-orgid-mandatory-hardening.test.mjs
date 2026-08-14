@@ -96,10 +96,19 @@ describe('H1 structural check: no default orgId remains on the four shared provi
     assert.match(sig[1], /orgId:\s*string/, 'checkDeliveryStatus must now accept an orgId');
   });
 
-  test('the one genuinely platform-level loadStripeSettings call site (stripe-webhook, pre-signature-verification) passes \'org_default\' explicitly', () => {
+  test('stripe-webhook\'s loadStripeSettings call site passes a resolved org_id, not a hardcoded org_default (E5-04, 20260814...)', () => {
+    // Previously the one genuinely platform-level exception, hardcoded to
+    // 'org_default' - E5-04 Option B made stripe-webhook multi-tenant, so
+    // this call site now passes the organisation that actually verified the
+    // incoming Stripe signature, established via the candidate-secret match
+    // (see tests/e5-04-stripe-webhook-multi-tenant.test.mjs for full
+    // behavioural coverage of that resolution). No hardcoded org_default
+    // literal remains anywhere in this file.
     const src = readSource('supabase/functions/stripe-webhook/index.ts');
-    assert.match(src, /loadStripeSettings\(supabaseAdmin,\s*'org_default'\)/,
-      'stripe-webhook must explicitly pass org_default now that the parameter is required - not omit it');
+    assert.match(src, /loadStripeSettings\(supabaseAdmin,\s*matchedOrgId\)/,
+      'stripe-webhook must load the matched organisation\'s settings, not a hardcoded org_default');
+    assert.doesNotMatch(src, /loadStripeSettings\(supabaseAdmin,\s*'org_default'\)/,
+      'stripe-webhook must no longer hardcode org_default at its loadStripeSettings call site');
   });
 
   test('check-sms-delivery threads the authorised row\'s own org_id into checkDeliveryStatus', () => {
