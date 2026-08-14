@@ -39,11 +39,20 @@ const platformAdmin = createClient(url, anonKey);
 let ownerA, ownerAId;
 let stewardA, stewardAId;
 
+// orgId.slice(-8) alone can collide: ORG_A/ORG_B differ only before the
+// shared RUN_ID timestamp suffix, which a trailing slice cuts off entirely.
+// Hash the full id so the distinguishing text actually participates.
+function shortHash(str) {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) >>> 0;
+  return h.toString(36).toUpperCase().padStart(8, '0').slice(-8);
+}
+
 async function seedOrg(orgId, eventId, bookingId, bookingStatus) {
   await service.from('organisations').insert({ id: orgId, name: `Tenant ${orgId}`, slug: orgId, contact_email: 'owner@example.test' });
   await service.from('events').insert({
     id: eventId, org_id: orgId, name: `${orgId} Event`, slug: `${orgId}-evt`,
-    booking_prefix: orgId.slice(-8).toUpperCase(), is_active: true, status: 'open',
+    booking_prefix: shortHash(orgId), is_active: true, status: 'open',
   });
   await service.from('bookings').insert({
     id: bookingId, org_id: orgId, event_id: eventId, status: bookingStatus,
@@ -212,8 +221,13 @@ describe('rpc_add_organisation_member and rpc_get_next_misc_id reject a caller w
   });
 
   test('rpc_get_next_misc_id rejects the same leaked-role steward', async () => {
-    const { error } = await stewardA.rpc('rpc_get_next_misc_id');
+    // p_event_id added (Multi-Event Phase 1, 20260814100000) - EVENT_A
+    // genuinely belongs to ORG_A (seeded in before()), so this still
+    // exercises the authorisation rejection specifically, not a separate
+    // "event doesn't belong to this org" rejection.
+    const { error } = await stewardA.rpc('rpc_get_next_misc_id', { p_event_id: EVENT_A });
     assert.ok(error, 'a steward must not be able to generate booking ids just because their GLOBAL role was set to admin elsewhere');
+    assert.notEqual(error.code, 'PGRST202', 'must be an authorisation rejection, not a missing-function error');
   });
 
   test('a real admin of their own org can still add a member (regression guard)', async () => {

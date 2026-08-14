@@ -78,7 +78,10 @@ describe('organisation_members RPC security', () => {
   });
 
   it('rpc_get_next_misc_id succeeds for authenticated admin', async () => {
-    const { data, error } = await admin.rpc('rpc_get_next_misc_id');
+    // p_event_id added (Multi-Event Phase 1, 20260814100000) - event_default
+    // genuinely belongs to org_default, which this admin fixture is a
+    // member of (ensureFoundationRows(), before()).
+    const { data, error } = await admin.rpc('rpc_get_next_misc_id', { p_event_id: 'event_default' });
     assert.ifError(error);
     assert.ok(typeof data === 'string' && data.includes('-MISC-'));
   });

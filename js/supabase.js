@@ -6,6 +6,7 @@
 import { CONFIG, loadStallCosts, setCurrentOrgId } from './config.js';
 import { showToast } from './ui.js';
 import { initNavigation } from './nav.js';
+import { fetchAvailableEvents } from './event-service.js';
 import { ESF_PUBLIC_CONFIG } from '../supabase-public.js';
 
 let _activeSbClient = null;
@@ -123,6 +124,25 @@ async function resolveStewardOrgId(sb) {
 
     const orgId = orgs[0].id;
     setCurrentOrgId(orgId);
+
+    // event_id added (Multi-Event Phase 1): setCurrentOrgId() above clears
+    // ESF_EVENT_ID/ESF_ACTIVE_EVENT, and stewards have no event-switcher UI
+    // (initNavigation() is admin-only, see initAdminPage()) to ever
+    // repopulate it - without this, getCurrentEventId() falls back to its
+    // hardcoded 'event_default' literal regardless of this steward's real
+    // organisation, and syncDown()'s event-scoped query would silently
+    // return zero bookings for any org whose real event isn't literally
+    // event_default. Reuses the same resolution nav.js's event selector
+    // already calls for admins: scoped to this org (ctx.orgId, just set
+    // above) via both an explicit filter and RLS, and resolves to that
+    // org's own is_active event (or its first event, the same fallback
+    // nav.js already relies on) - never a cross-tenant lookup, never a
+    // hardcoded id.
+    try {
+        await fetchAvailableEvents();
+    } catch (e) {
+        console.warn('[requireAuth] Could not resolve steward event:', e.message);
+    }
 
     try {
         const { createClient } = supabase;

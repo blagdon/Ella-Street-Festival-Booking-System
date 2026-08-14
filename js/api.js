@@ -77,14 +77,20 @@ async function fetchCapped(queryBuilder, cap) {
 /**
  * Fetches Kanban board data.
  * @param {string} currentInstance
- * @returns {Promise<Array>}
+ * @param {string} [orgId]
+ * @param {string} [eventId] defaults to the active Platform Context event
  */
-export async function fetchKanbanData(currentInstance, orgId = getCurrentOrgId()) {
+export async function fetchKanbanData(currentInstance, orgId = getCurrentOrgId(), eventId = getCurrentEventId()) {
     const sb = getSupabaseClient();
     const prefix = CONFIG.INSTANCE_MAP[currentInstance] || CONFIG.INSTANCE_MAP['DEV'];
 
+    // event_id added (Multi-Event Phase 1): instance_prefix alone only
+    // separated two events' bookings by accident, when each event happened
+    // to have a distinct booking_prefix - nothing enforced that. Two events
+    // of the same org can now safely share an instance_prefix pattern
+    // without their bookings mixing on this board.
     const bookings = await fetchCapped(
-        sb.from(TBL_BOOKINGS).select('*').eq('org_id', orgId).eq('instance_prefix', prefix).order('created_at', { ascending: false }),
+        sb.from(TBL_BOOKINGS).select('*').eq('org_id', orgId).eq('event_id', eventId).eq('instance_prefix', prefix).order('created_at', { ascending: false }),
         LIST_CAP
     );
     await attachLocationIds(sb, bookings);
@@ -372,8 +378,10 @@ export async function finalizeConfirmation(id) {
  * undercount together, which the "showing first N" notice flags, rather than
  * the totals silently drifting out of sync with what the table shows.
  * @param {string} currentInstance
+ * @param {string} [orgId]
+ * @param {string} [eventId] defaults to the active Platform Context event
  */
-export async function fetchPayments(currentInstance, orgId = getCurrentOrgId()) {
+export async function fetchPayments(currentInstance, orgId = getCurrentOrgId(), eventId = getCurrentEventId()) {
     const sb = getSupabaseClient();
 
     // Payments page shows all live instances together (FOOD + NONFOOD + MISC)
@@ -386,8 +394,13 @@ export async function fetchPayments(currentInstance, orgId = getCurrentOrgId()) 
         instanceFilter = [CONFIG.INSTANCE_MAP['FOOD'], CONFIG.INSTANCE_MAP['GENERAL'], CONFIG.INSTANCE_MAP['MISC']];
     }
 
+    // event_id added (Multi-Event Phase 1) - the payments table itself stays
+    // organisation-scoped only (deliberately, see the migration's own
+    // header comment), but this query reads from bookings, which does have
+    // event_id, so the selected event's payments can be isolated here
+    // without any payments-table schema change.
     const bookings = await fetchCapped(
-        sb.from(TBL_BOOKINGS).select('*').eq('org_id', orgId).in('instance_prefix', instanceFilter),
+        sb.from(TBL_BOOKINGS).select('*').eq('org_id', orgId).eq('event_id', eventId).in('instance_prefix', instanceFilter),
         LIST_CAP
     );
 
@@ -647,8 +660,12 @@ export async function fetchLocationData(currentInstance, orgId = getCurrentOrgId
     const currentPrefix = CONFIG.INSTANCE_MAP[currentInstance] || CONFIG.INSTANCE_MAP['DEV'];
 
     // 1. Fetch bookings to DISPLAY (Current Instance Only)
+    // event_id added (Multi-Event Phase 1): this function already accepted
+    // eventId and applied it to the locations query below, but these two
+    // booking queries silently never used it - an internal inconsistency,
+    // not a deliberate org-wide read.
     const bLocs = await fetchCapped(
-        sb.from(TBL_BOOKINGS).select('*').eq('org_id', orgId).eq('status', 'Confirmed').eq('instance_prefix', currentPrefix),
+        sb.from(TBL_BOOKINGS).select('*').eq('org_id', orgId).eq('event_id', eventId).eq('status', 'Confirmed').eq('instance_prefix', currentPrefix),
         LIST_CAP
     );
 
@@ -668,7 +685,7 @@ export async function fetchLocationData(currentInstance, orgId = getCurrentOrgId
     // then the trigger rejects the assignment) rather than an actual
     // double-booking.
     const occupantBookings = await fetchCapped(
-        sb.from(TBL_BOOKINGS).select('id').eq('org_id', orgId).eq('status', 'Confirmed').in('instance_prefix', occupancyFilter),
+        sb.from(TBL_BOOKINGS).select('id').eq('org_id', orgId).eq('event_id', eventId).eq('status', 'Confirmed').in('instance_prefix', occupancyFilter),
         LIST_CAP
     );
 
@@ -1068,13 +1085,26 @@ export async function getSignedBookingDocuments(bookingId) {
  */
 export async function insertMiscBooking(payload) {
     const sb = getSupabaseClient();
+    const orgId = getCurrentOrgId();
+    const eventId = getCurrentEventId();
 
-    // Fetch the correct next ID atomically via RPC
-    const { data: newId, error: idErr } = await sb.rpc('rpc_get_next_misc_id');
+    // Fetch the correct next ID atomically via RPC - event_id added
+    // (Multi-Event Phase 1): the RPC resolves its prefix from THIS event's
+    // own booking_prefix (events.booking_prefix), not org-level settings,
+    // so a second event with its own distinct prefix now generates its own
+    // MISC ids correctly.
+    const { data: newId, error: idErr } = await sb.rpc('rpc_get_next_misc_id', { p_event_id: eventId });
     if (idErr) throw idErr;
 
+    // org_id/event_id set explicitly, not relying on the bookings table's
+    // own column defaults (which silently default to org_default/
+    // event_default regardless of the caller's real org/event) - the
+    // exact gap that made misc bookings non-functional for any
+    // organisation other than org_default.
     const { error } = await sb.from(TBL_BOOKINGS).insert({
         id: newId,
+        org_id: orgId,
+        event_id: eventId,
         instance_prefix: CONFIG.INSTANCE_MAP['MISC'],
         status: 'Confirmed',
         date_confirmed: new Date().toISOString(),
