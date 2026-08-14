@@ -505,9 +505,20 @@ async function submitCreateEvent() {
         await loadWorkspaceData();
         renderActiveSection();
     } catch (err) {
-        const message = err.code === '23505'
-            ? `Slug '${slug}' is already in use by another event in this organisation.`
-            : `Failed to create event: ${err.message}`;
+        // Two distinct unique constraints can both raise 23505 here -
+        // events_slug_unique (org_id, slug) and, as of Multi-Event Phase 1,
+        // events_booking_prefix_unique (booking_prefix, global - see that
+        // migration's header comment for why it's global, not per-org).
+        // Distinguished by constraint name in the error message/details,
+        // not assumed from the code alone.
+        let message;
+        if (err.code === '23505' && /events_booking_prefix_unique/.test(err.message || err.details || '')) {
+            message = `Booking prefix '${prefix}' is already in use by another event. Prefixes must be unique across the whole platform, including closed/archived events.`;
+        } else if (err.code === '23505') {
+            message = `Slug '${slug}' is already in use by another event in this organisation.`;
+        } else {
+            message = `Failed to create event: ${err.message}`;
+        }
         notify(message, 'error');
     }
 }
@@ -572,9 +583,17 @@ async function submitEditEvent(eventId) {
         await loadWorkspaceData();
         renderActiveSection();
     } catch (err) {
-        const message = err.code === '23505'
-            ? `Slug '${slug}' is already in use by another event in this organisation.`
-            : `Failed to update event: ${err.message}`;
+        // Same two-constraint distinction as submitCreateEvent - editing an
+        // existing event's prefix can collide just as easily as creating a
+        // new one can.
+        let message;
+        if (err.code === '23505' && /events_booking_prefix_unique/.test(err.message || err.details || '')) {
+            message = `Booking prefix '${prefix}' is already in use by another event. Prefixes must be unique across the whole platform, including closed/archived events.`;
+        } else if (err.code === '23505') {
+            message = `Slug '${slug}' is already in use by another event in this organisation.`;
+        } else {
+            message = `Failed to update event: ${err.message}`;
+        }
         notify(message, 'error');
     }
 }

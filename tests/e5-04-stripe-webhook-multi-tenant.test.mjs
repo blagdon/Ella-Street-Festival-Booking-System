@@ -98,11 +98,20 @@ const SECRET_SAMEMODE_DUP = `whsec_test_samemode_dup_${RUN_ID}`;
 
 let orgDefaultSecret;
 
+// orgId.slice(-8) alone can collide: these orgs differ only before the
+// shared RUN_ID timestamp suffix, which a trailing slice cuts off entirely.
+// Hash the full id so the distinguishing text actually participates.
+function shortHash(str) {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) >>> 0;
+  return h.toString(36).toUpperCase().padStart(8, '0').slice(-8);
+}
+
 async function seedOrgWithBooking(orgId, eventId, bookingId, secrets) {
   await service.from('organisations').insert({ id: orgId, name: `E5-04 ${orgId}`, slug: orgId, contact_email: 'owner@example.test' });
   await service.from('events').insert({
     id: eventId, org_id: orgId, name: `${orgId} Event`, slug: `${orgId}-evt`,
-    booking_prefix: orgId.slice(-8).toUpperCase(), is_active: true, status: 'open',
+    booking_prefix: shortHash(orgId), is_active: true, status: 'open',
   });
   await service.from('bookings').insert({
     id: bookingId, org_id: orgId, event_id: eventId, status: 'Payment Requested',

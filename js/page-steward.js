@@ -1,6 +1,6 @@
 // @ts-check
 import { getSupabaseClient, initAdminPage } from './supabase.js';
-import { CONFIG } from './config.js';
+import { CONFIG, getCurrentEventId } from './config.js';
 import { safeError, validateBookingId, escapeHtml } from './utils.js';
 import { auditLog } from './audit.js';
 import { registerModalClose, trapFocus } from './ui.js';
@@ -83,7 +83,11 @@ async function syncDown() {
             // resolveStewardOrgId()) - never a hardcoded festival prefix.
             // DEV is deliberately excluded, same as before: only FOOD/
             // GENERAL/MISC are real, assignable, non-test bookings.
-            sb.from('bookings').select('id, business_name, owner_name, email, phone').in('status', ['Confirmed']).in('instance_prefix', [CONFIG.INSTANCE_MAP.FOOD, CONFIG.INSTANCE_MAP.GENERAL, CONFIG.INSTANCE_MAP.MISC]),
+            // event_id added (Multi-Event Phase 1), same mechanism every
+            // other event-scoped query in this codebase already uses -
+            // without it, a steward would see Confirmed bookings from every
+            // event of their org mixed together once a second one exists.
+            sb.from('bookings').select('id, business_name, owner_name, email, phone').eq('event_id', getCurrentEventId()).in('status', ['Confirmed']).in('instance_prefix', [CONFIG.INSTANCE_MAP.FOOD, CONFIG.INSTANCE_MAP.GENERAL, CONFIG.INSTANCE_MAP.MISC]),
             sb.from('locations')
                 .select('id')
                 .eq('dataset', 'LIVE')
