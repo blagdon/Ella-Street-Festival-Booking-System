@@ -65,10 +65,18 @@ test('steward login form does not fall through to native submission before async
   let releaseSettingsFetch;
   const settingsFetchGate = new Promise((resolve) => { releaseSettingsFetch = resolve; });
 
-  // loadSettings: false means this page only ever hits /settings for this
-  // one key, so matching the whole path (rather than the query string too)
-  // is simpler and equally scoped.
-  await page.route('**/__supabase/rest/v1/settings**', async (route) => {
+  // Phase 3 WP2 (20260815220000): fetchSentryBrowserLoaderUrl() now calls
+  // rpc_get_public_settings(p_org_id) instead of a direct SELECT against
+  // settings - anon lost direct table access entirely, replaced by this
+  // parameterised RPC (see supabase-public.js). PostgREST routes RPC calls
+  // through /rest/v1/rpc/<function_name>, a different path from the old
+  // /rest/v1/settings table endpoint this interceptor used to match -
+  // updated to the new path so the gate still actually holds up the
+  // request the page's init genuinely waits on, rather than silently
+  // matching nothing and letting the real request through unheld. This
+  // page only ever calls this one RPC, so matching the whole path (rather
+  // than the request body too) is simpler and equally scoped.
+  await page.route('**/rest/v1/rpc/rpc_get_public_settings**', async (route) => {
     await settingsFetchGate;
     await route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
   });
