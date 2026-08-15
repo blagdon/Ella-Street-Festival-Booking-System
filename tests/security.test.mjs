@@ -358,34 +358,39 @@ describe('anon access to settings (booking open/closed flags)', () => {
   // 20260718140000_allow_anon_read_booking_open_flags.sql: the public booking
   // pages read food_bookings_open / general_bookings_open as anon to decide
   // whether to swap the form for the "bookings closed" notice
-  // (js/page-food-booking.js, js/page-general-booking.js), but the anon
-  // settings allowlist never included those keys - the read always errored
-  // (masked by a catch that only console.warns) and the form always showed,
-  // making settings.html's "Closed (Visitors Blocked)" toggle a no-op for
-  // visitors. These run the exact queries the pages run.
-  test('anon can read both booking-open flags via the exact page query', async () => {
+  // (js/page-food-booking.js, js/page-general-booking.js). Phase 3 WP2
+  // (20260815220000) replaced anon's direct SELECT on `settings` with
+  // rpc_get_public_settings(p_org_id) — same allow-list, same observable
+  // behaviour, but a single call can now never span more than one
+  // organisation. These tests exercise the org_default row set, matching
+  // this whole file's implicit org_default scoping (the admin fixture signs
+  // in as the org_default test admin, and settings.upsert() below carries no
+  // explicit org_id, so it defaults to org_default).
+  test('anon can read both booking-open flags via rpc_get_public_settings', async () => {
+    const { data, error } = await anon.rpc('rpc_get_public_settings', { p_org_id: 'org_default' });
+    assert.equal(error, null, error?.message);
+    const byKey = new Map((data || []).map((r) => [r.key, r.value]));
     for (const key of bookingOpenKeys) {
-      const { data, error } = await anon.from('settings').select('value').eq('key', key).single();
-      assert.equal(error, null, `expected anon to read settings.${key}: ${error?.message}`);
-      assert.equal(data.value, 'true');
+      assert.equal(byKey.get(key), 'true', `expected anon to read settings.${key} via the RPC`);
     }
   });
 
   test('closing a form via the admin toggle is actually visible to anon (the closed-notice data path)', async () => {
     // settings.html's toggleSetting() runs as an authenticated admin and
     // upserts value 'false'; mirror that real write path, then confirm the
-    // public page's read sees it. page-*-booking.js hides the form when
-    // data.value !== 'true', so anon receiving 'false' here is precisely the
-    // condition that shows the closed notice.
+    // public page's read (now via the RPC) sees it. page-*-booking.js hides
+    // the form when the value !== 'true', so anon receiving 'false' here is
+    // precisely the condition that shows the closed notice.
     const { error: toggleErr } = await admin.from('settings').upsert({
       key: 'food_bookings_open', value: 'false',
       updated_at: new Date().toISOString(), updated_by: adminEmail,
     });
     assert.equal(toggleErr, null, toggleErr?.message);
 
-    const { data, error } = await anon.from('settings').select('value').eq('key', 'food_bookings_open').single();
+    const { data, error } = await anon.rpc('rpc_get_public_settings', { p_org_id: 'org_default' });
     assert.equal(error, null, error?.message);
-    assert.equal(data.value, 'false', 'expected anon to see the toggled-closed value');
+    const closedValue = (data || []).find((r) => r.key === 'food_bookings_open')?.value;
+    assert.equal(closedValue, 'false', 'expected anon to see the toggled-closed value');
 
     // Re-open and confirm the round trip back to "form shows".
     const { error: reopenErr } = await admin.from('settings').upsert({
@@ -393,20 +398,31 @@ describe('anon access to settings (booking open/closed flags)', () => {
       updated_at: new Date().toISOString(), updated_by: adminEmail,
     });
     assert.equal(reopenErr, null, reopenErr?.message);
-    const { data: reopened } = await anon.from('settings').select('value').eq('key', 'food_bookings_open').single();
-    assert.equal(reopened.value, 'true');
+    const { data: reopenedRows } = await anon.rpc('rpc_get_public_settings', { p_org_id: 'org_default' });
+    const reopenedValue = (reopenedRows || []).find((r) => r.key === 'food_bookings_open')?.value;
+    assert.equal(reopenedValue, 'true');
   });
 
-  test('the allowlist still hides sensitive settings rows from anon', async () => {
-    // bank_account_number is seeded by scripts/seed-test-project.mjs and is
-    // deliberately NOT on the allowlist; RLS filters it to zero rows (the
-    // table-level SELECT grant from 20260717100000 means no outright error).
-    const { data, error } = await anon.from('settings').select('key').eq('key', 'bank_account_number');
-    assert.equal(error, null, error?.message);
-    assert.equal(data.length, 0, 'expected non-allowlisted settings rows to stay invisible to anon');
+  test('anon can no longer SELECT the settings table directly at all (old attack shape)', async () => {
+    // Pre-WP2, this exact unfiltered query returned every organisation's
+    // rows for every allow-listed key in one call — the vulnerability WP2
+    // closes. Confirms the base-table grant is genuinely gone, not just
+    // narrowed.
+    const { data, error } = await anon.from('settings').select('key, value').eq('key', 'food_bookings_open');
+    assert.ok(error || (data || []).length === 0, 'expected the base settings table to no longer be directly readable by anon');
+  });
 
-    // And the broad read loadPublicSettings() does (supabase-public.js) must
-    // only ever surface allowlisted keys.
+  test('the allowlist still hides sensitive settings rows from anon, via the RPC', async () => {
+    // bank_account_number is seeded by scripts/seed-test-project.mjs and is
+    // deliberately NOT on the allowlist.
+    const { data, error } = await anon.rpc('rpc_get_public_settings', { p_org_id: 'org_default' });
+    assert.equal(error, null, error?.message);
+    assert.ok(!(data || []).some((r) => r.key === 'bank_account_number'), 'expected bank_account_number to stay invisible to anon');
+
+    // Every key the RPC returns must be within the known allow-list — this
+    // is enforced inside the function body itself now (not a base-table RLS
+    // policy), so this test is really confirming the migration's allow-list
+    // literal matches what this file independently expects.
     const allowlist = [
       'stall_cost_food', 'stall_cost_general', 'stall_cost_dev', 'turnstile_site_key',
       'base_url', 'cancel_url', 'portal_url', 'booking_prefix', 'bucket_name',
@@ -422,7 +438,7 @@ describe('anon access to settings (booking open/closed flags)', () => {
       // same reasoning as turnstile_site_key above. This list itself wasn't
       // updated when that migration shipped; caught by a full regression run
       // during the Epic 4 Phase 4D operational review, not a live leak - the
-      // RLS policy has allow-listed these on purpose since that PR merged.
+      // allow-list has included these on purpose since that PR merged.
       'logo_url', 'logo_light_url', 'brand_primary_color', 'brand_accent_color',
       'org_support_email', 'email_footer_text',
       ...bookingOpenKeys,
@@ -432,9 +448,7 @@ describe('anon access to settings (booking open/closed flags)', () => {
       // authenticated, same reasoning as the branding keys above.
       'regulatory_authority_name', 'insurance_minimum_amount',
     ];
-    const { data: broad, error: broadErr } = await anon.from('settings').select('key');
-    assert.equal(broadErr, null, broadErr?.message);
-    const leaked = broad.map((r) => r.key).filter((k) => !allowlist.includes(k));
+    const leaked = (data || []).map((r) => r.key).filter((k) => !allowlist.includes(k));
     assert.deepEqual(leaked, [], `expected no settings keys outside the anon allowlist, got: ${leaked.join(', ')}`);
   });
 });

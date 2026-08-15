@@ -217,19 +217,33 @@ describe('event_settings RLS', () => {
             await service.from('event_settings').delete().eq('event_id', eventId).in('key', ['stall_cost_general', 'festival_display_name']);
         });
 
-        it('an anonymous caller can read an allow-listed key', async () => {
+        // Phase 3 WP2 (20260815220000): anon no longer has a direct SELECT
+        // grant on event_settings at all — the allow-list is now enforced
+        // inside rpc_get_public_event_settings(p_event_id) instead of a
+        // key-only RLS policy on the base table. Same allow-list, same
+        // observable behaviour, different mechanism — see
+        // tests/phase4a-public-identity.test.mjs for the cross-event
+        // isolation proof this RPC also provides.
+        it('an anonymous caller can read an allow-listed key via rpc_get_public_event_settings', async () => {
             const anon = createClient(url, anonKey, { auth: { autoRefreshToken: false, persistSession: false } });
-            const { data, error } = await anon.from('event_settings').select('value').eq('event_id', eventId).eq('key', 'stall_cost_general');
+            const { data, error } = await anon.rpc('rpc_get_public_event_settings', { p_event_id: eventId });
             assert.ifError(error);
-            assert.equal(data.length, 1);
-            assert.equal(data[0].value, '6.00');
+            const row = (data || []).find((r) => r.key === 'stall_cost_general');
+            assert.ok(row, 'stall_cost_general should be readable via the RPC');
+            assert.equal(row.value, '6.00');
         });
 
         it('an anonymous caller cannot read a non-allow-listed key, even though the row exists', async () => {
             const anon = createClient(url, anonKey, { auth: { autoRefreshToken: false, persistSession: false } });
-            const { data, error } = await anon.from('event_settings').select('value').eq('event_id', eventId).eq('key', 'festival_display_name');
+            const { data, error } = await anon.rpc('rpc_get_public_event_settings', { p_event_id: eventId });
             assert.ifError(error);
-            assert.equal(data.length, 0, 'RLS should filter this row out silently, not error');
+            assert.ok(!(data || []).some((r) => r.key === 'festival_display_name'), 'a non-allow-listed key must never be returned by the RPC');
+        });
+
+        it('anon can no longer SELECT event_settings directly at all (old attack shape)', async () => {
+            const anon = createClient(url, anonKey, { auth: { autoRefreshToken: false, persistSession: false } });
+            const { data, error } = await anon.from('event_settings').select('value').eq('event_id', eventId).eq('key', 'stall_cost_general');
+            assert.ok(error || (data || []).length === 0, 'the base table must no longer be directly readable by anon');
         });
     });
 });
