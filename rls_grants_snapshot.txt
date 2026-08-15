@@ -87,8 +87,12 @@ GRANT ALL ON FUNCTION "public"."rpc_record_bank_transfer_payment"("p_booking_id"
 GRANT ALL ON FUNCTION "public"."rpc_record_bank_transfer_payment"("p_booking_id" "text", "p_payment_reference" "text", "p_notes" "text") TO "service_role";
 GRANT ALL ON FUNCTION "public"."rpc_record_refund"("p_booking_id" "text", "p_refund_amount" numeric, "p_refund_reference" "text", "p_notes" "text", "p_refunded_by" "text") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rpc_record_refund"("p_booking_id" "text", "p_refund_amount" numeric, "p_refund_reference" "text", "p_notes" "text", "p_refunded_by" "text") TO "service_role";
+GRANT ALL ON FUNCTION "public"."rpc_set_active_event"("p_event_id" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."rpc_set_active_event"("p_event_id" "text") TO "service_role";
 GRANT ALL ON FUNCTION "public"."rpc_set_booking_locations"("p_booking_id" "text", "p_location_ids" "text"[]) TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rpc_set_booking_locations"("p_booking_id" "text", "p_location_ids" "text"[]) TO "service_role";
+GRANT ALL ON FUNCTION "public"."rpc_set_default_event"("p_event_id" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."rpc_set_default_event"("p_event_id" "text") TO "service_role";
 GRANT ALL ON FUNCTION "public"."stamp_audit_log_user_email"() TO "service_role";
 GRANT ALL ON FUNCTION "public"."sync_organisation_members_from_user_roles"() TO "service_role";
 GRANT ALL ON FUNCTION "public"."track_status_change"() TO "anon";
