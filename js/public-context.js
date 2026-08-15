@@ -8,11 +8,14 @@
  * anonymous visitor is looking at.
  *
  * Reads only through the anon-safe public_organisations_info/
- * public_events_info views and the existing anon-readable settings
- * allow-list — never the base organisations/events tables, which have no
- * anon policy at all. The browser never decides tenant identity here: the
- * slug is just a lookup key, and the server (RLS-gated views) is what
- * actually says which organisation/event it maps to.
+ * public_events_info views and the rpc_get_public_settings/
+ * rpc_get_public_event_settings RPCs (Phase 3 WP2,
+ * 20260815220000_phase3_wp2_public_settings_rpc_scoping.sql) — never the
+ * base organisations/events/settings/event_settings tables directly, none
+ * of which anon has any grant on. The browser never decides tenant identity
+ * here: the slug is just a lookup key, and the server (RLS-gated views plus
+ * the two SECURITY DEFINER RPCs, each capped to exactly one org/event per
+ * call) is what actually says which organisation/event it maps to.
  */
 import { getPublicSupabaseClient, loadPublicSettings, ESF_PUBLIC_CONFIG } from '../supabase-public.js';
 
@@ -49,19 +52,14 @@ export async function resolvePublicContext(orgSlug, eventSlug) {
     if (eventErr || !event) return null;
 
     // Same allow-listed settings keys js/config.js's applySettingsToConfig()
-    // reads for the admin side, filtered to this org only — not a new
-    // mechanism, the existing anon settings policy already covers these rows.
-    const { data: settingsRows } = await sb
-        .from('settings')
-        .select('key, value')
-        .eq('org_id', org.id);
+    // reads for the admin side, filtered to this org only via the RPC's own
+    // required p_org_id parameter (Phase 3 WP2) — a single call can never
+    // span more than one organisation.
+    const { data: settingsRows } = await sb.rpc('rpc_get_public_settings', { p_org_id: org.id });
 
     // Event rows override org rows for the same key, same precedence as
     // js/config.js's loadStallCosts() — org applied first, event second.
-    const { data: eventSettingsRows } = await sb
-        .from('event_settings')
-        .select('key, value')
-        .eq('event_id', event.id);
+    const { data: eventSettingsRows } = await sb.rpc('rpc_get_public_event_settings', { p_event_id: event.id });
 
     const branding = /** @type {Record<string, string>} */ ({});
     (settingsRows || []).forEach((r) => { branding[r.key] = r.value; });
@@ -131,8 +129,12 @@ export async function initPublicBookingForm(settingsKey) {
     }
 
     const sb = getPublicSupabaseClient();
-    const { data, error } = await sb.from('settings').select('value').eq('org_id', orgId).eq('key', settingsKey).maybeSingle();
-    if (!error && data && data.value !== 'true') {
+    // Deliberately org-only (not event-overridden) — matches the pre-WP2
+    // behaviour exactly: this toggle has never respected an event_settings
+    // override, only regulatory declaration/branding do.
+    const { data: orgSettingsRows, error } = await sb.rpc('rpc_get_public_settings', { p_org_id: orgId });
+    const toggleValue = (orgSettingsRows || []).find((r) => r.key === settingsKey)?.value;
+    if (!error && toggleValue !== undefined && toggleValue !== 'true') {
         return { ok: false, reason: 'toggle_closed' };
     }
 
@@ -143,20 +145,12 @@ export async function initPublicBookingForm(settingsKey) {
     // for either gets undefined here, and the caller falls back to generic
     // wording rather than ever inventing a specific authority/amount.
     const declarationSettings = /** @type {Record<string, string>} */ ({});
-    const { data: orgDeclRows } = await sb
-        .from('settings')
-        .select('key, value')
-        .eq('org_id', orgId)
-        .in('key', ['regulatory_authority_name', 'insurance_minimum_amount']);
-    (orgDeclRows || []).forEach((r) => { declarationSettings[r.key] = r.value; });
+    const declKeys = ['regulatory_authority_name', 'insurance_minimum_amount'];
+    (orgSettingsRows || []).filter((r) => declKeys.includes(r.key)).forEach((r) => { declarationSettings[r.key] = r.value; });
 
     if (ctx.event) {
-        const { data: eventDeclRows } = await sb
-            .from('event_settings')
-            .select('key, value')
-            .eq('event_id', ctx.event.id)
-            .in('key', ['regulatory_authority_name', 'insurance_minimum_amount']);
-        (eventDeclRows || []).forEach((r) => { declarationSettings[r.key] = r.value; });
+        const { data: eventDeclRows } = await sb.rpc('rpc_get_public_event_settings', { p_event_id: ctx.event.id });
+        (eventDeclRows || []).filter((r) => declKeys.includes(r.key)).forEach((r) => { declarationSettings[r.key] = r.value; });
     }
 
     return {

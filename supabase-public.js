@@ -237,8 +237,9 @@ if (typeof window !== 'undefined') {
  */
 export async function fetchSentryBrowserLoaderUrl(sb) {
     try {
-        const { data } = await sb.from('settings').select('value').eq('org_id', 'org_default').eq('key', 'sentry_browser_loader_url').single();
-        return data?.value || '';
+        const { data } = await sb.rpc('rpc_get_public_settings', { p_org_id: 'org_default' });
+        const row = (data || []).find((r) => r.key === 'sentry_browser_loader_url');
+        return row?.value || '';
     } catch (e) {
         console.warn('Failed to load sentry_browser_loader_url:', e.message);
         return '';
@@ -329,7 +330,7 @@ export async function loadPublicSettings(orgId = 'org_default') {
 
     try {
         const sb = getPublicSupabaseClient();
-        const { data, error } = await sb.from('settings').select('key, value').eq('org_id', orgId);
+        const { data, error } = await sb.rpc('rpc_get_public_settings', { p_org_id: orgId });
         if (error) throw error;
         if (data) {
             applyPublicSettings(data);
