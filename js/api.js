@@ -702,13 +702,13 @@ export async function fetchLocationData(currentInstance, orgId = getCurrentOrgId
     if (occErr) throw occErr;
 
     // 3. Get Locations Reference — org- and event-scoped like every other
-    // domain table (Phase 4C); dataset (DEV/LIVE) narrows further within
-    // the event's own pitches.
-    const dataset = (currentInstance === 'DEV') ? 'DEV' : 'LIVE';
-
+    // domain table (Phase 4C). dataset is always 'LIVE': the DEV location
+    // dataset (a full id-mirror of the real layout, used to preview the
+    // booking pipeline without touching real inventory) was retired as
+    // test-only infrastructure — every product location now lives in LIVE.
     let locs = [];
     try {
-        const { data: lData } = await sb.from(TBL_LOCATIONS).select('*').eq('org_id', orgId).eq('event_id', eventId).eq('dataset', dataset).limit(LIST_CAP);
+        const { data: lData } = await sb.from(TBL_LOCATIONS).select('*').eq('org_id', orgId).eq('event_id', eventId).eq('dataset', 'LIVE').limit(LIST_CAP);
         if (lData) locs = normalizeLocationIds(lData);
     } catch (e) {
         console.warn('Failed to fetch locations reference data:', e.message);
@@ -809,7 +809,6 @@ export async function fetchHubSummary(todaySinceIso, orgId = getCurrentOrgId(), 
  */
 export async function fetchMapData(currentInstance, orgId = getCurrentOrgId()) {
     const sb = getSupabaseClient();
-    const mapDataset = (currentInstance === 'DEV') ? 'DEV' : 'LIVE';
 
     // 1. Get Locations
     // Goes through rpc_get_public_locations() rather than a direct table
@@ -821,8 +820,9 @@ export async function fetchMapData(currentInstance, orgId = getCurrentOrgId()) {
     // no per-org resolution of its own yet, unlike the booking forms'
     // ?org=&event= + resolvePublicContext()) - wiring the visitor map into
     // that same public-context mechanism is a separate piece of work, not
-    // part of this security fix.
-    const { data: mapLocs } = await sb.rpc('rpc_get_public_locations', { p_org_id: orgId, p_dataset: mapDataset });
+    // part of this security fix. Dataset is always 'LIVE': the DEV location
+    // dataset was retired as test-only infrastructure.
+    const { data: mapLocs } = await sb.rpc('rpc_get_public_locations', { p_org_id: orgId, p_dataset: 'LIVE' });
     const safeMapLocs = normalizeLocationIds(mapLocs);
 
     // 2. Get Confirmed bookings and their assigned location(s) via the

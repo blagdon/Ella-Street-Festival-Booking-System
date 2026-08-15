@@ -366,9 +366,10 @@ async function doSendBulkLocationEmails(targets, alsoSms) {
 /**
  * Downloads a CSV of every currently-assigned location across all three
  * "live" instances (Food, General, Misc — they all share the same real
- * location dataset; Dev uses a separate test dataset and is excluded),
- * formatted for import into Google My Maps — "Latitude" and "Longitude"
- * column names are auto-detected by My Maps' import wizard.
+ * location dataset; the DEV instance is excluded, same as before, though
+ * the DEV location dataset itself has since been retired as test-only
+ * infrastructure), formatted for import into Google My Maps — "Latitude"
+ * and "Longitude" column names are auto-detected by My Maps' import wizard.
  */
 export async function downloadLocationsForMyMaps() {
     const btn = /** @type {HTMLButtonElement | null} */ (document.getElementById('btn-download-mymaps'));

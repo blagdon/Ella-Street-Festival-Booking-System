@@ -183,14 +183,110 @@ describe('rpc_set_booking_locations is authorised against the booking\'s own org
   });
 
   test('a steward of the booking\'s OWN org can still reassign it (regression guard — preserves admin-OR-steward)', async () => {
-    await service.from('locations').insert({ id: `${ORG_A}-LOC`, dataset: 'LIVE', org_id: ORG_A, lat: 51.0, lng: -0.1 });
+    // event_id must be set explicitly (Phase 3 WP1, 20260815100000): the
+    // column's own default is event_default, which is NOT EVENT_A - this
+    // location would previously have "worked" only because the pre-WP1 RPC
+    // never checked event_id at all.
+    await service.from('locations').insert({ id: `${ORG_A}-LOC`, dataset: 'LIVE', org_id: ORG_A, event_id: EVENT_A, lat: 51.0, lng: -0.1 });
     const { error } = await stewardA.rpc('rpc_set_booking_locations', {
       p_booking_id: BOOKING_A, p_location_ids: [`${ORG_A}-LOC`],
     });
     assert.equal(error, null, error?.message);
     const { data } = await service.from('booking_locations').select('location_id').eq('booking_id', BOOKING_A);
     assert.equal(data.length, 1);
+    await service.from('booking_locations').delete().eq('booking_id', BOOKING_A);
     await service.from('locations').delete().eq('id', `${ORG_A}-LOC`).eq('dataset', 'LIVE');
+  });
+});
+
+describe('rpc_set_booking_locations location ownership hardening (Phase 3 WP1, 20260815100000)', () => {
+  const EVENT_A2 = `${ORG_A}-evt2`;
+  const LOC_A_LIVE = `${ORG_A}-LOC-LIVE`;
+  const LOC_A_LIVE_2 = `${ORG_A}-LOC-LIVE-2`;
+  const LOC_B_LIVE = `${ORG_B}-LOC-LIVE`;
+  const LOC_A2_LIVE = `${ORG_A}-LOC-EVT2-LIVE`;
+  const LOC_A_NON_LIVE = `${ORG_A}-LOC-NON-LIVE`;
+
+  before(async () => {
+    await service.from('events').insert({
+      id: EVENT_A2, org_id: ORG_A, name: `${ORG_A} Second Event`, slug: `${ORG_A}-evt2`,
+      booking_prefix: shortHash(EVENT_A2), status: 'open',
+    });
+    await service.from('locations').insert([
+      { id: LOC_A_LIVE, dataset: 'LIVE', org_id: ORG_A, event_id: EVENT_A, lat: 51.0, lng: -0.1 },
+      { id: LOC_A_LIVE_2, dataset: 'LIVE', org_id: ORG_A, event_id: EVENT_A, lat: 51.0, lng: -0.1 },
+      { id: LOC_B_LIVE, dataset: 'LIVE', org_id: ORG_B, event_id: EVENT_B, lat: 51.0, lng: -0.1 },
+      { id: LOC_A2_LIVE, dataset: 'LIVE', org_id: ORG_A, event_id: EVENT_A2, lat: 51.0, lng: -0.1 },
+      // Not 'LIVE' — the DEV location dataset itself has been retired as a
+      // product concept (Phase 3, 20260815210000), but the `dataset` column
+      // still exists (kept for schedules_location_fkey's sake) and nothing
+      // stops a row existing with a non-LIVE value. This proves the
+      // invariant holds unconditionally with NO exception for any dataset
+      // other than LIVE, not just that the old DEV-specific relaxation was
+      // removed.
+      { id: LOC_A_NON_LIVE, dataset: 'DEV', org_id: ORG_A, event_id: EVENT_A, lat: 51.0, lng: -0.1 },
+    ]);
+  });
+
+  after(async () => {
+    await service.from('booking_locations').delete().eq('booking_id', BOOKING_A);
+    await service.from('locations').delete().in('id', [LOC_A_LIVE, LOC_A_LIVE_2, LOC_B_LIVE, LOC_A2_LIVE, LOC_A_NON_LIVE]);
+    await service.from('events').delete().eq('id', EVENT_A2);
+  });
+
+  test('rejects a location belonging to a DIFFERENT organisation', async () => {
+    const { error } = await ownerA.rpc('rpc_set_booking_locations', {
+      p_booking_id: BOOKING_A, p_location_ids: [LOC_B_LIVE],
+    });
+    assert.ok(error, 'admin of ORG_A must not be able to attach ORG_B\'s real location to their own booking');
+    const { data } = await service.from('booking_locations').select('location_id').eq('booking_id', BOOKING_A);
+    assert.equal((data || []).length, 0, 'no location should have been attached by the rejected attempt');
+  });
+
+  test('rejects a location belonging to the SAME organisation but a DIFFERENT event', async () => {
+    const { error } = await ownerA.rpc('rpc_set_booking_locations', {
+      p_booking_id: BOOKING_A, p_location_ids: [LOC_A2_LIVE],
+    });
+    assert.ok(error, 'a location belonging to a different event of the same org must still be rejected');
+    const { data } = await service.from('booking_locations').select('location_id').eq('booking_id', BOOKING_A);
+    assert.equal((data || []).length, 0);
+  });
+
+  test('rejects a location whose own org/event match but is not in the LIVE dataset (DEV retirement — no exception)', async () => {
+    const { error } = await ownerA.rpc('rpc_set_booking_locations', {
+      p_booking_id: BOOKING_A, p_location_ids: [LOC_A_NON_LIVE],
+    });
+    assert.ok(error, 'a non-LIVE-dataset location must be rejected unconditionally, even with matching org_id/event_id and even for a booking whose own instance_prefix is DEV-shaped');
+    const { data } = await service.from('booking_locations').select('location_id').eq('booking_id', BOOKING_A);
+    assert.equal((data || []).length, 0);
+  });
+
+  test('rejects a nonexistent location id', async () => {
+    const { error } = await ownerA.rpc('rpc_set_booking_locations', {
+      p_booking_id: BOOKING_A, p_location_ids: ['THIS-LOCATION-DOES-NOT-EXIST'],
+    });
+    assert.ok(error, 'a location id with no matching row at all must be rejected');
+    const { data } = await service.from('booking_locations').select('location_id').eq('booking_id', BOOKING_A);
+    assert.equal((data || []).length, 0);
+  });
+
+  test('accepts locations genuinely belonging to the booking\'s own org/event/dataset (regression guard)', async () => {
+    const { error } = await ownerA.rpc('rpc_set_booking_locations', {
+      p_booking_id: BOOKING_A, p_location_ids: [LOC_A_LIVE, LOC_A_LIVE_2],
+    });
+    assert.equal(error, null, error?.message);
+    const { data } = await service.from('booking_locations').select('location_id').eq('booking_id', BOOKING_A);
+    assert.equal((data || []).length, 2);
+    assert.deepEqual(new Set((data || []).map((r) => r.location_id)), new Set([LOC_A_LIVE, LOC_A_LIVE_2]));
+  });
+
+  test('an empty array still clears existing locations (regression guard)', async () => {
+    const { error } = await ownerA.rpc('rpc_set_booking_locations', {
+      p_booking_id: BOOKING_A, p_location_ids: [],
+    });
+    assert.equal(error, null, error?.message);
+    const { data } = await service.from('booking_locations').select('location_id').eq('booking_id', BOOKING_A);
+    assert.equal((data || []).length, 0);
   });
 });
 

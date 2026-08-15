@@ -25,7 +25,7 @@
  * time.
  */
 import { getSupabaseClient } from './supabase.js';
-import { getPlatformContext, getCurrentInstance } from './config.js';
+import { getPlatformContext } from './config.js';
 import { escapeHtml } from './utils.js';
 import { renderPageHeader } from './platform/layout.js';
 import { renderCard } from './platform/cards.js';
@@ -77,7 +77,10 @@ async function resolveAvailableId(sb, dataset, candidateId) {
 // ===================================================================
 export async function renderLocationsSection(container) {
     const ctx = getPlatformContext();
-    const dataset = getCurrentInstance() === 'DEV' ? 'DEV' : 'LIVE';
+    // dataset is always 'LIVE': the DEV location dataset was retired as
+    // test-only infrastructure (it used to mirror the real layout for
+    // pipeline previews) — every product location now lives in LIVE.
+    const dataset = 'LIVE';
 
     const headerHtml = renderPageHeader({
         title: 'Location Management',
@@ -276,7 +279,10 @@ function validateLatLng(latRaw, lngRaw) {
 
 async function submitLocationForm(existing) {
     const ctx = getPlatformContext();
-    const dataset = getCurrentInstance() === 'DEV' ? 'DEV' : 'LIVE';
+    // dataset is always 'LIVE': the DEV location dataset was retired as
+    // test-only infrastructure (it used to mirror the real layout for
+    // pipeline previews) — every product location now lives in LIVE.
+    const dataset = 'LIVE';
     const sb = getSupabaseClient();
 
     const rawId = (/** @type {HTMLInputElement} */ (document.getElementById('locId'))).value.trim();
@@ -473,7 +479,10 @@ function openImportDialog() {
 async function importLocations(rows) {
     if (!rows || rows.length === 0) return;
     const ctx = getPlatformContext();
-    const dataset = getCurrentInstance() === 'DEV' ? 'DEV' : 'LIVE';
+    // dataset is always 'LIVE': the DEV location dataset was retired as
+    // test-only infrastructure (it used to mirror the real layout for
+    // pipeline previews) — every product location now lives in LIVE.
+    const dataset = 'LIVE';
     const sb = getSupabaseClient();
 
     const existingIds = new Set(currentLocations.map((l) => String(l.id)));
@@ -695,6 +704,9 @@ async function refreshLocationsSection() {
     const container = document.getElementById('admin-content');
     if (!container) return;
     const ctx = getPlatformContext();
-    const dataset = getCurrentInstance() === 'DEV' ? 'DEV' : 'LIVE';
+    // dataset is always 'LIVE': the DEV location dataset was retired as
+    // test-only infrastructure (it used to mirror the real layout for
+    // pipeline previews) — every product location now lives in LIVE.
+    const dataset = 'LIVE';
     await loadAndRenderTable(container, ctx, dataset);
 }
