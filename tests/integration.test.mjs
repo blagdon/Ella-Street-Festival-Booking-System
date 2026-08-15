@@ -31,7 +31,7 @@ before(async () => {
   // file's fixtures out from under it (confirmed live: this collided with
   // security.test.mjs/workflow.test.mjs before test:integration was pinned
   // to --test-concurrency=1).
-  await service.from('bookings').delete().or('id.like.ESF26-TESTCONFLICT-%,id.like.ESF26-TESTDATASET-%,id.like.ESF26-DEV-%');
+  await service.from('bookings').delete().or('id.like.ESF26-TESTCONFLICT-%,id.like.ESF26-DEV-%');
   await service.from('email_queue').delete().neq('id', -1);
   // Scoped the same way as bookings above (not a blanket wipe like
   // email_queue): sms_queue is shared with tests/sms-send.test.mjs, which
@@ -39,7 +39,7 @@ before(async () => {
   // prefix for its own bookings — safe because --test-concurrency=1 means
   // that file's own after() has already cleaned its rows by the time this
   // file's tests run, but scoping instead of wiping costs nothing.
-  await service.from('sms_queue').delete().or('instance_prefix.like.ESF26-TESTCONFLICT-%,instance_prefix.like.ESF26-TESTDATASET-%,instance_prefix.like.ESF26-DEV-%');
+  await service.from('sms_queue').delete().or('instance_prefix.like.ESF26-TESTCONFLICT-%,instance_prefix.like.ESF26-DEV-%');
   await service.from('locations').delete().like('id', 'TESTLOC%');
 });
 
@@ -49,7 +49,7 @@ after(async () => {
     await service.from('bookings').delete().in('id', createdBookingIds);
   }
   await service.from('email_queue').delete().neq('id', -1);
-  await service.from('sms_queue').delete().or('instance_prefix.like.ESF26-TESTCONFLICT-%,instance_prefix.like.ESF26-TESTDATASET-%,instance_prefix.like.ESF26-DEV-%');
+  await service.from('sms_queue').delete().or('instance_prefix.like.ESF26-TESTCONFLICT-%,instance_prefix.like.ESF26-DEV-%');
   await service.from('locations').delete().like('id', 'TESTLOC%');
 });
 
@@ -124,29 +124,17 @@ describe('booking_locations_check_conflict trigger', () => {
     assert.ok(secondErr, 'expected the trigger to reject assigning the same location to a second Confirmed booking');
   });
 
-  test('does not falsely block the same location id across DEV and LIVE datasets', async () => {
-    const locationId = 'TESTLOC2';
-    await service.from('locations').insert([
-      { id: locationId, dataset: 'LIVE', lat: 0, lng: 0 },
-    ]);
+  // Phase 3 (20260815100000/20260815210000): the DEV location dataset has
+  // been retired as test-only infrastructure and booking_locations_check_
+  // conflict now enforces the same org/event/LIVE-dataset ownership check
+  // as rpc_set_booking_locations (see tests/rpc-authorisation.test.mjs's
+  // "rejects a location whose own org/event match but is not in the LIVE
+  // dataset" test). This file's own DEV/LIVE coexistence test — proving a
+  // DEV booking could reuse a LIVE-dataset location id without conflicting —
+  // has been removed: its premise (DEV locations existing as a parallel,
+  // non-conflicting resource space) no longer holds by design.
 
-    const liveBooking = 'ESF26-TESTDATASET-LIVE';
-    const devBooking = 'ESF26-DEV-TESTDATASET';
-    createdBookingIds.push(liveBooking, devBooking);
-
-    await service.from('bookings').insert([
-      { id: liveBooking, status: 'Confirmed', business_name: 'Live', owner_name: 'Test', email: 'test@example.test', instance_prefix: 'ESF26-FOOD-', stall_type: 'Food' },
-      { id: devBooking, status: 'Confirmed', business_name: 'Dev', owner_name: 'Test', email: 'test@example.test', instance_prefix: 'ESF26-DEV-', stall_type: 'Food' },
-    ]);
-
-    const { error: liveErr } = await service.from('booking_locations').insert({ booking_id: liveBooking, location_id: locationId });
-    assert.equal(liveErr, null, `LIVE assignment should succeed: ${liveErr?.message}`);
-
-    const { error: devErr } = await service.from('booking_locations').insert({ booking_id: devBooking, location_id: locationId });
-    assert.equal(devErr, null, `DEV booking assigning the same location id should NOT be blocked (different dataset): ${devErr?.message}`);
-  });
-
-  // The two tests above only prove the trigger catches an ALREADY-COMMITTED
+  // The test above only proves the trigger catches an ALREADY-COMMITTED
   // conflict - assign first, then try again, sequentially. A prior version
   // of this test tried the harder question via Promise.all() on two direct
   // service-role inserts, bypassing rpc_set_booking_locations() entirely to

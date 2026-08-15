@@ -254,10 +254,11 @@ async function loadMapData() {
     try {
         const previewInstance = getPreviewInstance();
         const currentInstance = previewInstance || 'LIVE';
-        // fetchMapData() below only treats 'DEV' as its own dataset - FOOD/
-        // GENERAL/MISC previews all resolve to the same 'LIVE' query a real
-        // visitor runs, so warning about a difference for those would be
-        // false: only a DEV preview is ever actually showing different data.
+        // fetchMapData() below always fetches LIVE-dataset locations now
+        // (the DEV location dataset was retired as test-only infrastructure)
+        // - a DEV preview only differs from a real visitor's view in which
+        // BOOKINGS it includes (DEV-prefixed vs FOOD/GENERAL/MISC), so
+        // warning about a difference for the other previews would be false.
         if (previewInstance === 'DEV') showPreviewBanner(previewInstance);
 
         const mapItems = await fetchMapData(currentInstance);
