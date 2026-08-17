@@ -89,7 +89,6 @@ export async function initNavigation() {
                 <div class="flex items-center bg-gray-50 rounded px-3 py-1 border border-gray-200">
                     <span class="text-xs text-gray-500 mr-2 uppercase font-bold tracking-wider">Type:</span>
                     <select id="instanceSelect" aria-label="Select database instance" class="bg-transparent text-sm font-bold text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded cursor-pointer">
-                        <option value="DEV">🛠️ DEV (Test Data)</option>
                         <option value="FOOD">🍔 FOOD Stalls</option>
                         <option value="GENERAL">🎨 GENERAL Traders</option>
                         <option value="MISC">⚡ MISC (Facilities)</option>
@@ -125,7 +124,6 @@ export async function initNavigation() {
              <div class="flex flex-col gap-2">
                 <span class="text-xs text-gray-500 uppercase font-bold tracking-wider">Database:</span>
                 <select id="instanceSelectMobile" aria-label="Select database instance" class="bg-gray-50 border border-gray-200 rounded px-3 py-2 text-sm font-bold text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer">
-                    <option value="DEV">🛠️ DEV (Test Data)</option>
                     <option value="FOOD">🍔 FOOD Stalls</option>
                     <option value="GENERAL">🎨 GENERAL Traders</option>
                     <option value="MISC">⚡ MISC (Facilities)</option>

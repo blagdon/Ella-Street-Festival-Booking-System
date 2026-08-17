@@ -69,11 +69,10 @@ Click any card to open that module.
 
 ## 3. Switching Between Booking Types
 
-The system manages **four separate datasets** that can be switched using the **Database** dropdown in the top navigation bar:
+The system manages **three separate datasets** that can be switched using the **Database** dropdown in the top navigation bar:
 
 | Option | What it shows |
 |---|---|
-| 🛠️ **DEV (Test Data)** | Safe sandbox — use this for testing. Changes here don't affect real bookings. |
 | 🍔 **FOOD Stalls** | Food vendor applications |
 | 🎨 **GENERAL Traders** | Non-food / general trader applications |
 | ⚡ **MISC (Facilities)** | Non-bookable entries: barriers, first aid posts, etc. |
@@ -380,11 +379,6 @@ A: Go to the **Email Admin** page to view the logs in the email queue. If an ema
 
 **Q: Can I delete a booking?**  
 A: There is no delete button in the UI by design — all data is kept for audit purposes. To effectively remove a booking, set its status to `Cancelled`. If you need a record permanently removed, it must be deleted directly in the Supabase database.
-
----
-
-**Q: How do I test something without affecting real bookings?**  
-A: Switch the database selector to **🛠️ DEV (Test Data)**. All changes in DEV mode are completely isolated from Food, General, and Misc data.
 
 ---
 
