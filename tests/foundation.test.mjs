@@ -139,7 +139,6 @@ describe('tenant columns on domain tables', () => {
     { table: 'email_templates', hasEventId: false },
     { table: 'sms_templates',   hasEventId: false },
     { table: 'audit_logs',      hasEventId: true  },
-    { table: 'hcc_checks',      hasEventId: true  },
     { table: 'payments',        hasEventId: false },
     { table: 'email_queue',     hasEventId: false },
     { table: 'sms_queue',       hasEventId: false },

@@ -189,31 +189,7 @@ function previewEmail() {
         '{{bank_sort_code}}': '12-34-56',
         '{{bank_account_number}}': '12345678',
         '{{location_id}}': 'Zone A - 01',
-        '{{reason}}': 'Unfortunately we cannot accommodate your stall at this time.',
-        '{{email}}': 'john@burgershack.com',
-        '{{phone}}': '07123 456789',
-        '{{registered_business_name}}': 'Smith Burgers Ltd',
-        '{{trader_list}}': `<table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
-                <thead>
-                    <tr style="background-color: #f3f4f6;">
-                        <th style="padding: 10px; border: 1px solid #ddd;">Booking ID</th>
-                        <th style="padding: 10px; border: 1px solid #ddd;">Business</th>
-                        <th style="padding: 10px; border: 1px solid #ddd;">Owner</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td style="padding: 8px; border: 1px solid #ddd;">ESF26-FOOD-0001</td>
-                        <td style="padding: 8px; border: 1px solid #ddd;">Burger Shack</td>
-                        <td style="padding: 8px; border: 1px solid #ddd;">John Smith</td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 8px; border: 1px solid #ddd;">ESF26-FOOD-0002</td>
-                        <td style="padding: 8px; border: 1px solid #ddd;">Coffee Cart</td>
-                        <td style="padding: 8px; border: 1px solid #ddd;">Jane Doe</td>
-                    </tr>
-                </tbody>
-            </table>`
+        '{{reason}}': 'Unfortunately we cannot accommodate your stall at this time.'
     };
 
     // Replace placeholders in subject

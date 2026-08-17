@@ -4,7 +4,7 @@
 // sharedUpdateStatus() 'Rejected' branch -> js/api.js's updateBookingStatus()
 // + sendEmail(): the same direct table/RPC/Edge-Function calls the frontend
 // itself makes, at the same fidelity as workflow.test.mjs's confirm/pay/
-// HCC/cancel chain, rather than reasoning about the code from a distance.
+// cancel chain, rather than reasoning about the code from a distance.
 //
 // The email step deliberately calls the real send-email Edge Function (see
 // HANDOVER.md's Edge Function table: admin-JWT-callable, the only function

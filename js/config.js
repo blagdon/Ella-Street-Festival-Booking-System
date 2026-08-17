@@ -35,13 +35,11 @@ export const CONFIG = {
         };
     },
 
-    HCC_COUNCIL_EMAIL: 'Foodand.Health&Safety@hullcc.gov.uk',
-
     // Regulatory Authority (V1.1 Sprint 1, Issue 2) — empty until loaded from
     // the settings table (regulatory_authority_name/insurance_minimum_amount)
-    // via applySettingsToConfig(). No hardcoded default: callers (e.g. the
-    // HCC bulk-send confirm dialog) fall back to generic wording when empty,
-    // same pattern as SENTRY_BROWSER_LOADER_URL above.
+    // via applySettingsToConfig(). No hardcoded default: callers fall back to
+    // generic wording when empty, same pattern as SENTRY_BROWSER_LOADER_URL
+    // above.
     REGULATORY_AUTHORITY_NAME: '',
     INSURANCE_MINIMUM_AMOUNT: '',
 
@@ -93,7 +91,7 @@ export const CONFIG = {
             GENERAL: null,
             DEV: null
         },
-        STATUS_LIST: ['Pending', 'Payment Requested', 'Confirmed', 'Rejected', 'Cancelled', 'HCC Checks'],
+        STATUS_LIST: ['Pending', 'Payment Requested', 'Confirmed', 'Rejected', 'Cancelled'],
         // No hardcoded defaults — populated entirely from the settings table
         // (allowed_stall_types) via loadStallCosts()/applySettingsToConfig().
         ALLOWED_TYPES: [],
@@ -102,8 +100,7 @@ export const CONFIG = {
             'Payment Requested': 'bg-indigo-100 text-indigo-700',
             'Confirmed': 'bg-green-100 text-green-700',
             'Rejected': 'bg-red-100 text-red-700',
-            'Cancelled': 'bg-gray-100 text-gray-700',
-            'HCC Checks': 'bg-orange-100 text-orange-700'
+            'Cancelled': 'bg-gray-100 text-gray-700'
         }
     },
 
@@ -289,8 +286,6 @@ export function applySettingsToConfig(data) {
             CONFIG.URLS.PORTAL_URL = val;
         } else if (item.key === 'bucket_name') {
             ESF_PUBLIC_CONFIG.BUCKET_NAME = val;
-        } else if (item.key === 'hcc_council_email') {
-            CONFIG.HCC_COUNCIL_EMAIL = val;
         } else if (item.key === 'festival_display_name') {
             // V1.1 Sprint 2: Settings -> General no longer pre-fills this
             // field with 'Ella Street Festival' for an org that hasn't set

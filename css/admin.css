@@ -131,22 +131,6 @@ body.modal-active {
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
-/* HCC Button visibility control */
-.hcc-hidden {
-    display: none !important;
-}
-
-.hcc-visible {
-    display: flex !important;
-}
-
-/* Extra specific rule for the HCC button when visible */
-#hccChecksBtn.hcc-visible {
-    display: flex !important;
-    visibility: visible !important;
-    opacity: 1 !important;
-}
-
 /* === PULL TO REFRESH === */
 .pull-to-refresh {
     position: absolute;

@@ -128,7 +128,6 @@ function renderCharts(allRows, combinedData, foodData, nonFoodData) {
         Confirmed: 0,
         Pending: 0,
         'Payment Requested': 0,
-        'HCC Checks': 0,
         Rejected: 0,
         Cancelled: 0
     };
@@ -183,7 +182,6 @@ function renderCharts(allRows, combinedData, foodData, nonFoodData) {
                         '#10b981', // Confirmed - green
                         '#f59e0b', // Pending - yellow
                         '#3b82f6', // Payment Requested - blue (matches the Awaiting Payment bar)
-                        '#f97316', // HCC Checks - orange
                         '#ef4444', // Rejected - red
                         '#6b7280'  // Cancelled - gray
                     ],
@@ -419,9 +417,8 @@ function renderPanel(containerId, data, title, headerClass, borderClass) {
     container.innerHTML = '';
 
     // CALCULATE METRICS. Keys are the literal status strings from the
-    // bookings_status_check constraint, same as renderCharts — no more
-    // respelled variants ('HCCChecks') needing their own match branches.
-    const statusCounts = { Pending: 0, 'Payment Requested': 0, Confirmed: 0, Rejected: 0, Cancelled: 0, 'HCC Checks': 0 };
+    // bookings_status_check constraint, same as renderCharts.
+    const statusCounts = { Pending: 0, 'Payment Requested': 0, Confirmed: 0, Rejected: 0, Cancelled: 0 };
     const conf = { rows: [], power: 0, charity: 0, resident: 0, cats: {} };
     const pend = { rows: [], power: 0, charity: 0, resident: 0, cats: {} };
 
@@ -462,11 +459,10 @@ function renderPanel(containerId, data, title, headerClass, borderClass) {
             <div class="p-6 space-y-8" id="${containerId}-body">
                 <div>
                     <h3 class="text-xs font-bold text-gray-600 uppercase tracking-wider mb-3">Booking Status Breakdown</h3>
-                    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
                         ${statBox('Confirmed', statusCounts.Confirmed, 'text-green-800 bg-green-50 border-green-100')}
                         ${statBox('Pending', statusCounts.Pending, 'text-yellow-800 bg-yellow-50 border-yellow-100')}
                         ${statBox('Awaiting Payment', statusCounts['Payment Requested'], 'text-blue-800 bg-blue-50 border-blue-100')}
-                        ${statBox('HCC Checks', statusCounts['HCC Checks'], 'text-orange-800 bg-orange-50 border-orange-100')}
                         ${statBox('Rejected', statusCounts.Rejected, 'text-red-800 bg-red-50 border-red-100')}
                         ${statBox('Cancelled', statusCounts.Cancelled, 'text-gray-600 bg-gray-100 border-gray-200')}
                     </div>

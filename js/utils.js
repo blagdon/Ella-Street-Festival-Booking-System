@@ -87,7 +87,7 @@ export function validateEmail(val) {
 export const RESERVED_SLUGS = new Set([
     // Real top-level pages (basename, no .html; underscores -> hyphens)
     'food-stall-booking', 'general-booking', 'add-misc', 'admin', 'audit-log',
-    'booking-forms', 'cancel-booking', 'comms-admin', 'hcc-dashboard', 'index',
+    'booking-forms', 'cancel-booking', 'comms-admin', 'index',
     'kanban-m', 'location-admin', 'login', 'manage-users', 'message-queue',
     'more', 'pay', 'payment-cancelled', 'payment-success', 'payments',
     'settings', 'stats', 'steward', 'steward-login', 'summary',

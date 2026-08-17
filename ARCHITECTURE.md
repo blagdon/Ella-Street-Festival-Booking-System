@@ -100,7 +100,6 @@ Fills in booking form            ──►  Booking appears on the Kanban board
 ├── stats.html                  ← Statistics/charts
 ├── location_admin.html         ← Assign bookings to pitches
 ├── visitor_map.html            ← Leaflet map of stall locations
-├── hcc_dashboard.html          ← HCC council food-safety checks
 ├── more.html                   ← Admin tools index
 ├── settings.html               ← System settings (see §13)
 ├── booking_forms.html          ← Booking form links/status
@@ -260,7 +259,6 @@ page-*.js            (entry points — one per HTML page)
 | Payments | `page-payments.js` | Stripe + bank transfer, refunds, CSV export |
 | Statistics | `page-stats.js` | Charts and revenue (from real prices) |
 | Visitor Map | `page-visitor-map.js` | Leaflet map of stall locations |
-| HCC Dashboard | `page-hcc-dashboard.js` | Council food-safety check tracking |
 | More | `page-more.js` | Index of admin tools |
 | Settings | `page-settings.js` | System settings (§13) |
 | Booking Forms | `page-booking-forms.js` | Form links and open/closed status |
@@ -331,7 +329,6 @@ All under `supabase/functions/`. Shared helpers live in `_shared/`.
 | `email_queue` | Log of every email sent or failed |
 | `email_templates` | HTML templates, editable in the admin UI |
 | `audit_logs` | Admin action trail |
-| `hcc_checks` | Council food-safety check entries |
 | `user_roles` | Role per Supabase Auth user (`admin` / `steward`) |
 | `settings` | Key/value runtime configuration, organisation-scoped (§13) |
 | `event_settings` | Key/value runtime configuration, event-scoped — overrides `settings` for the same key (§13, Epic 4 Phase 4B) |
@@ -359,7 +356,7 @@ All under `supabase/functions/`. Shared helpers live in `_shared/`.
 
 ### Statuses
 
-`Pending` · `Payment Requested` · `Confirmed` · `Rejected` · `Cancelled` · `HCC Checks`
+`Pending` · `Payment Requested` · `Confirmed` · `Rejected` · `Cancelled`
 
 > `On Hold` no longer exists — it was removed by migration. `Payment Requested` was added with Stripe.
 
@@ -416,7 +413,6 @@ Supported placeholders: `{{owner_name}}` `{{business_name}}` `{{booking_id}}` `{
 | Self-service cancellation | `cancellation_confirmed` |
 | Location assigned | `location_update` |
 | Payment reminder | `payment_reminder` |
-| HCC batch check submission | `hcc_batch_check` |
 
 > Values interpolated into emails are HTML-escaped. A failed email must never fail the action that triggered it — sends are best-effort and logged, and `email_queue.html` offers a retry.
 

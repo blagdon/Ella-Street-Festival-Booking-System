@@ -426,7 +426,7 @@ describe('anon access to settings (booking open/closed flags)', () => {
     const allowlist = [
       'stall_cost_food', 'stall_cost_general', 'stall_cost_dev', 'turnstile_site_key',
       'base_url', 'cancel_url', 'portal_url', 'booking_prefix', 'bucket_name',
-      'hcc_council_email', 'map_center_lat', 'map_center_lng', 'map_default_zoom',
+      'map_center_lat', 'map_center_lng', 'map_default_zoom',
       // Anon-readable (20260731150000) specifically for login.html/
       // steward_login.html, which have no session yet - as safe as
       // turnstile_site_key, both designed for client-visible embedding.
@@ -468,11 +468,11 @@ describe('anon access to admin-only tables', () => {
     assert.ok(error, 'expected anon SELECT on email_queue to be rejected outright');
   });
 
-  // 20260718100000_narrow_remaining_anon_table_grants.sql: audit_logs,
-  // email_templates, and hcc_checks all had GRANT ALL for anon with no RLS
-  // policy that ever let anon through (audit_logs/hcc_checks are admin-only;
-  // email_templates is authenticated-admin-only) - narrowed to zero,
-  // same posture as user_roles/email_queue above.
+  // 20260718100000_narrow_remaining_anon_table_grants.sql: audit_logs and
+  // email_templates both had GRANT ALL for anon with no RLS policy that ever
+  // let anon through (audit_logs is admin-only; email_templates is
+  // authenticated-admin-only) - narrowed to zero, same posture as
+  // user_roles/email_queue above.
   test('audit_logs is completely inaccessible to anon', async () => {
     const { error } = await anon.from('audit_logs').select('*');
     assert.ok(error, 'expected anon SELECT on audit_logs to be rejected outright');
@@ -481,11 +481,6 @@ describe('anon access to admin-only tables', () => {
   test('email_templates is completely inaccessible to anon', async () => {
     const { error } = await anon.from('email_templates').select('*');
     assert.ok(error, 'expected anon SELECT on email_templates to be rejected outright');
-  });
-
-  test('hcc_checks is completely inaccessible to anon', async () => {
-    const { error } = await anon.from('hcc_checks').select('*');
-    assert.ok(error, 'expected anon SELECT on hcc_checks to be rejected outright');
   });
 
   test('payments is completely inaccessible to anon, including writes', async () => {

@@ -86,7 +86,6 @@ test.describe.serial('Settings System Constants — no hardcoded platform identi
     await page.fill('#base-url', 'https://fenwick.example.test');
     await page.fill('#cancel-url', 'https://fenwick.example.test/cancel.html');
     await page.fill('#portal-url', 'https://fenwick.example.test/portal');
-    await page.fill('#council-email', 'safety@fenwick.example.test');
     await page.fill('#bucket-name', 'fenwick-documents');
     await page.fill('#booking-prefix', 'FNWK27');
     await page.click('#btn-save-constants');
