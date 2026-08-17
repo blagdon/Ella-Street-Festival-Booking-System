@@ -178,13 +178,12 @@ describe('admin/steward access to the seven originally check_user_role()-based p
       'steward UPDATE must not have changed the row (the 20260720100000 drop, unaffected by this migration)');
   });
 
-  test('admin can read email_queue, locations, payments, audit_logs, hcc_checks (now org-scoped, all fixtures under org_default)', async () => {
+  test('admin can read email_queue, locations, payments, audit_logs (now org-scoped, all fixtures under org_default)', async () => {
     const results = await Promise.all([
       authed.from('email_queue').select('id').limit(1),
       authed.from('locations').select('id').limit(1),
       authed.from('payments').select('booking_id').limit(1),
       authed.from('audit_logs').select('id').limit(1),
-      authed.from('hcc_checks').select('id').limit(1),
     ]);
     for (const [i, r] of results.entries()) {
       assert.equal(r.error, null, `query ${i} must not error: ${r.error?.message}`);

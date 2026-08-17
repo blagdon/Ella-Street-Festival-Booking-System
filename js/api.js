@@ -135,19 +135,6 @@ export async function updateBookingStatus(id, status, reason = null) {
     const updateFields = { status: status };
     if (reason) updateFields.rejection_reason = reason;
 
-    // Fetch booking details before updating if moving to HCC Checks
-    let bookingDetails = null;
-    if (status === 'HCC Checks') {
-        // event_id added (Multi-Event Phase 2): the hcc_checks insert below
-        // needs the booking's own event_id, not just org_id - previously
-        // absent from both this SELECT and that INSERT, so every hcc_checks
-        // row silently took the column's own event_default fallback
-        // regardless of which event the booking actually belonged to.
-        const { data: bData, error: bErr } = await sb.from(TBL_BOOKINGS).select('business_name, owner_name, registered_business_name, org_id, event_id').eq('id', id).single();
-        if (bErr) throw bErr;
-        bookingDetails = bData;
-    }
-
     // Update the booking status
     const { error } = await sb.from(TBL_BOOKINGS).update(updateFields).eq('id', id);
     if (error) throw error;
@@ -156,21 +143,6 @@ export async function updateBookingStatus(id, status, reason = null) {
     if (status !== 'Confirmed') {
         const { error: locErr } = await sb.rpc('rpc_set_booking_locations', { p_booking_id: id, p_location_ids: [] });
         if (locErr) console.warn("Failed to clear booking_locations on status change:", locErr);
-    }
-
-    // Insert into hcc_checks
-    if (status === 'HCC Checks' && bookingDetails) {
-        // Prevent duplicates by checking if the record already exists
-        const { data: existingHcc } = await sb.from('hcc_checks').select('id').eq('booking_id', id).maybeSingle();
-        if (!existingHcc) {
-            const { error: hccErr } = await sb.from('hcc_checks').insert({
-                booking_id: id,
-                council_status: 'Pending',
-                org_id: bookingDetails.org_id,
-                event_id: bookingDetails.event_id
-            });
-            if (hccErr) console.warn("Failed to insert into hcc_checks:", hccErr);
-        }
     }
 
     await auditLog('update_status', id, { new_status: status, reason: reason });
@@ -237,9 +209,9 @@ export async function sendEmailViaZoho(recipient, subject, body, bcc = null, org
  * @param {string|null} instancePrefix
  * @param {string|null} bcc
  * @param {string} [orgId] defaults to the caller's own current org — correct
- *   for org-less sends (e.g. the HCC council notification), but a caller that
- *   already has a specific booking in hand should pass that booking's own
- *   org_id explicitly instead, same reasoning as loadStripeSettings().
+ *   for org-less sends, but a caller that already has a specific booking in
+ *   hand should pass that booking's own org_id explicitly instead, same
+ *   reasoning as loadStripeSettings().
  */
 export async function sendEmailDirect(recipient, subject, body, bookingId = null, instancePrefix = null, bcc = null, orgId = getCurrentOrgId()) {
     let status = 'Sent';

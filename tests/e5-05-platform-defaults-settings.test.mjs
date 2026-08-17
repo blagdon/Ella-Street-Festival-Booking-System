@@ -7,12 +7,14 @@
 // regulatory email address for food-safety compliance correspondence.
 //
 // Fixed by 20260813130000_complete_platform_defaults_settings_e5_05.sql,
-// adding exactly six keys confirmed safe under the CURRENT architecture:
-// base_url, cancel_url, bucket_name, map_default_zoom (seeded with the
-// platform's own real, shared values — genuinely correct under the current
-// single-deployment architecture), and portal_url/hcc_council_email (seeded
-// EMPTY, deliberately not with Ella Street's own values, since there is no
-// safe universal default for either).
+// adding six keys confirmed safe under the CURRENT architecture: base_url,
+// cancel_url, bucket_name, map_default_zoom (seeded with the platform's own
+// real, shared values — genuinely correct under the current single-
+// deployment architecture), and portal_url/hcc_council_email (seeded EMPTY,
+// deliberately not with Ella Street's own values, since there is no safe
+// universal default for either). hcc_council_email itself was later retired
+// along with the whole HCC Checks feature (20260817100000_retire_hcc_checks.sql)
+// — five keys remain covered here.
 //
 // Six other keys from the original 12-key finding are deliberately NOT
 // covered here: turnstile_site_key/map_center_lat/map_center_lng each raise
@@ -39,7 +41,6 @@ const EXPECTED = {
   bucket_name: 'esf-documents',
   map_default_zoom: '18',
   portal_url: '',
-  hcc_council_email: '',
 };
 const KEYS = Object.keys(EXPECTED);
 
@@ -79,12 +80,6 @@ describe('E5-05: platform_defaults_settings seed values', () => {
     for (const key of KEYS) {
       assert.equal(byKey[key], EXPECTED[key], `${key} should equal ${JSON.stringify(EXPECTED[key])}, got ${JSON.stringify(byKey[key])}`);
     }
-  });
-
-  test('hcc_council_email is an empty value, not Hull City Council\'s real email address', async () => {
-    const { data } = await service.from('platform_defaults_settings').select('value').eq('key', 'hcc_council_email').single();
-    assert.equal(data.value, '');
-    assert.doesNotMatch(data.value, /hullcc\.gov\.uk/i, 'must never default a new commercial tenant to Hull City Council\'s real regulatory inbox');
   });
 
   test('portal_url is an empty value, not Ella Street\'s own marketing URL', async () => {

@@ -67,7 +67,6 @@ describe('DEV retirement cleanup pattern (mirrors 20260815210000, against a disp
     await service.from('payments').delete().eq('booking_id', SCRATCH_BOOKING);
     await service.from('audit_logs').delete().eq('target_id', SCRATCH_BOOKING);
     await service.from('booking_locations').delete().eq('booking_id', SCRATCH_BOOKING);
-    await service.from('hcc_checks').delete().eq('booking_id', SCRATCH_BOOKING);
     await service.from('bookings').delete().eq('id', SCRATCH_BOOKING);
     await service.from('locations').delete().eq('id', SCRATCH_LOCATION).eq('dataset', 'LIVE');
   });
@@ -79,8 +78,6 @@ describe('DEV retirement cleanup pattern (mirrors 20260815210000, against a disp
     assert.ifError(auditErr);
     const { error: blErr } = await service.from('booking_locations').delete().eq('booking_id', SCRATCH_BOOKING);
     assert.ifError(blErr);
-    const { error: hccErr } = await service.from('hcc_checks').delete().eq('booking_id', SCRATCH_BOOKING);
-    assert.ifError(hccErr);
     const { error: bookErr } = await service.from('bookings').delete().eq('id', SCRATCH_BOOKING);
     assert.ifError(bookErr);
 

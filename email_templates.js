@@ -163,54 +163,7 @@ export const ESF_EMAIL_TEMPLATES = {
         };
     },
 
-    // 9. HCC BATCH CHECK (To Council)
-    hcc_batch_check: function (records) {
-        // Generate Unique Batch Reference
-        const now = new Date();
-        const batchRef = `HCC-${now.toISOString().slice(2, 10).replace(/-/g, '')}-${now.getHours()}${now.getMinutes()}`;
-
-        const rows = records.map(r => {
-            const email = r.bookings?.email || r.email || 'N/A';
-            const phone = r.bookings?.phone || r.phone || 'N/A';
-
-            return `<tr>
-<td style="padding:8px; border:1px solid #ddd;">${this._esc(r.business_name)}</td>
-<td style="padding:8px; border:1px solid #ddd;">${this._esc(r.registered_business_name || r.business_name)}</td>
-<td style="padding:8px; border:1px solid #ddd;">${this._esc(r.owner_name)}</td>
-<td style="padding:8px; border:1px solid #ddd;">${this._esc(email)}</td>
-<td style="padding:8px; border:1px solid #ddd;">${this._esc(phone)}</td>
-<td style="padding:8px; border:1px solid #ddd;">${this._esc(r.booking_id)}</td>
-</tr>`;
-        }).join('');
-
-        const prefix = ESF_PUBLIC_CONFIG.BOOKING_PREFIX || "ESF26";
-        const yearMatch = prefix.match(/\d+$/);
-        const year = yearMatch ? `20${yearMatch[0]}` : "2026";
-
-        return {
-            subject: `${prefix} Food Safety Checks - Batch (${records.length}) [Ref: ${batchRef}]`,
-            body: `<p>Dear Food Safety Team,</p>
-<p>Please verify the following trader applications for Ella Street Festival ${year}:</p>
-<p><b>Batch Reference: ${batchRef}</b></p>
-<table style="width:100%; border-collapse: collapse; font-family: sans-serif; font-size: 14px; margin-top: 10px;">
-<thead>
-<tr style="background-color:#f2f2f2;">
-<th style="padding:8px; border:1px solid #ddd; text-align:left;">Trading Name</th>
-<th style="padding:8px; border:1px solid #ddd; text-align:left;">Registered Name</th>
-<th style="padding:8px; border:1px solid #ddd; text-align:left;">Owner</th>
-<th style="padding:8px; border:1px solid #ddd; text-align:left;">Email</th>
-<th style="padding:8px; border:1px solid #ddd; text-align:left;">Phone</th>
-<th style="padding:8px; border:1px solid #ddd; text-align:left;">Ref ID</th>
-</tr>
-</thead>
-<tbody>${rows}</tbody>
-</table>
-<p>Please confirm approval status at your earliest convenience, quoting the reference number above.</p>
-<p>Regards,<br>ESF Management</p>`
-        };
-    },
-
-    // 10. PAYMENT REMINDER
+    // 9. PAYMENT REMINDER
     payment_reminder: function (b) {
         const cancelLink = this._getCancelLink(b.cancel_token);
         // Fallback to stall_cost if amount is missing

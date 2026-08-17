@@ -39,7 +39,6 @@
                 class="bg-white border border-gray-300 text-sm text-gray-700 rounded-lg py-2 pl-3 pr-8 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer w-full sm:w-auto">
                 <option value="All">All Statuses</option>
                 <option value="Pending">Pending</option>
-                <option value="HCC Checks">HCC Checks</option>
                 <option value="Payment Requested">Payment Requested</option>
                 <option value="Confirmed">Confirmed</option>
                 <option value="Rejected">Rejected</option>
@@ -326,8 +325,6 @@
             <div class="hidden md:grid p-4 border-t border-gray-200 bg-gray-50 grid-cols-3 gap-2">
                 <button data-action="change-status" data-status="Pending"
                     class="bg-yellow-100 hover:bg-yellow-200 active:bg-yellow-300 text-yellow-800 text-xs font-bold py-3 min-h-11 rounded transition-colors">Pending</button>
-                <button data-action="change-status" data-status="HCC Checks"
-                    class="bg-orange-100 hover:bg-orange-200 active:bg-orange-300 text-orange-800 text-xs font-bold py-3 min-h-11 rounded transition-colors whitespace-nowrap">HCC</button>
 
                 <button data-action="change-status" data-status="Cancelled"
                     class="bg-gray-200 hover:bg-gray-300 active:bg-gray-400 text-gray-800 text-xs font-bold py-3 min-h-11 rounded transition-colors">Cancelled</button>
@@ -341,8 +338,6 @@
             <div class="md:hidden p-4 border-t border-gray-200 bg-gray-50 grid grid-cols-3 gap-2">
                 <button data-action="change-status" data-status="Pending"
                     class="bg-yellow-100 hover:bg-yellow-200 active:bg-yellow-300 text-yellow-800 text-xs font-bold py-3 min-h-11 rounded transition-colors">Pending</button>
-                <button id="hccChecksMobileBtn" data-action="change-status" data-status="HCC Checks"
-                    class="bg-orange-100 hover:bg-orange-200 active:bg-orange-300 text-orange-800 text-xs font-bold py-3 min-h-11 rounded transition-colors whitespace-nowrap hcc-hidden">HCC</button>
 
                 <button data-action="change-status" data-status="Cancelled"
                     class="bg-gray-200 hover:bg-gray-300 active:bg-gray-400 text-gray-800 text-xs font-bold py-3 min-h-11 rounded transition-colors">Cancelled</button>

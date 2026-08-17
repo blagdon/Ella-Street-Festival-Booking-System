@@ -3,7 +3,7 @@ import { fetchKanbanData, addNote, sendEmail, sendBookingSms, queueBulkEmail, qu
 import { sharedUpdateStatus, populateDetailPane, initComposeSmsToggle, initBulkSmsToggle, readOptionalSmsBody, resetSmsToggle, readStatusSmsChecked, resetStatusSmsCheckbox } from './shared.js';
 import { showToast, showConfirm, notifyIfTruncated, trapModal, releaseModal } from './ui.js';
 import { escapeHtml, sortBookings } from './utils.js';
-import { CONFIG, getStallCost, isFoodPrefix, getActiveBookingPrefix } from './config.js';
+import { CONFIG, getStallCost, getActiveBookingPrefix } from './config.js';
 
 let allBookings = [];
 let currentId = null;
@@ -331,24 +331,6 @@ function openDetails(id) {
     m.classList.remove('opacity-0', 'pointer-events-none');
     p.classList.remove('translate-x-full');
     trapModal('detailModal', closeModal);
-
-    const globalInstance = localStorage.getItem('ESF_INSTANCE') || 'DEV';
-    const bookingInstance = item.instance_prefix || '';
-    const isFoodBooking = globalInstance === 'FOOD' || isFoodPrefix(bookingInstance);
-
-    // Mobile HCC button
-    const hccMobileBtn = document.getElementById('hccChecksMobileBtn');
-    if (hccMobileBtn) {
-        if (isFoodBooking) {
-            hccMobileBtn.style.display = 'block';
-            hccMobileBtn.classList.remove('hcc-hidden');
-            hccMobileBtn.classList.add('hcc-visible');
-        } else {
-            hccMobileBtn.style.display = 'none';
-            hccMobileBtn.classList.add('hcc-hidden');
-            hccMobileBtn.classList.remove('hcc-visible');
-        }
-    }
 }
 
 // Modal trap+register glue lives in ui.js's trapModal()/releaseModal() -

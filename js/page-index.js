@@ -97,7 +97,6 @@ if (IS_PASSWORD_RECOVERY) {
 function initIndex() {
     sb = getSupabaseClient();
 
-    updateVisibility();
     loadSummaryStrip();
 
     // Event delegation for navigation cards.
@@ -153,19 +152,6 @@ async function loadSummaryStrip() {
         failedMessagesEl.classList.add(failedMessageCount > 0 ? 'text-red-600' : 'text-gray-800');
     } catch (err) {
         console.warn('Failed to load Hub summary strip:', safeError(err));
-    }
-}
-
-function updateVisibility() {
-    const val = getCurrentInstance();
-    const hccCard = document.getElementById('hcc-card');
-
-    if (hccCard) {
-        if (val === 'FOOD' || val === 'DEV') {
-            hccCard.classList.remove('hidden');
-        } else {
-            hccCard.classList.add('hidden');
-        }
     }
 }
 

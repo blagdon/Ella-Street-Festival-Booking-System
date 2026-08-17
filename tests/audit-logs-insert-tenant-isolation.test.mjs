@@ -20,7 +20,7 @@
 // about the real boundary, which is the database.
 //
 // Stewards are deliberately included in the authorized set (not admin-only,
-// unlike bookings/payments/hcc_checks): js/page-steward.js's own
+// unlike bookings/payments): js/page-steward.js's own
 // auditLog('steward_location_change', ...) calls are a real, legitimate
 // production write path, confirmed by reading that file before choosing the
 // policy shape. See Test 3/3b.

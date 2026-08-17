@@ -750,12 +750,12 @@ Row inserted into `bookings` via the submit-booking Edge Function
 Booking appears in the Kanban board (Pending column)
         │
         ▼
-Admin reviews → changes status (Confirmed / Rejected / HCC Checks / Cancelled)
-        │                                   │
-        ▼                                   ▼
-Confirmation/rejection email sent    HCC Checks: tracked in hcc_checks,
-automatically                        council email sent manually via
-        │                            hcc_dashboard.html
+Admin reviews → changes status (Confirmed / Rejected / Cancelled)
+        │
+        ▼
+Confirmation/rejection email sent
+automatically
+        │
         ▼
 Admin assigns a physical pitch (location_admin.html)
         │
@@ -980,7 +980,7 @@ Added 2026-07-15. Inserts real online payment collection between "admin approves
 `status='Confirmed'`-gated page/RPC) or the Rejected/Cancelled paths.
 
 **Status chain**: `Pending → Payment Requested → Confirmed` (plus the existing
-`HCC Checks`/`Rejected`/`Cancelled` side-branches, unaffected). Two things NOT
+`Rejected`/`Cancelled` side-branches, unaffected). Two things NOT
 implemented as literal new statuses, deliberately:
 - "Submitted"/"Under Review" collapse into the existing `Pending` — every status
   transition is already a deliberate admin click, there's no automatic event to
@@ -1017,11 +1017,11 @@ update that sets `status='Payment Requested'` — there's no separate persistenc
 before it runs, so the Edge Function accepts an optional `cost` in its request body
 (falling back to the booking's already-stored `stall_cost` for a plain "Resend Payment
 Request" call, which doesn't pass one). If Stripe/email fails, the booking is left
-exactly where it was (Pending/HCC Checks) — the admin sees an error toast and can
+exactly where it was (Pending) — the admin sees an error toast and can
 retry from the same Confirm button, no stuck intermediate state possible.
 `create-checkout-session`'s status check now only rejects bookings that are already
 resolved (`Confirmed`/`Rejected`/`Cancelled`), rather than requiring a specific prior
-status, since a payment request can now originate from `Pending` or `HCC Checks` as well
+status, since a payment request can now originate from `Pending` as well
 as being resent from `Payment Requested`.
 
 **No intermediate "Paid" status either — this was a second same-day simplification,
@@ -1125,7 +1125,7 @@ different, see that file's own comments) was updated to include `{{cancel_link}}
 for consistency with its sibling seeded templates.
 
 **`Payment Requested` is deliberately NOT a Kanban drag target** (`js/kanban.js`'s
-`initDragula()`) — only `Pending`/`HCC Checks`/`Confirmed`/`Rejected`/`Cancelled` are.
+`initDragula()`) — only `Pending`/`Confirmed`/`Rejected`/`Cancelled` are.
 Dragging a card into it would fake a transition with no real Stripe
 Checkout Session behind it. Cards can still leave that column via the detail-pane
 buttons, just not by dragging in. Dropping onto `Confirmed` opens the same
@@ -1243,10 +1243,6 @@ the direct query path (`locations` + `public_bookings_info`).
   booking via `rpc_record_bank_transfer_payment()`, same confirmation-email path as a
   completed Stripe payment; `payment_requested` email offers both a Stripe link and
   bank-transfer instructions — see Next Steps item 43
-- HCC (regulatory-authority food safety) check workflow — manual, environment-aware email
-  send. "HCC" is the fixed internal status/workflow name; the actual authority it refers to
-  (org_default's is Hull City Council) is a per-organisation `regulatory_authority_name`
-  setting as of V1.1 Sprint 1 — see [Regulatory Authority](#regulatory-authority) below
 - Email template admin (`more.html`), user role management, steward mobile view
 - Booking cancellation (public self-service link) with automatic confirmation email
 - Bulk email to all confirmed bookings — queues server-side first, survives the admin
@@ -1354,7 +1350,7 @@ the direct query path (`locations` + `public_bookings_info`).
 One row per application, all types share this table, distinguished by `instance_prefix`
 (`ESF26-FOOD-`, `ESF26-NONFOOD-`, `ESF26-MISC-`, `ESF26-DEV-`). Key columns: `id` (text
 PK, e.g. `ESF26-FOOD-0042`), `status` (`Pending`/`Payment Requested`/
-`Confirmed`/`Rejected`/`Cancelled`/`HCC Checks` — see
+`Confirmed`/`Rejected`/`Cancelled` — see
 [Stripe Payment Collection](#stripe-payment-collection) for `Payment Requested`), `business_name`,
 `owner_name`, `email`, `stall_cost`, `cancel_token`, `rejection_reason`,
 `stripe_checkout_session_id`, `stripe_payment_intent_id`, `stripe_payment_requested_at`
@@ -1491,10 +1487,9 @@ dead weight, never written by `auditLog()` and never read anywhere. That second 
 is no longer true: `audit_log.html` (see Next Steps item 40) now browses this table
 back out, searchable by `target_id`/`user_email`/`action`/`details`, admin-only.
 
-### `hcc_checks`
-Created when a booking's status moves to `HCC Checks` (client-side, in
-`updateBookingStatus()`). Council-notification email is a **manual** admin action on
-`hcc_dashboard.html`, not automatic — see [Gotchas](#9-gotchas) for why.
+### `hcc_checks` — REMOVED
+Retired along with the whole HCC Checks feature, 2026-08-17. See
+[Gotchas](#9-gotchas) for the retirement note.
 
 ### `user_roles`
 `id` (matches Supabase Auth `user.id`), `role` (`admin` or `steward`). Backs every
@@ -1505,7 +1500,7 @@ role-check policy in the database, via the `check_user_role()` / `get_is_admin()
 Generic key/value config table (see [Settings-driven config](#settings-driven-config)
 above). Keys currently in use include `stall_cost_food/general/dev`,
 `allowed_stall_types`, `festival_display_name`, `base_url`, `cancel_url`,
-`map_center_lat/lng`, `hcc_council_email`, `stripe_test_mode` (boolean as text,
+`map_center_lat/lng`, `stripe_test_mode` (boolean as text,
 Food/General Stripe test-mode override), `stripe_secret_key_test/live`,
 `stripe_webhook_secret_test/live` (the actual Stripe credentials themselves — see
 [Stripe Payment Collection](#stripe-payment-collection)), plus all `zoho_*`
@@ -1525,10 +1520,10 @@ removed from settings.html's System Constants card accordingly.
 #### Regulatory Authority
 `regulatory_authority_name` / `insurance_minimum_amount`, added V1.1 Sprint 1,
 Issue 2 (`20260807120000_regulatory_authority_settings.sql`).
-`Food_Stall_booking.html`'s mandatory declaration checkboxes and the HCC dashboard's
-bulk-send confirm dialog used to hardcode "Hull City Council" and "£5,000,000"
-directly — meaningless (or actively wrong) for any organisation other than Ella
-Street. Both are free-text `settings`/`event_settings` values, anon-readable (the
+`Food_Stall_booking.html`'s mandatory declaration checkboxes used to hardcode
+"Hull City Council" and "£5,000,000" directly — meaningless (or actively wrong)
+for any organisation other than Ella Street. Both are free-text
+`settings`/`event_settings` values, anon-readable (the
 public booking form reads them before the applicant is authenticated), resolved
 with the same org-then-event-override precedence as every other settings pair —
 see `js/public-context.js`'s `initPublicBookingForm()`. Admin-editable via
@@ -1537,9 +1532,9 @@ data layer already supports one via `event_settings` if a later sprint adds it.
 Unset means generic fallback wording ("all applicable food and hygiene
 regulations" / "a minimum indemnity appropriate for this event"), never a
 hardcoded name — `org_default` is seeded with its real values by the migration
-itself so existing behaviour needed no manual admin action to preserve. Also read
-admin-side via `CONFIG.REGULATORY_AUTHORITY_NAME`/`CONFIG.INSURANCE_MINIMUM_AMOUNT`
-(`js/config.js`'s `applySettingsToConfig()`) for the HCC dashboard's confirm dialog.
+itself so existing behaviour needed no manual admin action to preserve. Also
+mirrored admin-side via `CONFIG.REGULATORY_AUTHORITY_NAME`/
+`CONFIG.INSURANCE_MINIMUM_AMOUNT` (`js/config.js`'s `applySettingsToConfig()`).
 
 ### `event_settings` — the event-scoped layer on top of `settings`
 Added Epic 4 Phase 4B (`20260804110000_create_event_settings.sql`). Same key/value
@@ -1733,9 +1728,9 @@ with a real run via `gh run watch` — all three green.
     fix for the booking-ID race (see [Next Steps](#8-next-steps) item 18) came
     from, caught by an actual concurrent-submission test, not code review.
   - `tests/workflow.test.mjs` — the full admin lifecycle (create → confirm →
-    assign a location → move to a different one → record payment → move to
-    HCC Checks → cancel), calling the same table/RPC operations `js/api.js`
-    does, through a real signed-in admin session.
+    assign a location → move to a different one → record payment → cancel),
+    calling the same table/RPC operations `js/api.js` does, through a real
+    signed-in admin session.
   - `tests/security.test.mjs` — behavioral RLS/column-grant checks against
     the real REST API as an actual anon caller: `bookings` has **zero** anon
     access of any kind (as of 2026-07-15 — see
@@ -4295,13 +4290,20 @@ stay in the separate `ellafestperformersadmin.vercel.app` codebase.
   leftover from the migration — every row was backfilled to bare paths, but the
   fallback costs nothing to keep and protects against any row that somehow wasn't).
 
-- **HCC council notification is manual by design — do not automate it.** An earlier,
-  since-deleted `trigger_hcc_workflow()` DB trigger auto-emailed the real council on
-  every status change to `HCC Checks`, with no DEV/LIVE awareness (would've emailed the
-  real council from test data) and no audit log. It was removed as a landmine. The
-  current, correct behavior is a manual "send" button on `hcc_dashboard.html` that
-  redirects to the logged-in admin's own inbox when the active instance is `DEV`, and
-  audit-logs every send.
+- **The HCC Checks feature no longer exists — retired 2026-08-17
+  (`20260817100000_retire_hcc_checks.sql`).** The `hcc_checks` table, the `HCC
+  Checks` booking status, `hcc_dashboard.html`/`page-hcc-dashboard.js`, the
+  `hcc_batch_check` email template, and the `hcc_council_email` setting were all
+  removed together — investigation found the feature had no booking/payment
+  gating dependency (a payment request could already be raised from a booking
+  sitting in `HCC Checks`) and near-zero production usage. General Hull City
+  Council/regulatory-authority functionality (`regulatory_authority_name`,
+  `insurance_minimum_amount`, the public food-stall declaration) is a separate,
+  unrelated concept and was not touched. An earlier, since-deleted
+  `trigger_hcc_workflow()` DB trigger had auto-emailed the real council on every
+  status change to `HCC Checks` with no DEV/LIVE awareness and no audit log —
+  removed as a landmine well before this retirement; the feature's own council
+  notification was already manual-only by the time it was retired.
 
 - **A cancelled CI run still reports a failing required check and blocks the
   merge — and `cancel-in-progress: false` does not prevent it.** GitHub keeps

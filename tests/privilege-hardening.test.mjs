@@ -164,7 +164,7 @@ describe('bookings.status is constrained (20260720110000)', () => {
   test('accepts every status the app actually uses, including transitions', async () => {
     // Mirrors CONFIG.UI.STATUS_LIST in js/config.js. If this ever fails, the
     // constraint and the app's list have drifted apart — fix both together.
-    const statuses = ['Pending', 'Payment Requested', 'Confirmed', 'Rejected', 'Cancelled', 'HCC Checks'];
+    const statuses = ['Pending', 'Payment Requested', 'Confirmed', 'Rejected', 'Cancelled'];
     const id = `${PREFIX}-0006`;
     await insertBooking(id);
 

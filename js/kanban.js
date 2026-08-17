@@ -5,20 +5,15 @@ import { safeError, escapeHtml, sortBookings } from './utils.js';
 import { sharedUpdateStatus, populateDetailPane, initComposeSmsToggle, initBulkSmsToggle, readOptionalSmsBody, resetSmsToggle, readStatusSmsChecked, resetStatusSmsCheckbox } from './shared.js';
 import { showToast, showConfirm, notifyIfTruncated, trapModal, releaseModal } from './ui.js';
 
-// Single source of truth for which columns exist, per instance — HCC Checks
-// is Food-instance-only; the new payment-flow statuses apply everywhere.
+// Single source of truth for which columns exist.
 function getBoardStatuses() {
-    const instance = localStorage.getItem('ESF_INSTANCE') || 'DEV';
-    return instance === 'GENERAL'
-        ? ['Pending', 'Payment Requested', 'Confirmed', 'Rejected', 'Cancelled']
-        : ['Pending', 'HCC Checks', 'Payment Requested', 'Confirmed', 'Rejected', 'Cancelled'];
+    return ['Pending', 'Payment Requested', 'Confirmed', 'Rejected', 'Cancelled'];
 }
 
 function cardBorderClass(status) {
     switch (status) {
         case 'Confirmed': return 'border-green-500';
         case 'Rejected': return 'border-red-500';
-        case 'HCC Checks': return 'border-orange-500';
         case 'Payment Requested': return 'border-indigo-500';
         default: return 'border-yellow-400';
     }
@@ -38,26 +33,7 @@ let currentSortDir = 'asc';
 export function initKanban() {
     loadBoard();
     initDragula();
-    initInstanceBadge();
 }
-
-// Instance Badge
-function initInstanceBadge() {
-    const instance = localStorage.getItem('ESF_INSTANCE') || 'DEV';
-    const hccColumn = document.getElementById('hcc-checks-column');
-    const hccButton = document.getElementById('hcc-checks-button');
-
-    if (instance === 'GENERAL') {
-        if (hccColumn) hccColumn.style.display = 'none';
-        if (hccButton) hccButton.style.display = 'none';
-    } else {
-        if (hccColumn) hccColumn.style.display = 'flex';
-        if (hccButton) hccButton.style.display = 'block';
-    }
-
-}
-
-
 
 function renderBoard(data) {
     const statuses = getBoardStatuses();
@@ -121,8 +97,6 @@ function createCard(item) {
 function initDragula() {
     if (typeof dragula === 'undefined') return;
 
-    const instance = localStorage.getItem('ESF_INSTANCE') || 'DEV';
-
     // Dropping onto 'Payment Requested' goes through the exact same
     // Free/Chargeable confirm modal as dropping onto 'Confirmed' — there's
     // no plain drag-triggered status write for either; the modal's choice
@@ -130,7 +104,6 @@ function initDragula() {
     // Stripe Checkout Session and lands on Payment Requested instead.
     const containers = [
         document.getElementById('col-Pending'),
-        instance !== 'GENERAL' ? document.getElementById('col-HCC Checks') : null,
         document.getElementById('col-Payment Requested'),
         document.getElementById('col-Confirmed'),
         document.getElementById('col-Rejected'),
@@ -142,8 +115,8 @@ function initDragula() {
     drake = dragula(validContainers, {
         // 'Payment Requested' is a valid drop *target* (see INTERCEPT below)
         // but still not a drag *source* — a card already awaiting payment
-        // only ever leaves via the detail-pane buttons (Reject/HCC
-        // Checks/Resend/etc), never a plain drag out.
+        // only ever leaves via the detail-pane buttons (Reject/Resend/etc),
+        // never a plain drag out.
         moves: function (el, source) {
             return source.dataset.status !== 'Payment Requested';
         }

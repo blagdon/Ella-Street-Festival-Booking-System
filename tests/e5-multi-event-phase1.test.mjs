@@ -142,7 +142,6 @@ before(async () => {
 after(async () => {
   await service.from('booking_locations').delete().in('booking_id', bookingIds);
   await service.from('payments').delete().in('booking_id', bookingIds);
-  await service.from('hcc_checks').delete().in('booking_id', bookingIds);
   await service.from('bookings').delete().in('id', bookingIds);
   await service.from('locations').delete().in('id', locationIds);
   await service.from('organisation_members').delete().in('org_id', [ORG_A, ORG_B]);
@@ -334,48 +333,6 @@ describe('14. Cross-organisation isolation remains intact', () => {
 // Multi-Event Architecture Phase 2 — event isolation correctness and
 // default-event resolution. Sections 15+ below.
 // ---------------------------------------------------------------------
-
-describe('15. HCC reads are event-scoped and inherit the parent booking\'s event_id on creation', () => {
-  const hccBookingIds = [];
-
-  after(async () => {
-    await service.from('hcc_checks').delete().in('booking_id', hccBookingIds);
-    await service.from('bookings').delete().in('id', hccBookingIds);
-  });
-
-  test('an hcc_checks row created the way the fixed js/api.js now does (event_id copied from the parent booking) is tagged correctly, not left on the column default', async () => {
-    const bookingId = `${PREFIX_A2}-HCC-0001`;
-    await makeBooking(bookingId, ORG_A, EVENT_A2, SHARED_INSTANCE_PREFIX, 'HCC Checks');
-    hccBookingIds.push(bookingId);
-
-    // Mirrors updateBookingStatus()'s own fixed shape exactly (js/api.js):
-    // SELECT the booking's org_id/event_id, then INSERT hcc_checks with both.
-    const { data: bookingRow } = await service.from('bookings').select('org_id, event_id').eq('id', bookingId).single();
-    const { error: hccErr } = await ownerA.from('hcc_checks').insert({
-      booking_id: bookingId, council_status: 'Pending', org_id: bookingRow.org_id, event_id: bookingRow.event_id,
-    });
-    assert.equal(hccErr, null, hccErr?.message);
-
-    const { data: hccRow } = await service.from('hcc_checks').select('event_id').eq('booking_id', bookingId).single();
-    assert.equal(hccRow.event_id, EVENT_A2, 'must be tagged with the booking\'s own event, not event_default');
-  });
-
-  test('the org+event filter (page-hcc-dashboard.js\'s fixed query shape) never returns a different event\'s hcc_checks row', async () => {
-    const bookingId1 = `${PREFIX_A1}-HCC-0001`;
-    const bookingId2 = `${PREFIX_A2}-HCC-0002`;
-    await makeBooking(bookingId1, ORG_A, EVENT_A1, SHARED_INSTANCE_PREFIX, 'HCC Checks');
-    await makeBooking(bookingId2, ORG_A, EVENT_A2, SHARED_INSTANCE_PREFIX, 'HCC Checks');
-    hccBookingIds.push(bookingId1, bookingId2);
-
-    await service.from('hcc_checks').insert({ booking_id: bookingId1, council_status: 'Pending', org_id: ORG_A, event_id: EVENT_A1 });
-    await service.from('hcc_checks').insert({ booking_id: bookingId2, council_status: 'Pending', org_id: ORG_A, event_id: EVENT_A2 });
-
-    const { data, error } = await ownerA.from('hcc_checks').select('booking_id, event_id').eq('org_id', ORG_A).eq('event_id', EVENT_A1);
-    assert.equal(error, null, error?.message);
-    assert.ok(data.some((r) => r.booking_id === bookingId1));
-    assert.ok(!data.some((r) => r.booking_id === bookingId2), 'EVENT_A2\'s hcc_checks row must never appear when querying EVENT_A1');
-  });
-});
 
 describe('16. Steward location sync is event-scoped', () => {
   test('the event-filtered query (page-steward.js\'s fixed locations shape) never returns EVENT_A2\'s location', async () => {

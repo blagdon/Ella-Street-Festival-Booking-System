@@ -15,22 +15,21 @@
 6. [Reviewing a Booking (Detail Pane)](#6-reviewing-a-booking-detail-pane)
 7. [Confirming a Booking](#7-confirming-a-booking)
 8. [Rejecting a Booking](#8-rejecting-a-booking)
-9. [Other Statuses (On Hold, HCC Checks, Cancelled)](#9-other-statuses-on-hold-hcc-checks-cancelled)
+9. [Other Statuses (On Hold, Cancelled)](#9-other-statuses-on-hold-cancelled)
 10. [Location Manager — Assigning Pitch Slots](#10-location-manager--assigning-pitch-slots)
 11. [Payment Tracker](#11-payment-tracker)
-12. [HCC Dashboard (Council Checks)](#12-hcc-dashboard-council-checks)
-13. [Statistics](#13-statistics)
-14. [Visitor Map](#14-visitor-map)
-15. [Email Admin — Monitoring the Email Queue](#15-email-admin--monitoring-the-email-queue)
-16. [Editing a Booking](#16-editing-a-booking)
-17. [Adding a Misc Facility](#17-adding-a-misc-facility)
-18. [Managing Admin Users](#18-managing-admin-users)
-19. [Steward Accounts](#19-steward-accounts)
-20. [Frequently Asked Questions](#20-frequently-asked-questions)
-21. [Setting Up a New Organisation & Branding](#21-setting-up-a-new-organisation--branding)
-22. [Location Management — Adding & Editing Pitches](#22-location-management--adding--editing-pitches)
-23. [Event Configuration — Different Settings for One Event](#23-event-configuration--different-settings-for-one-event)
-24. [Sharing Your Event's Booking Forms](#24-sharing-your-events-booking-forms)
+12. [Statistics](#12-statistics)
+13. [Visitor Map](#13-visitor-map)
+14. [Email Admin — Monitoring the Email Queue](#14-email-admin--monitoring-the-email-queue)
+15. [Editing a Booking](#15-editing-a-booking)
+16. [Adding a Misc Facility](#16-adding-a-misc-facility)
+17. [Managing Admin Users](#17-managing-admin-users)
+18. [Steward Accounts](#18-steward-accounts)
+19. [Frequently Asked Questions](#19-frequently-asked-questions)
+20. [Setting Up a New Organisation & Branding](#20-setting-up-a-new-organisation--branding)
+21. [Location Management — Adding & Editing Pitches](#21-location-management--adding--editing-pitches)
+22. [Event Configuration — Different Settings for One Event](#22-event-configuration--different-settings-for-one-event)
+23. [Sharing Your Event's Booking Forms](#23-sharing-your-events-booking-forms)
 
 ---
 
@@ -56,7 +55,6 @@ The hub (`index.html`) is your home screen. It shows a card for each module:
 |---|---|
 | **Kanban Board** | Visual drag-and-drop view of all applications by status |
 | **List View (Summary)** | Searchable table of all bookings |
-| **HCC Checks** | Appears only when bookings are awaiting council approval |
 | **Location Manager** | Assign confirmed traders to physical pitch numbers |
 | **Payment Tracker** | Mark payments as received |
 | **Statistics** | Charts and counts |
@@ -94,7 +92,6 @@ The Kanban board at `kanban_m.html` shows all bookings as cards organised into c
 |---|---|
 | **Pending** | New — not yet reviewed |
 | **On Hold** | Needs more info / awaiting a decision |
-| **HCC Checks** | Sent to council for food safety approval |
 | **Confirmed** | Accepted — email sent automatically |
 | **Rejected** | Declined — rejection email sent automatically |
 | **Cancelled** | Trader cancelled their own booking |
@@ -171,17 +168,10 @@ When you click a booking card or table row, a panel slides in showing:
 
 ---
 
-## 9. Other Statuses (On Hold, HCC Checks, Cancelled)
+## 9. Other Statuses (On Hold, Cancelled)
 
 ### On Hold
 Use this when a booking needs more information or a decision is deferred. No email is sent automatically.
-
-### HCC Checks
-Moving a booking to **HCC Checks** does two things:
-1. Sets the status
-2. Automatically creates an entry in the **HCC Dashboard** so you can track the council approval progress separately
-
-No email is sent to the trader when this status is set.
 
 ### Cancelled
 Set by the system when a trader cancels their own booking via the cancellation link in their email. You can also set it manually. No automated email is sent for admin-initiated cancellation.
@@ -237,21 +227,7 @@ The record is updated immediately and the `date_paid` timestamp is set.
 
 ---
 
-## 12. HCC Dashboard (Council Checks)
-
-The HCC Dashboard at `hcc_dashboard.html` tracks food safety approvals from Hastings Borough Council.
-
-It only appears on the Hub when there are bookings in `HCC Checks` status.
-
-### Using the dashboard
-- Each row shows a trader that has been sent for council review
-- Update the **Council Status** for each entry (e.g. Pending → Approved / Rejected)
-- Add notes in the notes column
-- Once the council decision is confirmed, return to the Kanban board to continue processing the booking
-
----
-
-## 13. Statistics
+## 12. Statistics
 
 The Statistics page at `stats.html` gives a visual breakdown of all bookings across all instances:
 
@@ -264,7 +240,7 @@ Use the instance selector to focus on a specific booking type.
 
 ---
 
-## 14. Visitor Map
+## 13. Visitor Map
 
 The Visitor Map at `visitor_map.html` shows a Leaflet map with markers for all **confirmed** bookings that have been assigned a location.
 
@@ -274,7 +250,7 @@ The Visitor Map at `visitor_map.html` shows a Leaflet map with markers for all *
 
 ---
 
-## 15. Email Admin — Monitoring the Email Queue
+## 14. Email Admin — Monitoring the Email Queue
 
 The Email Admin page at `email_admin.html` lets you see all emails in the queue and their status.
 
@@ -294,7 +270,7 @@ Emails are typically sent within **1–2 minutes** of being queued. If an email 
 
 ---
 
-## 16. Editing a Booking
+## 15. Editing a Booking
 
 To correct a trader's details after submission:
 
@@ -309,7 +285,7 @@ Fields you can edit: business name, owner name, email, phone, category, descript
 
 ---
 
-## 17. Adding a Misc Facility
+## 16. Adding a Misc Facility
 
 MISC entries are used for non-bookable items on the site map: barriers, first aid posts, police, fire engines, toilets, etc.
 
@@ -322,7 +298,7 @@ The entry is created with a `ESF26-MISC-XXXX` ID and `Confirmed` status so it ap
 
 ---
 
-## 18. Managing Admin Users
+## 17. Managing Admin Users
 
 Go to `manage_users.html` (linked from the **More** page).
 
@@ -343,19 +319,19 @@ Click the **Delete** (🗑️) button next to their name. This removes their adm
 
 ---
 
-## 19. Steward Accounts
+## 18. Steward Accounts
 
 Stewards are volunteers who access `steward.html` to view and manage the event schedule. They use a **separate login page** at `steward_login.html`.
 
 Stewards **cannot** see bookings, payments, or any admin data — they only see the schedule.
 
 **To create a steward account:**
-1. Follow the same steps as adding an admin user (section 18)
+1. Follow the same steps as adding an admin user (section 17)
 2. Select role `steward` instead of `admin`
 
 ---
 
-## 20. Frequently Asked Questions
+## 19. Frequently Asked Questions
 
 **Q: A trader says they didn't receive their confirmation email. What do I do?**  
 A: Open their booking in the Kanban or List View. In the detail pane, click **Resend Confirmation**. Check their email address is correct — if not, use **Edit Details** to fix it first, then resend.
@@ -392,7 +368,7 @@ A: Every confirmation email includes a unique self-cancellation link. When the t
 
 ---
 
-## 21. Setting Up a New Organisation & Branding
+## 20. Setting Up a New Organisation & Branding
 
 > This section covers the Platform Administration Workspace's Provisioning and Branding tools —
 > most organisers running a single festival will never need them. They matter if the platform is
@@ -427,7 +403,7 @@ logo or contact details as if they were its own.
 
 ---
 
-## 22. Location Management — Adding & Editing Pitches
+## 21. Location Management — Adding & Editing Pitches
 
 The Workspace's **Locations** tab (sidebar, `admin.html`) is where the physical pitches/stalls
 themselves are created and maintained — separate from the Location Manager (§10), which *assigns*
@@ -458,7 +434,7 @@ whichever organisation and event you're currently viewing.
 
 ---
 
-## 23. Event Configuration — Different Settings for One Event
+## 22. Event Configuration — Different Settings for One Event
 
 **More Tools → Event Configuration** lets you set a handful of values differently for
 just the event you're currently viewing, without changing anything for your other
@@ -507,7 +483,7 @@ leave everything else following your organisation's usual settings.
 
 ---
 
-## 24. Sharing Your Event's Booking Forms
+## 23. Sharing Your Event's Booking Forms
 
 If your organisation runs more than one event, the trader application forms can point at
 a specific one: share the General or Food Stall booking form link with `?org=your-org-slug&event=your-event-slug`

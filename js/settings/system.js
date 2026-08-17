@@ -106,12 +106,11 @@ export async function initSystemConstants() {
     const txtBaseUrl = /** @type {HTMLInputElement | null} */ (document.getElementById('base-url'));
     const txtCancelUrl = /** @type {HTMLInputElement | null} */ (document.getElementById('cancel-url'));
     const txtPortalUrl = /** @type {HTMLInputElement | null} */ (document.getElementById('portal-url'));
-    const txtCouncilEmail = /** @type {HTMLInputElement | null} */ (document.getElementById('council-email'));
     const txtBucket = /** @type {HTMLInputElement | null} */ (document.getElementById('bucket-name'));
     const txtPrefix = /** @type {HTMLInputElement | null} */ (document.getElementById('booking-prefix'));
     const btnSave = /** @type {HTMLButtonElement | null} */ (document.getElementById('btn-save-constants'));
 
-    if (!txtFestivalName || !txtTurnstile || !txtBaseUrl || !txtCancelUrl || !txtPortalUrl || !txtCouncilEmail || !txtBucket || !txtPrefix || !btnSave) return;
+    if (!txtFestivalName || !txtTurnstile || !txtBaseUrl || !txtCancelUrl || !txtPortalUrl || !txtBucket || !txtPrefix || !btnSave) return;
 
     // Load this org's own settings rows directly (same pattern as
     // initSentrySettings()/initSerpApiSettings() below) rather than through
@@ -126,7 +125,7 @@ export async function initSystemConstants() {
         const { data, error } = await sb.from('settings')
             .select('key, value')
             .eq('org_id', getCurrentOrgId())
-            .in('key', ['festival_display_name', 'turnstile_site_key', 'base_url', 'cancel_url', 'portal_url', 'hcc_council_email', 'bucket_name', 'booking_prefix']);
+            .in('key', ['festival_display_name', 'turnstile_site_key', 'base_url', 'cancel_url', 'portal_url', 'bucket_name', 'booking_prefix']);
         if (error) throw error;
 
         const row = (key) => (data || []).find(r => r.key === key)?.value;
@@ -137,7 +136,6 @@ export async function initSystemConstants() {
         txtPortalUrl.value = row('portal_url') || '';
         txtBucket.value = row('bucket_name') || '';
         txtPrefix.value = row('booking_prefix') || '';
-        txtCouncilEmail.value = row('hcc_council_email') || '';
     } catch (err) {
         showToast("Failed to load System Constants: " + err.message, 'error');
     }
@@ -148,11 +146,10 @@ export async function initSystemConstants() {
         const valBaseUrl = txtBaseUrl.value.trim();
         const valCancelUrl = txtCancelUrl.value.trim();
         const valPortalUrl = txtPortalUrl.value.trim();
-        const valCouncilEmail = txtCouncilEmail.value.trim();
         const valBucket = txtBucket.value.trim();
         const valPrefix = txtPrefix.value.trim().toUpperCase();
 
-        if (!valFestivalName || !valTurnstile || !valBaseUrl || !valCancelUrl || !valPortalUrl || !valCouncilEmail || !valBucket || !valPrefix) {
+        if (!valFestivalName || !valTurnstile || !valBaseUrl || !valCancelUrl || !valPortalUrl || !valBucket || !valPrefix) {
             showToast("All fields are required", "error");
             return;
         }
@@ -177,7 +174,6 @@ export async function initSystemConstants() {
                 { org_id: orgId, key: 'base_url', value: valBaseUrl, updated_at: now, updated_by: userEmail },
                 { org_id: orgId, key: 'cancel_url', value: valCancelUrl, updated_at: now, updated_by: userEmail },
                 { org_id: orgId, key: 'portal_url', value: valPortalUrl, updated_at: now, updated_by: userEmail },
-                { org_id: orgId, key: 'hcc_council_email', value: valCouncilEmail, updated_at: now, updated_by: userEmail },
                 { org_id: orgId, key: 'bucket_name', value: valBucket, updated_at: now, updated_by: userEmail },
                 { org_id: orgId, key: 'booking_prefix', value: valPrefix, updated_at: now, updated_by: userEmail }
             ];
@@ -194,7 +190,6 @@ export async function initSystemConstants() {
                 ESF_PUBLIC_CONFIG.BUCKET_NAME = valBucket;
                 ESF_PUBLIC_CONFIG.BOOKING_PREFIX = valPrefix;
             }
-            CONFIG.HCC_COUNCIL_EMAIL = valCouncilEmail;
             CONFIG.FESTIVAL_DISPLAY_NAME = valFestivalName;
 
             showToast("System constants saved successfully");
@@ -203,7 +198,6 @@ export async function initSystemConstants() {
                 festival_display_name: valFestivalName,
                 turnstile_key: valTurnstile,
                 base_url: valBaseUrl,
-                council_email: valCouncilEmail,
                 booking_prefix: valPrefix
             });
         } catch (err) {

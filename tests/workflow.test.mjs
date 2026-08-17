@@ -22,7 +22,6 @@ before(async () => {
 
   await service.from('booking_locations').delete().eq('booking_id', bookingId);
   await service.from('payments').delete().eq('booking_id', bookingId);
-  await service.from('hcc_checks').delete().eq('booking_id', bookingId);
   await service.from('bookings').delete().eq('id', bookingId);
   await service.from('locations').delete().in('id', [locationA, locationB]);
 
@@ -36,12 +35,11 @@ before(async () => {
 after(async () => {
   await service.from('booking_locations').delete().eq('booking_id', bookingId);
   await service.from('payments').delete().eq('booking_id', bookingId);
-  await service.from('hcc_checks').delete().eq('booking_id', bookingId);
   await service.from('bookings').delete().eq('id', bookingId);
   await service.from('locations').delete().in('id', [locationA, locationB]);
 });
 
-describe('critical admin workflow: create -> confirm -> assign -> move -> pay -> HCC -> cancel', () => {
+describe('critical admin workflow: create -> confirm -> assign -> move -> pay -> cancel', () => {
   test('1. create booking (Pending)', async () => {
     const { data, error } = await service.from('bookings').insert({
       id: bookingId,
@@ -117,29 +115,7 @@ describe('critical admin workflow: create -> confirm -> assign -> move -> pay ->
     assert.equal(payment.bank_ref, 'WF-TEST-REF');
   });
 
-  test('6. create HCC check (status -> HCC Checks, auto-inserts hcc_checks row, clears location)', async () => {
-    const { error } = await admin.from('bookings').update({ status: 'HCC Checks' }).eq('id', bookingId);
-    assert.equal(error, null, error?.message);
-
-    const { error: hccErr } = await admin
-      .from('hcc_checks')
-      .insert({ booking_id: bookingId, council_status: 'Pending' });
-    assert.equal(hccErr, null, hccErr?.message);
-
-    // Mirrors updateBookingStatus()'s real behavior: leaving Confirmed clears
-    // any assigned location. Documented behavior, not a bug - asserting it
-    // stays that way rather than being surprised by it later.
-    const { error: clearErr } = await admin.rpc('rpc_set_booking_locations', { p_booking_id: bookingId, p_location_ids: [] });
-    assert.equal(clearErr, null, clearErr?.message);
-
-    const { data: hcc } = await service.from('hcc_checks').select('*').eq('booking_id', bookingId).single();
-    assert.equal(hcc.council_status, 'Pending');
-
-    const { data: assigned } = await service.from('booking_locations').select('location_id').eq('booking_id', bookingId);
-    assert.equal(assigned.length, 0, 'expected the location assignment to be cleared on leaving Confirmed');
-  });
-
-  test('7. cancel booking via cancel-booking Edge Function', async () => {
+  test('6. cancel booking via cancel-booking Edge Function', async () => {
     const { data: booking } = await service.from('bookings').select('cancel_token').eq('id', bookingId).single();
     assert.ok(booking.cancel_token, 'expected a cancel_token to exist (column default)');
 
