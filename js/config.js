@@ -196,12 +196,22 @@ export function getPlatformContext(authSession = null) {
 }
 
 /**
- * Get the current instance from localStorage or default to DEV.
+ * Get the current instance from localStorage, defaulting to FOOD.
+ *
+ * DEV was retired from the App Hub's instance selector (Phase 3) - it is no
+ * longer a selectable option, but a browser that had ESF_INSTANCE=DEV stored
+ * from before the removal would otherwise keep silently reading it back here
+ * forever, since nothing else in the app clears the key. Treating a stored
+ * 'DEV' the same as "unset" (falling through to the real default) is the one
+ * change needed to stop that: every caller of this function already goes
+ * through it, so this is the single point that guarantees no one is left in
+ * a hidden, unselectable DEV-filtered view. FOOD, not DEV, is now the
+ * fallback - it's the first real option in both instance selectors
+ * (js/nav.js) and this app's flagship booking type.
  */
 export function getCurrentInstance() {
-    return (typeof localStorage !== 'undefined' && localStorage.getItem('ESF_INSTANCE'))
-        ? localStorage.getItem('ESF_INSTANCE')
-        : 'DEV';
+    const stored = (typeof localStorage !== 'undefined') ? localStorage.getItem('ESF_INSTANCE') : null;
+    return (stored && stored !== 'DEV') ? stored : 'FOOD';
 }
 
 
