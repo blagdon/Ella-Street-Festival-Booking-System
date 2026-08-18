@@ -1078,12 +1078,16 @@ export async function insertMiscBooking(payload) {
     // own column defaults (which silently default to org_default/
     // event_default regardless of the caller's real org/event) - the
     // exact gap that made misc bookings non-functional for any
-    // organisation other than org_default.
+    // organisation other than org_default. booking_type is set explicitly
+    // for the same reason: the column's own default is 'dev' (for the
+    // separate DEV-instance mechanism), so an omitted booking_type here
+    // silently mislabels every genuine Misc booking as a DEV one.
     const { error } = await sb.from(TBL_BOOKINGS).insert({
         id: newId,
         org_id: orgId,
         event_id: eventId,
         instance_prefix: CONFIG.INSTANCE_MAP['MISC'],
+        booking_type: 'misc',
         status: 'Confirmed',
         date_confirmed: new Date().toISOString(),
         business_name: validateString(payload.business, MAX_FIELD_LENGTHS.business),
