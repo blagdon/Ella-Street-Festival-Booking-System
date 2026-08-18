@@ -9,7 +9,6 @@ CREATE POLICY "Admins can manage own org bookings" ON "public"."bookings" TO "au
 CREATE POLICY "Admins can manage own org email_queue" ON "public"."email_queue" TO "authenticated" USING (("public"."is_platform_admin"() OR "public"."has_org_role"("org_id", ARRAY['admin'::"text"]))) WITH CHECK (("public"."is_platform_admin"() OR "public"."has_org_role"("org_id", ARRAY['admin'::"text"])));
 CREATE POLICY "Admins can manage own org email_templates" ON "public"."email_templates" TO "authenticated" USING (("public"."is_platform_admin"() OR "public"."has_org_role"("org_id", ARRAY['admin'::"text"]))) WITH CHECK (("public"."is_platform_admin"() OR "public"."has_org_role"("org_id", ARRAY['admin'::"text"])));
 CREATE POLICY "Admins can manage own org event_settings" ON "public"."event_settings" TO "authenticated" USING (("public"."is_platform_admin"() OR (EXISTS ( SELECT 1 FROM "public"."events" "e" WHERE (("e"."id" = "event_settings"."event_id") AND "public"."has_org_role"("e"."org_id", ARRAY['admin'::"text"])))))) WITH CHECK (("public"."is_platform_admin"() OR (EXISTS ( SELECT 1 FROM "public"."events" "e" WHERE (("e"."id" = "event_settings"."event_id") AND "public"."has_org_role"("e"."org_id", ARRAY['admin'::"text"]))))));
-CREATE POLICY "Admins can manage own org hcc_checks" ON "public"."hcc_checks" TO "authenticated" USING (("public"."is_platform_admin"() OR "public"."has_org_role"("org_id", ARRAY['admin'::"text"]))) WITH CHECK (("public"."is_platform_admin"() OR "public"."has_org_role"("org_id", ARRAY['admin'::"text"])));
 CREATE POLICY "Admins can manage own org locations" ON "public"."locations" TO "authenticated" USING (("public"."is_platform_admin"() OR "public"."has_org_role"("org_id", ARRAY['admin'::"text"]))) WITH CHECK (("public"."is_platform_admin"() OR "public"."has_org_role"("org_id", ARRAY['admin'::"text"])));
 CREATE POLICY "Admins can manage own org organisation_members" ON "public"."organisation_members" TO "authenticated" USING (("public"."is_platform_admin"() OR "public"."has_org_role"("org_id", ARRAY['admin'::"text"]))) WITH CHECK (("public"."is_platform_admin"() OR "public"."has_org_role"("org_id", ARRAY['admin'::"text"])));
 CREATE POLICY "Admins can manage own org payments" ON "public"."payments" TO "authenticated" USING (("public"."is_platform_admin"() OR "public"."has_org_role"("org_id", ARRAY['admin'::"text"]))) WITH CHECK (("public"."is_platform_admin"() OR "public"."has_org_role"("org_id", ARRAY['admin'::"text"])));
@@ -127,7 +126,6 @@ GRANT ALL ON TABLE "public"."event_settings" TO "service_role";
 GRANT ALL ON TABLE "public"."events" TO "authenticated";
 GRANT ALL ON TABLE "public"."events" TO "service_role";
 GRANT ALL ON TABLE "public"."google_reviews_cache" TO "service_role";
-GRANT ALL ON TABLE "public"."hcc_checks" TO "service_role";
 GRANT ALL ON TABLE "public"."locations" TO "service_role";
 GRANT ALL ON TABLE "public"."organisation_members" TO "authenticated";
 GRANT ALL ON TABLE "public"."organisation_members" TO "service_role";
@@ -218,7 +216,6 @@ GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE "public"."event_settings" TO "authent
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE "public"."locations" TO "authenticated";
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE "public"."user_roles" TO "authenticated";
 GRANT SELECT,INSERT,UPDATE ON TABLE "public"."bookings" TO "authenticated";
-GRANT SELECT,INSERT,UPDATE ON TABLE "public"."hcc_checks" TO "authenticated";
 GRANT SELECT,INSERT,UPDATE ON TABLE "public"."settings" TO "authenticated";
 GRANT SELECT,UPDATE ON TABLE "public"."email_templates" TO "authenticated";
 GRANT SELECT,UPDATE ON TABLE "public"."sms_templates" TO "authenticated";
