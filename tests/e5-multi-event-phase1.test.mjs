@@ -195,9 +195,10 @@ describe('5-6. A non-org_default organisation can successfully create a MISC boo
     assert.equal(insErr, null, insErr?.message);
     bookingIds.push(newId);
 
-    const { data: row } = await service.from('bookings').select('org_id, event_id').eq('id', newId).single();
+    const { data: row } = await service.from('bookings').select('org_id, event_id, booking_type').eq('id', newId).single();
     assert.equal(row.org_id, ORG_A, 'must be tagged with the real caller org, not org_default');
     assert.equal(row.event_id, EVENT_A1, 'must be tagged with the specific event, not event_default');
+    assert.equal(row.booking_type, 'misc', 'must be tagged misc, not left on the column default (dev)');
   });
 
   test('omitting org_id/event_id (the pre-fix insertMiscBooking() shape) fails RLS for a non-org_default admin - proves the old defect was real', async () => {
