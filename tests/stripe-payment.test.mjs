@@ -240,7 +240,7 @@ describe('create-checkout-session', () => {
     assert.equal(status, 200, JSON.stringify(json));
 
     const { data: booking } = await service.from('bookings')
-      .select('stripe_checkout_url, payment_link_code')
+      .select('stripe_checkout_url, payment_link_code, event_id')
       .eq('id', id)
       .single();
     assert.equal(booking.stripe_checkout_url, null, 'no Stripe session is created until get-payment-link is actually clicked');
@@ -276,6 +276,13 @@ describe('create-checkout-session', () => {
     assert.equal(auditDetails.recipient, '+447000000000');
     assert.equal(auditDetails.segments, rows[0].segments);
     assert.equal(auditDetails.provider_message_id, rows[0].provider_message_id);
+    // create-checkout-session's audit_logs insert used to omit event_id
+    // entirely, silently falling through to the column's own DEFAULT
+    // 'event_default' regardless of which event the booking actually
+    // belonged to - asserted against the booking's own event_id, not a
+    // hardcoded 'event_default', so this stays correct once that column's
+    // default is removed and fixtures set event_id explicitly.
+    assert.equal(auditRows[0].event_id, booking.event_id);
   });
 
   test('omitting send_sms sends no SMS at all, even with a phone number on file', async () => {
