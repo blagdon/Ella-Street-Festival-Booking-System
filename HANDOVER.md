@@ -8,8 +8,23 @@
 > including applying additive migrations to production), which require specific
 > verification first, and the short list that needs an explicit instruction every
 > time. Default to acting.
-> Last updated: 2026-08-14.
-> Current release: **v1.0.0-rc2** — Multi-Event Architecture Phase 1. An organisation having more than
+> Last updated: 2026-08-20.
+> Current release: **v1.0.0-rc3** — Multi-Event Isolation Completion & Phase 3 Tenant Hardening. Closes
+> the gaps found in the post-rc2 review of Multi-Event Phase 1 (two live cross-event data-mixing bugs, a
+> non-functional provisioning audit trail, missing FK integrity on `bookings.event_id`/`locations.event_id`,
+> no server-side default-event concept for anonymous public bookings — new `is_active`/`is_default`
+> model, DB-enforced unique per organisation), then continues tenant hardening: strict location ownership
+> (a booking's location must now match its own org/event/dataset, closing a cross-tenant location-guessing
+> gap), org/event-scoped public settings RPCs replacing anon's unfiltered `settings`/`event_settings`
+> reads, retirement of the DEV App Hub option and HCC Checks (both zero remaining production usage,
+> confirmed by investigation before removal), a production test-data cleanup (197 disposable test
+> bookings, all sharing the account owner's own email, cleared from production only), a fix for Misc
+> bookings silently inheriting `booking_type`'s `'dev'` default, and closure of a critical `storage.objects`
+> RLS gap that granted anon unrestricted `SELECT`/`INSERT`/`UPDATE` across all three document buckets —
+> narrowed to exactly one policy, anon `INSERT` into `esf-documents`' `temp/` staging prefix only. See
+> `CHANGELOG.md`'s `[1.0.0-rc3]` entry for the full breakdown.
+>
+> Previous release: **v1.0.0-rc2** — Multi-Event Architecture Phase 1. An organisation having more than
 > one event was already possible in the data model (`bookings.event_id`/`locations.event_id`) but not
 > yet safe in practice: `rpc_get_next_misc_id()` generated MISC ids from organisation-level settings
 > rather than the specific event being booked into, `events.booking_prefix` had no uniqueness constraint
@@ -22,7 +37,7 @@
 > pre-existing insert-side `23505` race in the MISC booking flow. See `CHANGELOG.md`'s `[1.0.0-rc2]`
 > entry for the full breakdown.
 >
-> Previous release: **v1.0.0-rc1** — first Version 1.0 Release Candidate. Architecture frozen as of the
+> Before that: **v1.0.0-rc1** — first Version 1.0 Release Candidate. Architecture frozen as of the
 > Architecture Compliance Audit (Fully Compliant, zero open findings — `DECISIONS.md`). Closes both
 > conditions the Release Readiness Audit required before tagging an RC — three orphaned Edge Functions
 > live on production with no source in this repo (#183), and newly-provisioned organisations silently
