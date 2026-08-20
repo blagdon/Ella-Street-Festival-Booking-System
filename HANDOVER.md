@@ -21,7 +21,10 @@
 > bookings, all sharing the account owner's own email, cleared from production only), a fix for Misc
 > bookings silently inheriting `booking_type`'s `'dev'` default, and closure of a critical `storage.objects`
 > RLS gap that granted anon unrestricted `SELECT`/`INSERT`/`UPDATE` across all three document buckets —
-> narrowed to exactly one policy, anon `INSERT` into `esf-documents`' `temp/` staging prefix only. See
+> narrowed to exactly one policy, anon `INSERT` into `esf-documents`' `temp/` staging prefix only. Also
+> folds in Version 1.1 Sprint 1 — Public Conversion & Commercial Readiness (PR #186): a public event-page
+> booking CTA, a configurable food-stall regulatory-authority declaration, and password-masked Stripe
+> secret fields, all implemented and merged 2026-08-07 but never previously assigned to a release. See
 > `CHANGELOG.md`'s `[1.0.0-rc3]` entry for the full breakdown.
 >
 > Previous release: **v1.0.0-rc2** — Multi-Event Architecture Phase 1. An organisation having more than
