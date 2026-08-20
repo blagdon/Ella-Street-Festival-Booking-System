@@ -78,7 +78,7 @@ Deno.serve(async (req) => {
     // even reveals that the booking exists.
     let bookingQuery = supabaseClient
       .from('bookings')
-      .select('id, org_id, status, stall_cost, instance_prefix, business_name, owner_name, email, phone, stripe_payment_requested_at, stripe_checkout_session_id, cancel_token, payment_link_code')
+      .select('id, org_id, event_id, status, stall_cost, instance_prefix, business_name, owner_name, email, phone, stripe_payment_requested_at, stripe_checkout_session_id, cancel_token, payment_link_code')
       .eq('id', booking_id)
     if (!callerScope.isPlatformAdmin) {
       bookingQuery = bookingQuery.in('org_id', callerScope.orgIds)
@@ -339,7 +339,8 @@ Deno.serve(async (req) => {
             user_email: user.email,
             details: { recipient, segments, provider_message_id: providerMessageId },
             instance: booking.instance_prefix || null,
-            org_id: booking.org_id
+            org_id: booking.org_id,
+            event_id: booking.event_id
           })
         }
       } catch (smsErr: any) {
