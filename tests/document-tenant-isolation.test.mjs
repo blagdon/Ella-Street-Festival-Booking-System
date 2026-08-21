@@ -36,9 +36,21 @@ function genTestPassword() {
   return randomUUID() + randomUUID().slice(0, 8).toUpperCase() + '!';
 }
 
+// ORG_A/ORG_B differ only before the shared RUN_ID suffix, which a trailing
+// slice would cut off entirely (see rpc-authorisation.test.mjs's identical
+// shortHash). Hashing the full string keeps the distinguishing text
+// participating, so EVENT_A/EVENT_B get distinct booking_prefix values.
+function shortHash(str) {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) >>> 0;
+  return h.toString(36).toUpperCase().padStart(8, '0').slice(-8);
+}
+
 const RUN_ID = Date.now();
 const ORG_A = `e501-org-a-${RUN_ID}`;
 const ORG_B = `e501-org-b-${RUN_ID}`;
+const EVENT_A = `${ORG_A}-evt`;
+const EVENT_B = `${ORG_B}-evt`;
 const OWNER_A_EMAIL = `e501-owner-a-${RUN_ID}@example.test`;
 const OWNER_A_PASSWORD = genTestPassword();
 const STEWARD_A_EMAIL = `e501-steward-a-${RUN_ID}@example.test`;
@@ -67,15 +79,20 @@ const DOC_B_CONTENT = `%PDF-1.4 org-b-document-${RUN_ID}`;
 let ownerAId, stewardAId;
 let ownerA, stewardA, platformAdmin;
 
-async function seedOrgWithDocument(orgId, bookingId, docPath, docContent, bucketName) {
+async function seedOrgWithDocument(orgId, eventId, bookingId, docPath, docContent, bucketName) {
   const { error: orgErr } = await service.from('organisations')
     .insert({ id: orgId, name: `E5-01/02 Test ${orgId}`, slug: orgId, contact_email: 'owner@example.test' });
   assert.equal(orgErr, null, orgErr?.message);
 
+  // Phase 2C (composite bookings_org_event_fkey): a booking's event_id must
+  // now belong to the SAME org_id, so this brand-new org needs its own real
+  // event rather than reusing 'event_default' (which belongs to org_default).
+  const { error: evtErr } = await service.from('events')
+    .insert({ id: eventId, org_id: orgId, name: `${orgId} Event`, slug: `${orgId}-evt`, booking_prefix: shortHash(eventId), status: 'open' });
+  assert.equal(evtErr, null, evtErr?.message);
+
   const { error: bErr } = await service.from('bookings').insert({
-    // event_id: this file never creates a dedicated event for orgId, so it
-    // stays 'event_default' explicitly, matching current default behaviour.
-    id: bookingId, org_id: orgId, event_id: 'event_default', status: 'Confirmed',
+    id: bookingId, org_id: orgId, event_id: eventId, status: 'Confirmed',
     business_name: 'E5-01/02 Test Co', owner_name: 'Test Owner',
     email: 'trader@example.test', instance_prefix: `${orgId}-DEV-`,
     stall_type: 'Food', stall_cost: 100,
@@ -92,11 +109,12 @@ async function seedOrgWithDocument(orgId, bookingId, docPath, docContent, bucket
   assert.equal(upErr, null, `document upload to ${bucketName}/${docPath} failed: ${upErr?.message}`);
 }
 
-async function cleanupOrg(orgId, bookingId, docPath, bucketName) {
+async function cleanupOrg(orgId, eventId, bookingId, docPath, bucketName) {
   await service.storage.from(bucketName).remove([docPath]).catch(() => {});
   await service.from('bookings').delete().eq('id', bookingId);
   await service.from('settings').delete().eq('org_id', orgId);
   await service.from('organisation_members').delete().eq('org_id', orgId);
+  await service.from('events').delete().eq('id', eventId);
   await service.from('organisations').delete().eq('id', orgId);
 }
 
@@ -112,8 +130,8 @@ before(async () => {
   const { error: bucketErr } = await service.storage.createBucket(ORG_B_BUCKET, { public: false });
   assert.equal(bucketErr, null, bucketErr?.message);
 
-  await seedOrgWithDocument(ORG_A, BOOKING_A, DOC_A_PATH, DOC_A_CONTENT, DEFAULT_BUCKET);
-  await seedOrgWithDocument(ORG_B, BOOKING_B, DOC_B_PATH, DOC_B_CONTENT, ORG_B_BUCKET);
+  await seedOrgWithDocument(ORG_A, EVENT_A, BOOKING_A, DOC_A_PATH, DOC_A_CONTENT, DEFAULT_BUCKET);
+  await seedOrgWithDocument(ORG_B, EVENT_B, BOOKING_B, DOC_B_PATH, DOC_B_CONTENT, ORG_B_BUCKET);
 
   const { data: ownerCreated, error: ownerErr } = await service.auth.admin.createUser({
     email: OWNER_A_EMAIL, password: OWNER_A_PASSWORD, email_confirm: true,
@@ -158,8 +176,8 @@ before(async () => {
 });
 
 after(async () => {
-  await cleanupOrg(ORG_A, BOOKING_A, DOC_A_PATH, DEFAULT_BUCKET);
-  await cleanupOrg(ORG_B, BOOKING_B, DOC_B_PATH, ORG_B_BUCKET);
+  await cleanupOrg(ORG_A, EVENT_A, BOOKING_A, DOC_A_PATH, DEFAULT_BUCKET);
+  await cleanupOrg(ORG_B, EVENT_B, BOOKING_B, DOC_B_PATH, ORG_B_BUCKET);
   await service.storage.deleteBucket(ORG_B_BUCKET).catch(() => {});
   if (ownerAId) await service.from('user_roles').delete().eq('id', ownerAId);
   if (ownerAId) await service.auth.admin.deleteUser(ownerAId);

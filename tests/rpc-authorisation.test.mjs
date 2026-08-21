@@ -188,14 +188,20 @@ describe('rpc_set_booking_locations is authorised against the booking\'s own org
     // location would previously have "worked" only because the pre-WP1 RPC
     // never checked event_id at all.
     await service.from('locations').insert({ id: `${ORG_A}-LOC`, dataset: 'LIVE', org_id: ORG_A, event_id: EVENT_A, lat: 51.0, lng: -0.1 });
-    const { error } = await stewardA.rpc('rpc_set_booking_locations', {
-      p_booking_id: BOOKING_A, p_location_ids: [`${ORG_A}-LOC`],
-    });
-    assert.equal(error, null, error?.message);
-    const { data } = await service.from('booking_locations').select('location_id').eq('booking_id', BOOKING_A);
-    assert.equal(data.length, 1);
-    await service.from('booking_locations').delete().eq('booking_id', BOOKING_A);
-    await service.from('locations').delete().eq('id', `${ORG_A}-LOC`).eq('dataset', 'LIVE');
+    try {
+      const { error } = await stewardA.rpc('rpc_set_booking_locations', {
+        p_booking_id: BOOKING_A, p_location_ids: [`${ORG_A}-LOC`],
+      });
+      assert.equal(error, null, error?.message);
+      const { data } = await service.from('booking_locations').select('location_id').eq('booking_id', BOOKING_A);
+      assert.equal(data.length, 1);
+    } finally {
+      // Guaranteed even if the RPC call or an assertion above throws — this
+      // location must never survive the test (see the Phase 2C prerequisite
+      // cleanup writeup for the orphaned row this exact gap once produced).
+      await service.from('booking_locations').delete().eq('booking_id', BOOKING_A);
+      await service.from('locations').delete().eq('id', `${ORG_A}-LOC`).eq('dataset', 'LIVE');
+    }
   });
 });
 

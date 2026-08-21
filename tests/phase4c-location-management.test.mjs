@@ -149,13 +149,24 @@ describe('locations org/event scoping', () => {
 describe('resolveAvailableId dataset-wide collision handling', () => {
     const orgX = `org_4c_x_${Date.now()}`;
     const orgY = `org_4c_y_${Date.now()}`;
+    // Phase 2C (composite locations_org_event_fkey): a location's event_id
+    // must now belong to the SAME org_id, so orgX/orgY each need their own
+    // real event rather than reusing 'event_default' (which belongs to
+    // org_default) — mirrors the eventA/eventB pattern in the describe block
+    // above.
+    const eventX = `evt_4c_x_${Date.now()}`;
+    const eventY = `evt_4c_y_${Date.now()}`;
 
     before(async () => {
         await service.from('organisations').insert([
             { id: orgX, name: 'Phase 4C Org X', slug: orgX.replace(/_/g, '-') },
             { id: orgY, name: 'Phase 4C Org Y', slug: orgY.replace(/_/g, '-') }
         ]);
-        await service.from('locations').insert({ id: 'P1', dataset: 'LIVE', org_id: orgX, event_id: 'event_default' });
+        await service.from('events').insert([
+            { id: eventX, org_id: orgX, name: 'Event X', slug: eventX.replace(/_/g, '-'), booking_prefix: `X4C${Date.now().toString().slice(-3)}`, is_active: true },
+            { id: eventY, org_id: orgY, name: 'Event Y', slug: eventY.replace(/_/g, '-'), booking_prefix: `Y4C${Date.now().toString().slice(-3)}`, is_active: true }
+        ]);
+        await service.from('locations').insert({ id: 'P1', dataset: 'LIVE', org_id: orgX, event_id: eventX });
     });
 
     after(async () => {
@@ -163,11 +174,12 @@ describe('resolveAvailableId dataset-wide collision handling', () => {
         // page-admin-locations.js — must not be left behind, same reasoning
         // as the org/event scoping block above.
         await service.from('locations').delete().eq('id', 'P1').eq('dataset', 'LIVE');
+        await service.from('events').delete().in('id', [eventX, eventY]);
         await service.from('organisations').delete().in('id', [orgX, orgY]);
     });
 
     it('a direct insert of the same (id, dataset) from a different organisation is rejected by the PK constraint', async () => {
-        const { error } = await service.from('locations').insert({ id: 'P1', dataset: 'LIVE', org_id: orgY, event_id: 'event_default' });
+        const { error } = await service.from('locations').insert({ id: 'P1', dataset: 'LIVE', org_id: orgY, event_id: eventY });
         assert.ok(error, 'inserting a colliding id in the same dataset should fail even across organisations');
         assert.equal(error.code, '23505');
     });
@@ -187,8 +199,8 @@ describe('resolveAvailableId dataset-wide collision handling', () => {
 
     it('resolveAvailableId skips multiple already-taken suffixes in sequence', async () => {
         await service.from('locations').insert([
-            { id: 'P2', dataset: 'LIVE', org_id: orgX, event_id: 'event_default' },
-            { id: 'P2-2', dataset: 'LIVE', org_id: orgY, event_id: 'event_default' }
+            { id: 'P2', dataset: 'LIVE', org_id: orgX, event_id: eventX },
+            { id: 'P2-2', dataset: 'LIVE', org_id: orgY, event_id: eventY }
         ]);
         const { id, renamed } = await resolveAvailableId(service, 'LIVE', 'P2');
         assert.equal(renamed, true);

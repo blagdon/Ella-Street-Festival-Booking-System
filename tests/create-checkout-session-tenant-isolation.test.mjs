@@ -29,9 +29,21 @@ function genTestPassword() {
   return randomUUID() + randomUUID().slice(0, 8).toUpperCase() + '!';
 }
 
+// ORG_A/ORG_B differ only before the shared RUN_ID suffix, which a trailing
+// slice would cut off entirely (see rpc-authorisation.test.mjs's identical
+// shortHash). Hashing the full string keeps the distinguishing text
+// participating, so EVENT_A/EVENT_B get distinct booking_prefix values.
+function shortHash(str) {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) >>> 0;
+  return h.toString(36).toUpperCase().padStart(8, '0').slice(-8);
+}
+
 const RUN_ID = Date.now();
 const ORG_A = `e524-org-a-${RUN_ID}`;
 const ORG_B = `e524-org-b-${RUN_ID}`;
+const EVENT_A = `${ORG_A}-evt`;
+const EVENT_B = `${ORG_B}-evt`;
 const OWNER_A_EMAIL = `e524-owner-a-${RUN_ID}@example.test`;
 const OWNER_A_PASSWORD = genTestPassword();
 const STEWARD_A_EMAIL = `e524-steward-a-${RUN_ID}@example.test`;
@@ -45,17 +57,20 @@ const TRADER_B_EMAIL = `e524-trader-b-${RUN_ID}@example.test`;
 let ownerAId, stewardAId;
 let ownerA, stewardA, platformAdmin;
 
-async function seedOrgWithBooking(orgId, bookingId, traderEmail) {
+async function seedOrgWithBooking(orgId, eventId, bookingId, traderEmail) {
   const { error: orgErr } = await service.from('organisations')
     .insert({ id: orgId, name: `E5-24 Test ${orgId}`, slug: orgId, contact_email: 'owner@example.test' });
   assert.equal(orgErr, null, orgErr?.message);
 
+  // Phase 2C (composite bookings_org_event_fkey): a booking's event_id must
+  // now belong to the SAME org_id, so this brand-new org needs its own real
+  // event rather than reusing 'event_default' (which belongs to org_default).
+  const { error: evtErr } = await service.from('events')
+    .insert({ id: eventId, org_id: orgId, name: `${orgId} Event`, slug: `${orgId}-evt`, booking_prefix: shortHash(eventId), status: 'open' });
+  assert.equal(evtErr, null, evtErr?.message);
+
   const { error: bErr } = await service.from('bookings').insert({
-    // event_id: this file never creates a dedicated event for orgId, so it
-    // stays 'event_default' explicitly (matching current default behaviour)
-    // - the cross-org org/event consistency question is separate, deferred
-    // composite-FK work, not something this file's own tests exercise.
-    id: bookingId, org_id: orgId, event_id: 'event_default', status: 'Pending',
+    id: bookingId, org_id: orgId, event_id: eventId, status: 'Pending',
     business_name: 'E5-24 Test Co', owner_name: 'Test Owner',
     email: traderEmail, instance_prefix: `${orgId}-DEV-`,
     stall_type: 'Food', stall_cost: 42,
@@ -74,13 +89,14 @@ async function seedOrgWithBooking(orgId, bookingId, traderEmail) {
   assert.equal(emailTplErr, null, emailTplErr?.message);
 }
 
-async function cleanupOrg(orgId, bookingId, traderEmail) {
+async function cleanupOrg(orgId, eventId, bookingId, traderEmail) {
   await service.from('email_queue').delete().eq('recipient', traderEmail);
   await service.from('sms_queue').delete().eq('org_id', orgId);
   await service.from('audit_logs').delete().eq('org_id', orgId);
   await service.from('bookings').delete().eq('id', bookingId);
   await service.from('email_templates').delete().eq('org_id', orgId);
   await service.from('organisation_members').delete().eq('org_id', orgId);
+  await service.from('events').delete().eq('id', eventId);
   await service.from('organisations').delete().eq('id', orgId);
 }
 
@@ -90,8 +106,8 @@ async function tokenFor(client) {
 }
 
 before(async () => {
-  await seedOrgWithBooking(ORG_A, BOOKING_A, TRADER_A_EMAIL);
-  await seedOrgWithBooking(ORG_B, BOOKING_B, TRADER_B_EMAIL);
+  await seedOrgWithBooking(ORG_A, EVENT_A, BOOKING_A, TRADER_A_EMAIL);
+  await seedOrgWithBooking(ORG_B, EVENT_B, BOOKING_B, TRADER_B_EMAIL);
 
   const { data: ownerCreated, error: ownerErr } = await service.auth.admin.createUser({
     email: OWNER_A_EMAIL, password: OWNER_A_PASSWORD, email_confirm: true,
@@ -134,8 +150,8 @@ before(async () => {
 });
 
 after(async () => {
-  await cleanupOrg(ORG_A, BOOKING_A, TRADER_A_EMAIL);
-  await cleanupOrg(ORG_B, BOOKING_B, TRADER_B_EMAIL);
+  await cleanupOrg(ORG_A, EVENT_A, BOOKING_A, TRADER_A_EMAIL);
+  await cleanupOrg(ORG_B, EVENT_B, BOOKING_B, TRADER_B_EMAIL);
   if (ownerAId) { await service.from('user_roles').delete().eq('id', ownerAId); await service.auth.admin.deleteUser(ownerAId); }
   if (stewardAId) await service.auth.admin.deleteUser(stewardAId);
 });
