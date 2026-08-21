@@ -72,7 +72,7 @@ async function seedOrg(orgId, eventId, bookingId, locationId) {
     email: 'trader@example.test', instance_prefix: `${orgId}-`, booking_type: 'general',
     payment_link_code: `${bookingId}-code`,
   });
-  await service.from('locations').insert({ id: locationId, dataset: 'LIVE', org_id: orgId, lat: 51.0, lng: -0.1 });
+  await service.from('locations').insert({ id: locationId, dataset: 'LIVE', org_id: orgId, event_id: eventId, lat: 51.0, lng: -0.1 });
   await service.from('email_templates').insert({ org_id: orgId, id: 'application_received', subject: `${orgId} subject`, body_html: `${orgId} body`, description: 'test' });
   await service.from('sms_templates').insert({ org_id: orgId, id: 'booking_received', body: `${orgId} sms body`, description: 'test' });
 }
@@ -281,7 +281,7 @@ describe('payments/audit_logs/email_queue/sms_queue RLS is org-scoped (202608060
   // Ground truth seeded directly (service role) with an explicit org_id, so
   // this isolates the RLS question from the separate write-path bug below.
   const payment = { booking_id: BOOKING_B, org_id: ORG_B, paid: true, bank_ref: 'sweep-test', payment_method: 'bank_transfer' };
-  const auditRow = { action: 'sweep_test', target_id: BOOKING_B, user_email: 'sweep@example.test', org_id: ORG_B };
+  const auditRow = { action: 'sweep_test', target_id: BOOKING_B, user_email: 'sweep@example.test', org_id: ORG_B, event_id: EVENT_B };
   const emailRow = { org_id: ORG_B, recipient: 'sweep@example.test', subject: 'sweep', body: 'sweep', status: 'Sent' };
   const smsRow = { org_id: ORG_B, recipient: '+447000000099', body: 'sweep', status: 'Sent' };
   let auditId, emailId, smsId;

@@ -45,6 +45,7 @@ async function seedRow(status, extra = {}) {
       body: 'Retry test body',
       status,
       error_message: status === 'Error' ? 'original failure' : null,
+      org_id: 'org_default',
       ...extra,
     })
     .select()

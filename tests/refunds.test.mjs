@@ -43,6 +43,8 @@ async function seedPaidBooking(id, { stallCost = 100, paid = true, method = 'str
 
   const { error: bErr } = await service.from('bookings').insert({
     id,
+    org_id: 'org_default',
+    event_id: 'event_default',
     status: 'Confirmed',
     business_name: 'Refund Test Co',
     owner_name: 'Test Owner',
@@ -55,6 +57,7 @@ async function seedPaidBooking(id, { stallCost = 100, paid = true, method = 'str
 
   const { error: pErr } = await service.from('payments').insert({
     booking_id: id,
+    org_id: 'org_default',
     paid,
     date_paid: paid ? new Date().toISOString().split('T')[0] : null,
     payment_method: method,

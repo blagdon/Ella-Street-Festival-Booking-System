@@ -38,6 +38,8 @@ before(async () => {
 
   const { error: insertErr } = await service.from('bookings').insert({
     id: bookingId,
+    org_id: 'org_default',
+    event_id: 'event_default',
     status: 'Pending',
     business_name: 'Rejection Test Stall',
     owner_name: 'Rejection Tester',
@@ -89,6 +91,7 @@ describe('booking rejection: status -> reason stored -> email queued -> audit lo
       status,
       error_message: errorMessage,
       instance_prefix: 'ESF26-DEV-',
+      org_id: 'org_default',
     });
     assert.equal(queueErr, null, queueErr?.message);
 
@@ -103,6 +106,8 @@ describe('booking rejection: status -> reason stored -> email queued -> audit lo
       action: 'update_status',
       target_id: bookingId,
       details: { new_status: 'Rejected', reason: REJECTION_REASON },
+      org_id: 'org_default',
+      event_id: 'event_default',
     });
     assert.equal(error, null, error?.message);
 

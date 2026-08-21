@@ -47,12 +47,12 @@ before(async () => {
 
   const { error: bookingsInsertErr } = await service.from('bookings').insert([
     {
-      id: confirmedBookingId, status: 'Confirmed', business_name: 'Sec Test Confirmed',
+      id: confirmedBookingId, org_id: 'org_default', event_id: 'event_default', status: 'Confirmed', business_name: 'Sec Test Confirmed',
       owner_name: 'Secret Owner', email: 'secret@example.test', phone: '07000000001',
       admin_notes: 'secret admin note', instance_prefix: 'ESF26-FOOD-', stall_type: 'Food',
     },
     {
-      id: pendingBookingId, status: 'Pending', business_name: 'Sec Test Pending',
+      id: pendingBookingId, org_id: 'org_default', event_id: 'event_default', status: 'Pending', business_name: 'Sec Test Pending',
       owner_name: 'Secret Owner 2', email: 'secret2@example.test',
       instance_prefix: 'ESF26-FOOD-', stall_type: 'Food',
     },
@@ -84,8 +84,8 @@ before(async () => {
   if (performersInsertErr) throw new Error(`Fixture setup failed (performers): ${performersInsertErr.message}`);
 
   const { error: locationsInsertErr } = await service.from('locations').insert([
-    { id: devLocationId, dataset: 'DEV', lat: 0, lng: 0 },
-    { id: liveLocationId, dataset: 'LIVE', lat: 0, lng: 0 },
+    { id: devLocationId, dataset: 'DEV', lat: 0, lng: 0, org_id: 'org_default', event_id: 'event_default' },
+    { id: liveLocationId, dataset: 'LIVE', lat: 0, lng: 0, org_id: 'org_default', event_id: 'event_default' },
   ]);
   if (locationsInsertErr) throw new Error(`Fixture setup failed (locations): ${locationsInsertErr.message}`);
 
@@ -100,6 +100,7 @@ before(async () => {
   const { error: emailQueueInsertErr } = await service.from('email_queue').insert({
     recipient: emailQueueTestRecipient, subject: 'Sec test email', body: '<p>test</p>',
     status: 'Error', error_message: 'Sec test induced failure', instance_prefix: 'ESF26-FOOD-',
+    org_id: 'org_default',
   });
   if (emailQueueInsertErr) throw new Error(`Fixture setup failed (email_queue): ${emailQueueInsertErr.message}`);
 
@@ -382,9 +383,9 @@ describe('anon access to settings (booking open/closed flags)', () => {
     // the form when the value !== 'true', so anon receiving 'false' here is
     // precisely the condition that shows the closed notice.
     const { error: toggleErr } = await admin.from('settings').upsert({
-      key: 'food_bookings_open', value: 'false',
+      org_id: 'org_default', key: 'food_bookings_open', value: 'false',
       updated_at: new Date().toISOString(), updated_by: adminEmail,
-    });
+    }, { onConflict: 'org_id,key' });
     assert.equal(toggleErr, null, toggleErr?.message);
 
     const { data, error } = await anon.rpc('rpc_get_public_settings', { p_org_id: 'org_default' });
@@ -394,9 +395,9 @@ describe('anon access to settings (booking open/closed flags)', () => {
 
     // Re-open and confirm the round trip back to "form shows".
     const { error: reopenErr } = await admin.from('settings').upsert({
-      key: 'food_bookings_open', value: 'true',
+      org_id: 'org_default', key: 'food_bookings_open', value: 'true',
       updated_at: new Date().toISOString(), updated_by: adminEmail,
-    });
+    }, { onConflict: 'org_id,key' });
     assert.equal(reopenErr, null, reopenErr?.message);
     const { data: reopenedRows } = await anon.rpc('rpc_get_public_settings', { p_org_id: 'org_default' });
     const reopenedValue = (reopenedRows || []).find((r) => r.key === 'food_bookings_open')?.value;
@@ -560,7 +561,7 @@ describe('authenticated table grant narrowing (20260718110000)', () => {
   });
 
   test('authenticated CAN delete from payments (finalizeConfirmation\'s real free-booking cleanup path)', async () => {
-    await service.from('payments').upsert({ booking_id: confirmedBookingId, paid: true }, { onConflict: 'booking_id' });
+    await service.from('payments').upsert({ booking_id: confirmedBookingId, org_id: 'org_default', paid: true }, { onConflict: 'booking_id' });
     const { error } = await admin.from('payments').delete().eq('booking_id', confirmedBookingId);
     assert.equal(error, null, error?.message);
     const { data } = await service.from('payments').select('booking_id').eq('booking_id', confirmedBookingId).maybeSingle();

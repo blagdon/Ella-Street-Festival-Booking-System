@@ -56,7 +56,7 @@ after(async () => {
   // must be mock" interlock valid for every subsequent run.
   for (const key of TOUCHED_KEYS) {
     if (key in originalSettings) {
-      await service.from('settings').upsert({ key, value: originalSettings[key], updated_by: 'test-restore' });
+      await service.from('settings').upsert({ org_id: 'org_default', key, value: originalSettings[key], updated_by: 'test-restore' }, { onConflict: 'org_id,key' });
     } else {
       await service.from('settings').delete().eq('key', key);
     }
@@ -69,8 +69,8 @@ function callSend(body) {
 }
 
 async function setSettings(overrides) {
-  const rows = Object.entries(overrides).map(([key, value]) => ({ key, value, updated_by: 'test' }));
-  const { error } = await service.from('settings').upsert(rows);
+  const rows = Object.entries(overrides).map(([key, value]) => ({ org_id: 'org_default', key, value, updated_by: 'test' }));
+  const { error } = await service.from('settings').upsert(rows, { onConflict: 'org_id,key' });
   if (error) throw error;
 }
 

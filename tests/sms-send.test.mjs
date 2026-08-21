@@ -68,6 +68,7 @@ async function seedRow(status, extra = {}) {
       body: 'Retry test body',
       status,
       error_message: status === 'Error' ? 'original failure' : null,
+      org_id: 'org_default',
       ...extra,
     })
     .select()
@@ -217,6 +218,8 @@ const BULK_PREFIX = 'ESF26-SMSBULK-';
 async function insertBooking(id, overrides = {}) {
   const { error } = await service.from('bookings').insert({
     id,
+    org_id: 'org_default',
+    event_id: 'event_default',
     status: 'Confirmed',
     business_name: `Bulk SMS Test ${id}`,
     owner_name: 'Test Owner',

@@ -120,7 +120,7 @@ after(async () => {
 describe('E5-22: audit_logs INSERT is scoped to the caller\'s own organisation', () => {
   test('Test 1 - Org A\'s admin can write an audit record for Org A (own org)', async () => {
     const { error } = await ownerA.from('audit_logs').insert({
-      action: 'e5_22_test_admin_own_org', target_id: `${TARGET}-1`, details: { probe: true }, org_id: ORG_A,
+      action: 'e5_22_test_admin_own_org', target_id: `${TARGET}-1`, details: { probe: true }, org_id: ORG_A, event_id: 'event_default',
     });
     assert.equal(error, null, error?.message);
 
@@ -130,7 +130,7 @@ describe('E5-22: audit_logs INSERT is scoped to the caller\'s own organisation',
 
   test('Test 2 (critical regression test) - Org A\'s admin CANNOT write an audit record forged to Org B, direct PostgREST bypassing js/audit.js entirely', async () => {
     const { error } = await ownerA.from('audit_logs').insert({
-      action: 'e5_22_test_admin_cross_org', target_id: `${TARGET}-2`, details: { probe: true }, org_id: ORG_B,
+      action: 'e5_22_test_admin_cross_org', target_id: `${TARGET}-2`, details: { probe: true }, org_id: ORG_B, event_id: 'event_default',
     });
     assert.ok(error, 'expected the forged cross-tenant INSERT to be rejected by the database, not merely by js/audit.js');
 
@@ -140,7 +140,7 @@ describe('E5-22: audit_logs INSERT is scoped to the caller\'s own organisation',
 
   test('Test 3 - Org A\'s steward CAN write an audit record for Org A (real, legitimate behaviour - js/page-steward.js does exactly this)', async () => {
     const { error } = await stewardA.from('audit_logs').insert({
-      action: 'e5_22_test_steward_own_org', target_id: `${TARGET}-3`, details: { probe: true }, org_id: ORG_A,
+      action: 'e5_22_test_steward_own_org', target_id: `${TARGET}-3`, details: { probe: true }, org_id: ORG_A, event_id: 'event_default',
     });
     assert.equal(error, null, `stewards must retain real audit-write authority for their own organisation: ${error?.message}`);
 
@@ -150,7 +150,7 @@ describe('E5-22: audit_logs INSERT is scoped to the caller\'s own organisation',
 
   test('Test 3b - Org A\'s steward CANNOT write an audit record forged to Org B', async () => {
     const { error } = await stewardA.from('audit_logs').insert({
-      action: 'e5_22_test_steward_cross_org', target_id: `${TARGET}-3b`, details: { probe: true }, org_id: ORG_B,
+      action: 'e5_22_test_steward_cross_org', target_id: `${TARGET}-3b`, details: { probe: true }, org_id: ORG_B, event_id: 'event_default',
     });
     assert.ok(error, 'expected the forged cross-tenant INSERT to be rejected');
 
@@ -160,12 +160,12 @@ describe('E5-22: audit_logs INSERT is scoped to the caller\'s own organisation',
 
   test('Test 4 - a caller with NO organisation membership anywhere cannot write a tenant audit record, for any org_id', async () => {
     const { error: errA } = await noMembership.from('audit_logs').insert({
-      action: 'e5_22_test_no_membership', target_id: `${TARGET}-4a`, details: { probe: true }, org_id: ORG_A,
+      action: 'e5_22_test_no_membership', target_id: `${TARGET}-4a`, details: { probe: true }, org_id: ORG_A, event_id: 'event_default',
     });
     assert.ok(errA, 'a caller with zero admin/steward membership anywhere must be rejected for Org A');
 
     const { error: errB } = await noMembership.from('audit_logs').insert({
-      action: 'e5_22_test_no_membership', target_id: `${TARGET}-4b`, details: { probe: true }, org_id: ORG_B,
+      action: 'e5_22_test_no_membership', target_id: `${TARGET}-4b`, details: { probe: true }, org_id: ORG_B, event_id: 'event_default',
     });
     assert.ok(errB, 'a caller with zero admin/steward membership anywhere must be rejected for Org B too');
 
@@ -175,7 +175,7 @@ describe('E5-22: audit_logs INSERT is scoped to the caller\'s own organisation',
 
   test('Test 5 (regression guard) - a genuine platform admin can still write an audit record for ANOTHER organisation, matching existing architecture', async () => {
     const { error } = await platformAdmin.from('audit_logs').insert({
-      action: 'e5_22_test_platform_admin_cross_org', target_id: `${TARGET}-5`, details: { probe: true }, org_id: ORG_B,
+      action: 'e5_22_test_platform_admin_cross_org', target_id: `${TARGET}-5`, details: { probe: true }, org_id: ORG_B, event_id: 'event_default',
     });
     assert.equal(error, null, `a genuine platform admin must still be able to write audit records for another organisation (same bypass every other tenant-scoped table already has): ${error?.message}`);
 
@@ -185,7 +185,7 @@ describe('E5-22: audit_logs INSERT is scoped to the caller\'s own organisation',
 
   test('Test 6 - user_email remains server-derived from the JWT, not client-controlled, even under the new policy', async () => {
     const { error } = await ownerA.from('audit_logs').insert({
-      action: 'e5_22_test_user_email', target_id: `${TARGET}-6`, details: {}, org_id: ORG_A,
+      action: 'e5_22_test_user_email', target_id: `${TARGET}-6`, details: {}, org_id: ORG_A, event_id: 'event_default',
       user_email: 'someone-else@evil.test',
     });
     assert.equal(error, null, error?.message);
@@ -216,7 +216,7 @@ describe('E5-22: audit_logs INSERT is scoped to the caller\'s own organisation',
 
   test('Test 8 - an authorized caller retains full control over action/target_id/details for their OWN org (the fix scopes org_id only, by design)', async () => {
     const { error } = await ownerA.from('audit_logs').insert({
-      action: 'anything_the_caller_wants', target_id: 'arbitrary-target-string', details: { arbitrary: 'content', nested: { x: 1 } }, org_id: ORG_A,
+      action: 'anything_the_caller_wants', target_id: 'arbitrary-target-string', details: { arbitrary: 'content', nested: { x: 1 } }, org_id: ORG_A, event_id: 'event_default',
     });
     assert.equal(error, null, 'action/target_id/details are self-reported by design elsewhere in the app (e.g. steward-triggered actions) - this fix intentionally validates only tenant identity (org_id), not content, per its own scope');
 

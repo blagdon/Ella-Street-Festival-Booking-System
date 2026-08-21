@@ -77,7 +77,7 @@ describe('the six directly-rewritten policies (previously plain text, now user_r
   });
 
   test('admin can write settings (Allow admins full access to settings)', async () => {
-    const { error } = await authed.from('settings').upsert({ key: 'role_enum_test_key', value: 'x' });
+    const { error } = await authed.from('settings').upsert({ org_id: 'org_default', key: 'role_enum_test_key', value: 'x' }, { onConflict: 'org_id,key' });
     assert.equal(error, null, `admin upsert must succeed: ${error?.message}`);
     await service.from('settings').delete().eq('key', 'role_enum_test_key');
   });
@@ -149,7 +149,7 @@ describe('admin/steward access to the seven originally check_user_role()-based p
   test('admin can update a booking (Admin full)', async () => {
     const id = `${PREFIX}-0001`;
     await service.from('bookings').insert({
-      id, status: 'Pending', business_name: 'x', owner_name: 'y', email: 'z@example.test',
+      id, org_id: 'org_default', event_id: 'event_default', status: 'Pending', business_name: 'x', owner_name: 'y', email: 'z@example.test',
       instance_prefix: 'ESF26-DEV-', stall_type: 'Food',
     });
     const { error } = await authed.from('bookings').update({ business_name: 'updated' }).eq('id', id);
@@ -159,7 +159,7 @@ describe('admin/steward access to the seven originally check_user_role()-based p
   test('a steward can SELECT bookings but not UPDATE them (Steward access / Admin full)', async () => {
     const id = `${PREFIX}-0002`;
     await service.from('bookings').insert({
-      id, status: 'Pending', business_name: 'x', owner_name: 'y', email: 'z@example.test',
+      id, org_id: 'org_default', event_id: 'event_default', status: 'Pending', business_name: 'x', owner_name: 'y', email: 'z@example.test',
       instance_prefix: 'ESF26-DEV-', stall_type: 'Food',
     });
 

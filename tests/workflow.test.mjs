@@ -26,8 +26,8 @@ before(async () => {
   await service.from('locations').delete().in('id', [locationA, locationB]);
 
   const { error: locationsInsertErr } = await service.from('locations').insert([
-    { id: locationA, dataset: 'LIVE', lat: 0, lng: 0 },
-    { id: locationB, dataset: 'LIVE', lat: 0, lng: 0 },
+    { id: locationA, dataset: 'LIVE', lat: 0, lng: 0, org_id: 'org_default', event_id: 'event_default' },
+    { id: locationB, dataset: 'LIVE', lat: 0, lng: 0, org_id: 'org_default', event_id: 'event_default' },
   ]);
   if (locationsInsertErr) throw new Error(`Fixture setup failed (locations): ${locationsInsertErr.message}`);
 });
@@ -43,6 +43,8 @@ describe('critical admin workflow: create -> confirm -> assign -> move -> pay ->
   test('1. create booking (Pending)', async () => {
     const { data, error } = await service.from('bookings').insert({
       id: bookingId,
+      org_id: 'org_default',
+      event_id: 'event_default',
       status: 'Pending',
       business_name: 'Workflow Test Stall',
       owner_name: 'Workflow Tester',
@@ -80,7 +82,7 @@ describe('critical admin workflow: create -> confirm -> assign -> move -> pay ->
     // no INSERT). Using `service` here matches what actually happens.
     const { error: paymentErr } = await service
       .from('payments')
-      .upsert({ booking_id: bookingId, paid: false }, { onConflict: 'booking_id' });
+      .upsert({ booking_id: bookingId, org_id: 'org_default', paid: false }, { onConflict: 'booking_id' });
     assert.equal(paymentErr, null, paymentErr?.message);
 
     const { data: booking } = await service.from('bookings').select('status').eq('id', bookingId).single();

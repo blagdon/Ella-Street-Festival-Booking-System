@@ -99,7 +99,7 @@ describe('get_next_booking_id concurrency', () => {
 describe('booking_locations_check_conflict trigger', () => {
   test('blocks assigning the same location to two Confirmed bookings in the same dataset', async () => {
     const locationId = 'TESTLOC1';
-    await service.from('locations').insert({ id: locationId, dataset: 'LIVE', lat: 0, lng: 0 });
+    await service.from('locations').insert({ id: locationId, dataset: 'LIVE', lat: 0, lng: 0, org_id: 'org_default', event_id: 'event_default' });
 
     const bookingA = 'ESF26-TESTCONFLICT-A';
     const bookingB = 'ESF26-TESTCONFLICT-B';
@@ -108,6 +108,8 @@ describe('booking_locations_check_conflict trigger', () => {
     for (const id of [bookingA, bookingB]) {
       await service.from('bookings').insert({
         id,
+        org_id: 'org_default',
+        event_id: 'event_default',
         status: 'Confirmed',
         business_name: `Conflict Test ${id}`,
         owner_name: 'Test',
@@ -155,7 +157,7 @@ describe('booking_locations_check_conflict trigger', () => {
   // not a direct table insert, since that's the path the fix protects.
   test('two concurrent rpc_set_booking_locations calls for the same location never both succeed', async () => {
     const locationId = 'TESTLOC-RACE';
-    await service.from('locations').insert({ id: locationId, dataset: 'LIVE', lat: 0, lng: 0 });
+    await service.from('locations').insert({ id: locationId, dataset: 'LIVE', lat: 0, lng: 0, org_id: 'org_default', event_id: 'event_default' });
 
     const bookingA = 'ESF26-TESTCONFLICT-RACE-A';
     const bookingB = 'ESF26-TESTCONFLICT-RACE-B';
@@ -164,6 +166,8 @@ describe('booking_locations_check_conflict trigger', () => {
     for (const id of [bookingA, bookingB]) {
       await service.from('bookings').insert({
         id,
+        org_id: 'org_default',
+        event_id: 'event_default',
         status: 'Confirmed',
         business_name: `Race Test ${id}`,
         owner_name: 'Test',
@@ -203,6 +207,7 @@ describe('claim_pending_emails self-heal (claimed_at, not created_at)', () => {
         body: 'stale test',
         status: 'Processing',
         claimed_at: new Date(Date.now() - 20 * 60 * 1000).toISOString(),
+        org_id: 'org_default',
       })
       .select()
       .single();
@@ -222,6 +227,7 @@ describe('claim_pending_emails self-heal (claimed_at, not created_at)', () => {
         body: 'fresh test',
         status: 'Processing',
         claimed_at: new Date(Date.now() - 2 * 60 * 1000).toISOString(),
+        org_id: 'org_default',
       })
       .select()
       .single();
@@ -426,6 +432,8 @@ describe('cancel-booking', () => {
 
     await service.from('bookings').insert({
       id: bookingId,
+      org_id: 'org_default',
+      event_id: 'event_default',
       status: 'Pending',
       business_name: 'Cancel Test',
       owner_name: 'Test',
@@ -469,6 +477,8 @@ describe('cancel-booking', () => {
 
     await service.from('bookings').insert({
       id: bookingId,
+      org_id: 'org_default',
+      event_id: 'event_default',
       status: 'Pending',
       business_name: 'Cancel SMS Test',
       owner_name: 'Test',
@@ -515,6 +525,8 @@ describe('queue-bulk-email', () => {
     createdBookingIds.push(bookingId);
     await service.from('bookings').insert({
       id: bookingId,
+      org_id: 'org_default',
+      event_id: 'event_default',
       status: 'Confirmed',
       business_name: 'Bulk Test',
       owner_name: 'Test',
@@ -557,6 +569,8 @@ describe('bookings.check_email_format', () => {
 
     await service.from('bookings').insert({
       id: bookingId,
+      org_id: 'org_default',
+      event_id: 'event_default',
       status: 'Confirmed',
       business_name: 'Null Email Test',
       owner_name: 'Test',

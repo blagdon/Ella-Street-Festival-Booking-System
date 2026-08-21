@@ -94,8 +94,14 @@ async function pollUntilResolved(table, id, { timeoutMs = 45000, intervalMs = 50
 }
 
 async function insertBooking(id, overrides = {}) {
+  // event_id is incidental to this file's purpose (proving org_id reaches
+  // the right send-provider config) - every call site below supplies its
+  // own org_id explicitly via overrides, but none needs a distinct event,
+  // so this stays 'event_default' explicitly rather than fabricating a
+  // per-org event this file otherwise has no use for.
   const { error } = await service.from('bookings').insert({
     id,
+    event_id: 'event_default',
     status: 'Confirmed',
     business_name: `Org Propagation Test ${id}`,
     owner_name: 'Org Propagation Tester',

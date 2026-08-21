@@ -33,7 +33,7 @@ function performerFixture(status) {
 }
 
 before(async () => {
-  await service.from('locations').upsert({ id: LOCATION_ID, dataset: 'DEV', lat: 0, lng: 0 });
+  await service.from('locations').upsert({ id: LOCATION_ID, dataset: 'DEV', lat: 0, lng: 0, org_id: 'org_default', event_id: 'event_default' });
 
   const { data: applicant, error: aErr } = await service.from('performers').insert(performerFixture('Applied')).select('id').single();
   assert.equal(aErr, null, aErr?.message);

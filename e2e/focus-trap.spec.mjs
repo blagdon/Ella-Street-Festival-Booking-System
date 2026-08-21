@@ -33,6 +33,8 @@ test.beforeAll(async () => {
 
   const { error } = await service.from('bookings').insert({
     id: bookingId,
+    org_id: 'org_default',
+    event_id: 'event_default',
     status: 'Confirmed',
     business_name: 'Focus Trap Test Stall',
     owner_name: 'Focus Trap Tester',
@@ -43,7 +45,7 @@ test.beforeAll(async () => {
   });
   if (error) throw new Error(`Fixture setup failed: ${error.message}`);
 
-  const { error: paymentErr } = await service.from('payments').upsert({ booking_id: bookingId, paid: false }, { onConflict: 'booking_id' });
+  const { error: paymentErr } = await service.from('payments').upsert({ booking_id: bookingId, org_id: 'org_default', paid: false }, { onConflict: 'booking_id' });
   if (paymentErr) throw new Error(`Fixture setup failed (payments): ${paymentErr.message}`);
 });
 
