@@ -251,31 +251,14 @@ describe('backwards compatibility', () => {
     assert.ok(Array.isArray(data), 'user_roles should still be queryable');
   });
 
-  it('new booking insert without specifying org_id/event_id gets correct defaults', async () => {
-    const testId = `ESF26-DEV-FOUNDATION-TEST-${Date.now()}`;
-    const { error: insErr } = await service.from('bookings').insert({
-      id:              testId,
-      instance_prefix: 'ESF26-DEV-',
-      status:          'Pending',
-      business_name:   'Foundation Test Co',
-      owner_name:      'Test Owner',
-      email:           'foundation-test@example.test',
-    });
-    assert.ifError(insErr);
-
-    const { data, error: selErr } = await service
-      .from('bookings')
-      .select('id, org_id, event_id, instance_prefix')
-      .eq('id', testId)
-      .single();
-    assert.ifError(selErr);
-    assert.equal(data.org_id,          'org_default',   'org_id default should apply');
-    assert.equal(data.event_id,        'event_default',  'event_id default should apply');
-    assert.equal(data.instance_prefix, 'ESF26-DEV-',    'instance_prefix should be preserved');
-
-    // Clean up
-    await service.from('bookings').delete().eq('id', testId);
-  });
+  // The former 'new booking insert without specifying org_id/event_id gets
+  // correct defaults' test was removed here (Phase 2B): it verified Phase 1
+  // scaffolding behaviour (an omitted org_id/event_id silently landing on
+  // 'org_default'/'event_default') that Phase 2B deliberately removed by
+  // dropping both column defaults. Its premise is now false by design, not
+  // a regression. The replacement assertion - omitting either column on
+  // INSERT must now fail NOT NULL - lives in
+  // tests/tenant-scope-defaults-removal-readiness.test.mjs.
 
   it('org_default settings are unaffected by other organisations having their own rows for the same key (Phase 2)', async () => {
     // Was "read by key name alone, no org_id filter required" back when

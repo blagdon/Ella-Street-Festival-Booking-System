@@ -41,6 +41,8 @@ after(async () => {
 async function insertBooking(id) {
   const { error } = await service.from('bookings').insert({
     id,
+    org_id: 'org_default',
+    event_id: 'event_default',
     status: 'Pending',
     business_name: 'Privilege Test Co',
     owner_name: 'Test Owner',
@@ -127,6 +129,8 @@ describe('bookings.status is constrained (20260720110000)', () => {
     const id = `${PREFIX}-0004`;
     const { error } = await service.from('bookings').insert({
       id,
+      org_id: 'org_default',
+      event_id: 'event_default',
       status: 'Confrimed', // deliberate typo — the exact failure this guards
       business_name: 'Typo Test Co',
       owner_name: 'Test Owner',
@@ -151,6 +155,8 @@ describe('bookings.status is constrained (20260720110000)', () => {
     const id = `${PREFIX}-0005`;
     const { error } = await service.from('bookings').insert({
       id,
+      org_id: 'org_default',
+      event_id: 'event_default',
       status: null,
       business_name: 'Null Status Co',
       owner_name: 'Test Owner',
@@ -178,6 +184,8 @@ describe('bookings.status is constrained (20260720110000)', () => {
     const id = `${PREFIX}-0007`;
     const { error } = await service.from('bookings').insert({
       id,
+      org_id: 'org_default',
+      event_id: 'event_default',
       business_name: 'Default Status Co',
       owner_name: 'Test Owner',
       email: 'priv-test@example.test',
@@ -209,7 +217,7 @@ describe('anon cannot execute rpc_set_booking_locations (20260720110100)', () =>
     const id = `${PREFIX}-0008`;
     await insertBooking(id);
     await service.from('bookings').update({ status: 'Confirmed' }).eq('id', id);
-    await service.from('locations').upsert({ id: 'TESTLOC-PRIV', dataset: 'LIVE', lat: 0, lng: 0 });
+    await service.from('locations').upsert({ id: 'TESTLOC-PRIV', dataset: 'LIVE', lat: 0, lng: 0, org_id: 'org_default', event_id: 'event_default' });
 
     const { error } = await authed.rpc('rpc_set_booking_locations', {
       p_booking_id: id,
@@ -230,6 +238,8 @@ describe('audit_logs.user_email is server-stamped (20260720100100)', () => {
       user_email: 'someone-else@evil.test',
       details: JSON.stringify({ forged: true }),
       instance: 'DEV',
+      org_id: 'org_default',
+      event_id: 'event_default',
     });
     assert.equal(error, null, error?.message);
 
@@ -257,6 +267,8 @@ describe('audit_logs.user_email is server-stamped (20260720100100)', () => {
       user_email: 'system_edge_function',
       details: JSON.stringify({ serverSide: true }),
       instance: 'DEV',
+      org_id: 'org_default',
+      event_id: 'event_default',
     });
     assert.equal(error, null, error?.message);
 
@@ -281,6 +293,8 @@ describe('audit_logs.user_email is server-stamped (20260720100100)', () => {
       target_id: AUDIT_TARGET,
       details: JSON.stringify({ noEmail: true }),
       instance: 'DEV',
+      org_id: 'org_default',
+      event_id: 'event_default',
     });
     assert.equal(error, null, `audit insert must not fail without user_email: ${error?.message}`);
   });

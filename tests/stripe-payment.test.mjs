@@ -71,6 +71,8 @@ const callFunction = callEdgeFunction;
 async function insertBooking(id, overrides = {}) {
   const { error } = await service.from('bookings').insert({
     id,
+    org_id: 'org_default',
+    event_id: 'event_default',
     status: 'Pending',
     business_name: `Stripe Test ${id}`,
     owner_name: 'Test Owner',
@@ -534,7 +536,7 @@ describe('get-payment-link', () => {
   });
 
   test('turning on stripe_test_mode forces Test Mode for a Food/General booking too', async () => {
-    const { error: settingErr } = await service.from('settings').upsert({ key: 'stripe_test_mode', value: 'true' });
+    const { error: settingErr } = await service.from('settings').upsert({ org_id: 'org_default', key: 'stripe_test_mode', value: 'true' }, { onConflict: 'org_id,key' });
     assert.equal(settingErr, null, settingErr?.message);
 
     const id = `${PREFIX}FORCEDTESTMODE`;

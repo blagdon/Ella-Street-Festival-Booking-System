@@ -65,7 +65,9 @@ async function seedOrgWithPaidBooking(orgId, bookingId, paymentIntentId) {
   // rejects the synthetic payment_intent id below with Stripe's own "No such
   // PaymentIntent" error. No real Stripe object is ever created; only rejected.
   const { error: bErr } = await service.from('bookings').insert({
-    id: bookingId, org_id: orgId, status: 'Confirmed',
+    // event_id: this file never creates a dedicated event for orgId, so it
+    // stays 'event_default' explicitly, matching current default behaviour.
+    id: bookingId, org_id: orgId, event_id: 'event_default', status: 'Confirmed',
     business_name: 'E5-21 Test Co', owner_name: 'Test Owner',
     email: 'trader@example.test', instance_prefix: `${orgId}-DEV-`,
     stall_type: 'Food', stall_cost: 100,
@@ -74,7 +76,7 @@ async function seedOrgWithPaidBooking(orgId, bookingId, paymentIntentId) {
   assert.equal(bErr, null, bErr?.message);
 
   const { error: pErr } = await service.from('payments').insert({
-    booking_id: bookingId, paid: true, date_paid: new Date().toISOString().split('T')[0],
+    booking_id: bookingId, org_id: orgId, paid: true, date_paid: new Date().toISOString().split('T')[0],
     payment_method: 'stripe', editor: 'test',
   });
   assert.equal(pErr, null, pErr?.message);

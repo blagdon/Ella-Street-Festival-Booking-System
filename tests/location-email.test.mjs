@@ -45,11 +45,13 @@ before(async () => {
   await service.from('bookings').delete().eq('id', bookingId);
   await service.from('locations').delete().eq('id', locationId);
 
-  const { error: locErr } = await service.from('locations').insert({ id: locationId, dataset: 'LIVE', lat: 0, lng: 0 });
+  const { error: locErr } = await service.from('locations').insert({ id: locationId, dataset: 'LIVE', lat: 0, lng: 0, org_id: 'org_default', event_id: 'event_default' });
   if (locErr) throw new Error(`Fixture setup failed (locations): ${locErr.message}`);
 
   const { error: insertErr } = await service.from('bookings').insert({
     id: bookingId,
+    org_id: 'org_default',
+    event_id: 'event_default',
     status: 'Confirmed',
     business_name: 'Location Email Test Stall',
     owner_name: 'Location Email Tester',
@@ -115,6 +117,7 @@ describe('location allocation email: template fetched -> email queued -> audit l
       status,
       error_message: errorMessage,
       instance_prefix: 'ESF26-DEV-',
+      org_id: 'org_default',
     });
     assert.equal(queueErr, null, queueErr?.message);
 
@@ -129,6 +132,8 @@ describe('location allocation email: template fetched -> email queued -> audit l
       action: 'location_email_queued',
       target_id: bookingId,
       details: { location_ids: [locationId] },
+      org_id: 'org_default',
+      event_id: 'event_default',
     });
     assert.equal(error, null, error?.message);
 

@@ -51,7 +51,11 @@ async function seedOrgWithBooking(orgId, bookingId, traderEmail) {
   assert.equal(orgErr, null, orgErr?.message);
 
   const { error: bErr } = await service.from('bookings').insert({
-    id: bookingId, org_id: orgId, status: 'Pending',
+    // event_id: this file never creates a dedicated event for orgId, so it
+    // stays 'event_default' explicitly (matching current default behaviour)
+    // - the cross-org org/event consistency question is separate, deferred
+    // composite-FK work, not something this file's own tests exercise.
+    id: bookingId, org_id: orgId, event_id: 'event_default', status: 'Pending',
     business_name: 'E5-24 Test Co', owner_name: 'Test Owner',
     email: traderEmail, instance_prefix: `${orgId}-DEV-`,
     stall_type: 'Food', stall_cost: 42,

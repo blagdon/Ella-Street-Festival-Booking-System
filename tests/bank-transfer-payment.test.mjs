@@ -20,6 +20,8 @@ const callFunction = callEdgeFunction;
 async function insertBooking(id, overrides = {}) {
   const { error } = await service.from('bookings').insert({
     id,
+    org_id: 'org_default',
+    event_id: 'event_default',
     status: 'Pending',
     business_name: `Bank Transfer Test ${id}`,
     owner_name: 'Test Owner',
@@ -247,6 +249,8 @@ describe('audit trail for bank-transfer actions', () => {
         user_email: adminEmail,
         details: row.details,
         instance: 'ESF26-DEV-',
+        org_id: 'org_default',
+        event_id: 'event_default',
       });
       assert.equal(error, null, `${row.action}: ${error?.message}`);
     }
@@ -263,7 +267,8 @@ describe('audit trail for bank-transfer actions', () => {
   test('anon cannot write audit_logs', async () => {
     const freshAnon = createClient(url, anonKey);
     const { error } = await freshAnon.from('audit_logs').insert({
-      action: 'bank_transfer_recorded', target_id: 'x', user_email: 'anon@example.test', details: {}, instance: 'ESF26-DEV-'
+      action: 'bank_transfer_recorded', target_id: 'x', user_email: 'anon@example.test', details: {}, instance: 'ESF26-DEV-',
+      org_id: 'org_default', event_id: 'event_default',
     });
     assert.ok(error, 'expected anon to be rejected inserting into audit_logs');
   });

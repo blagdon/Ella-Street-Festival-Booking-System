@@ -40,6 +40,8 @@ describe('booking_type normalisation', () => {
     const testId = `ESF26-DEV-PH2-TYPE-${Date.now()}`;
     const { error: insErr } = await service.from('bookings').insert({
       id: testId,
+      org_id: 'org_default',
+      event_id: 'event_default',
       instance_prefix: 'ESF26-DEV-',
       status: 'Pending',
       business_name: 'Phase2 Type Test',

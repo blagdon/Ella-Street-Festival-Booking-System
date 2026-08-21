@@ -73,7 +73,9 @@ async function seedOrgWithDocument(orgId, bookingId, docPath, docContent, bucket
   assert.equal(orgErr, null, orgErr?.message);
 
   const { error: bErr } = await service.from('bookings').insert({
-    id: bookingId, org_id: orgId, status: 'Confirmed',
+    // event_id: this file never creates a dedicated event for orgId, so it
+    // stays 'event_default' explicitly, matching current default behaviour.
+    id: bookingId, org_id: orgId, event_id: 'event_default', status: 'Confirmed',
     business_name: 'E5-01/02 Test Co', owner_name: 'Test Owner',
     email: 'trader@example.test', instance_prefix: `${orgId}-DEV-`,
     stall_type: 'Food', stall_cost: 100,
