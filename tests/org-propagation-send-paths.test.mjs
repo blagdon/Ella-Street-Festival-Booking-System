@@ -58,9 +58,21 @@ function genTestPassword() {
   return randomUUID() + randomUUID().slice(0, 8).toUpperCase() + '!';
 }
 
+// ORG_A/ORG_B differ only before the shared RUN_ID suffix, which a trailing
+// slice would cut off entirely (see rpc-authorisation.test.mjs's identical
+// shortHash). Hashing the full string keeps the distinguishing text
+// participating, so EVENT_A/EVENT_B get distinct booking_prefix values.
+function shortHash(str) {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) >>> 0;
+  return h.toString(36).toUpperCase().padStart(8, '0').slice(-8);
+}
+
 const RUN_ID = Date.now();
 const ORG_A = `orgprop-a-${RUN_ID}`;
 const ORG_B = `orgprop-b-${RUN_ID}`;
+const EVENT_A = `${ORG_A}-evt`;
+const EVENT_B = `${ORG_B}-evt`;
 const OWNER_A_EMAIL = `orgprop-owner-a-${RUN_ID}@example.test`;
 const OWNER_A_PASSWORD = genTestPassword();
 
@@ -96,9 +108,10 @@ async function pollUntilResolved(table, id, { timeoutMs = 45000, intervalMs = 50
 async function insertBooking(id, overrides = {}) {
   // event_id is incidental to this file's purpose (proving org_id reaches
   // the right send-provider config) - every call site below supplies its
-  // own org_id explicitly via overrides, but none needs a distinct event,
-  // so this stays 'event_default' explicitly rather than fabricating a
-  // per-org event this file otherwise has no use for.
+  // own org_id explicitly via overrides, and (Phase 2C: composite
+  // bookings_org_event_fkey requires event_id to belong to the SAME org_id)
+  // must now also supply that org's own event_id via overrides, rather than
+  // this default 'event_default', which only belongs to org_default.
   const { error } = await service.from('bookings').insert({
     id,
     event_id: 'event_default',
@@ -131,6 +144,15 @@ before(async () => {
   const { error: orgBErr } = await service.from('organisations')
     .insert({ id: ORG_B, name: `Org Propagation Test ${ORG_B}`, slug: ORG_B, contact_email: 'owner@example.test' });
   assert.equal(orgBErr, null, orgBErr?.message);
+
+  // Phase 2C (composite bookings_org_event_fkey): a booking's event_id must
+  // now belong to the SAME org_id, so ORG_A/ORG_B each need their own real
+  // event rather than reusing 'event_default' (which belongs to org_default).
+  const { error: eventsErr } = await service.from('events').insert([
+    { id: EVENT_A, org_id: ORG_A, name: `${ORG_A} Event`, slug: `${ORG_A}-evt`, booking_prefix: shortHash(EVENT_A), status: 'open' },
+    { id: EVENT_B, org_id: ORG_B, name: `${ORG_B} Event`, slug: `${ORG_B}-evt`, booking_prefix: shortHash(EVENT_B), status: 'open' },
+  ]);
+  assert.equal(eventsErr, null, eventsErr?.message);
 
   // Org A: SMS uses a bogus, uniquely-named provider (fails locally, no
   // network). Zoho is left entirely unconfigured (fails with the distinct
@@ -183,6 +205,7 @@ after(async () => {
   await service.from('bookings').delete().like('id', `%-ORGPROP-%-${RUN_ID}`);
   await service.from('settings').delete().in('org_id', [ORG_A, ORG_B]);
   await service.from('organisation_members').delete().in('org_id', [ORG_A, ORG_B]);
+  await service.from('events').delete().in('id', [EVENT_A, EVENT_B]);
   await service.from('organisations').delete().in('id', [ORG_A, ORG_B]);
   if (ownerAId) await service.auth.admin.deleteUser(ownerAId);
 });
@@ -247,26 +270,42 @@ describe('retry-queued-email: a retried row uses ITS OWN organisation\'s Zoho co
   });
 });
 
-describe('queue-bulk-sms: per-row org-propagation in a mixed-organisation batch', () => {
+describe('queue-bulk-sms: per-row org-propagation across two organisations sharing one drain', () => {
   const BOOKING_A = `ESF26-ORGPROP-SMSA-${RUN_ID}`;
   const BOOKING_B = `ESF26-ORGPROP-SMSB-${RUN_ID}`;
   const PHONE_A = '+447700900452';
   const PHONE_B = '+447700900453';
 
   before(async () => {
-    await insertBooking(BOOKING_A, { phone: PHONE_A, org_id: ORG_A });
-    await insertBooking(BOOKING_B, { phone: PHONE_B, org_id: ORG_B });
+    await insertBooking(BOOKING_A, { phone: PHONE_A, org_id: ORG_A, event_id: EVENT_A });
+    await insertBooking(BOOKING_B, { phone: PHONE_B, org_id: ORG_B, event_id: EVENT_B });
   });
   after(async () => {
     await service.from('bookings').delete().in('id', [BOOKING_A, BOOKING_B]);
   });
 
-  test('a single bulk send spanning two organisations attributes each send to its OWN organisation\'s provider, never a shared/global one', async () => {
-    const { status, json } = await callEdgeFunction('queue-bulk-sms',
-      { bookingIds: [BOOKING_A, BOOKING_B], body: 'org propagation bulk sms test' },
-      await tokenFor(platformAdmin));
-    assert.equal(status, 200, JSON.stringify(json));
-    assert.equal(json.queued, 2, JSON.stringify(json));
+  test('two same-event bulk sends (one per organisation) each attribute their send to their OWN organisation\'s provider, never a shared/global one', async () => {
+    // Phase 2C (composite bookings_org_event_fkey / locations_org_event_fkey):
+    // an event now belongs to exactly one organisation, and this function's
+    // own pre-existing "resolved bookings span more than one event" guard
+    // (Multi-Event Phase 2) already rejects a single call mixing two
+    // organisations' bookings - so ORG_A's and ORG_B's bookings can no
+    // longer be queued via ONE call. The actual regression this test
+    // protects lives one level down, in the SHARED background drain
+    // (drainPendingSms / claim_pending_sms) that both calls' queued rows are
+    // claimed from together: sendOneSms must use each row's OWN org_id, not
+    // a single closure variable that would leak one call's org onto the
+    // other's rows. Firing both calls together (not awaited sequentially)
+    // keeps their drains genuinely overlapping, exactly the scenario the
+    // per-row (not per-request) fix protects against.
+    const [callA, callB] = await Promise.all([
+      callEdgeFunction('queue-bulk-sms', { bookingIds: [BOOKING_A], body: 'org propagation bulk sms test' }, await tokenFor(platformAdmin)),
+      callEdgeFunction('queue-bulk-sms', { bookingIds: [BOOKING_B], body: 'org propagation bulk sms test' }, await tokenFor(platformAdmin)),
+    ]);
+    assert.equal(callA.status, 200, JSON.stringify(callA.json));
+    assert.equal(callA.json.queued, 1, JSON.stringify(callA.json));
+    assert.equal(callB.status, 200, JSON.stringify(callB.json));
+    assert.equal(callB.json.queued, 1, JSON.stringify(callB.json));
 
     const { data: rows } = await service.from('sms_queue').select('id, recipient').in('recipient', [PHONE_A, PHONE_B]);
     const rowA = rows.find((r) => r.recipient === PHONE_A);
@@ -285,26 +324,42 @@ describe('queue-bulk-sms: per-row org-propagation in a mixed-organisation batch'
   });
 });
 
-describe('queue-bulk-email: per-row org-propagation in a mixed-organisation batch', () => {
+describe('queue-bulk-email: per-row org-propagation across two organisations sharing one drain', () => {
   const BOOKING_A = `ESF26-ORGPROP-EMAILA-${RUN_ID}`;
   const BOOKING_B = `ESF26-ORGPROP-EMAILB-${RUN_ID}`;
   const RECIPIENT_A = `orgprop-bulk-email-a-${RUN_ID}@example.test`;
   const RECIPIENT_B = `orgprop-bulk-email-b-${RUN_ID}@example.test`;
 
   before(async () => {
-    await insertBooking(BOOKING_A, { email: RECIPIENT_A, org_id: ORG_A });
-    await insertBooking(BOOKING_B, { email: RECIPIENT_B, org_id: ORG_B });
+    await insertBooking(BOOKING_A, { email: RECIPIENT_A, org_id: ORG_A, event_id: EVENT_A });
+    await insertBooking(BOOKING_B, { email: RECIPIENT_B, org_id: ORG_B, event_id: EVENT_B });
   });
   after(async () => {
     await service.from('bookings').delete().in('id', [BOOKING_A, BOOKING_B]);
   });
 
-  test('a single bulk send spanning two organisations attributes each send to its OWN organisation\'s Zoho configuration, never a shared/global one', async () => {
-    const { status, json } = await callEdgeFunction('queue-bulk-email',
-      { bookingIds: [BOOKING_A, BOOKING_B], subject: 'Org propagation bulk email test', body: 'test body' },
-      await tokenFor(platformAdmin));
-    assert.equal(status, 200, JSON.stringify(json));
-    assert.equal(json.queued, 2, JSON.stringify(json));
+  test('two same-event bulk sends (one per organisation) each attribute their send to their OWN organisation\'s Zoho configuration, never a shared/global one', async () => {
+    // Phase 2C (composite bookings_org_event_fkey / locations_org_event_fkey):
+    // an event now belongs to exactly one organisation, and this function's
+    // own pre-existing "resolved bookings span more than one event" guard
+    // (Multi-Event Phase 2) already rejects a single call mixing two
+    // organisations' bookings - so ORG_A's and ORG_B's bookings can no
+    // longer be queued via ONE call. The actual regression this test
+    // protects lives one level down, in the SHARED background drain
+    // (drainPendingEmails) that both calls' queued rows are claimed from
+    // together: the per-row org_id must drive Zoho config selection, not a
+    // single closure variable that would leak one call's org onto the
+    // other's rows. Firing both calls together (not awaited sequentially)
+    // keeps their drains genuinely overlapping, exactly the scenario the
+    // per-row (not per-request) fix protects against.
+    const [callA, callB] = await Promise.all([
+      callEdgeFunction('queue-bulk-email', { bookingIds: [BOOKING_A], subject: 'Org propagation bulk email test', body: 'test body' }, await tokenFor(platformAdmin)),
+      callEdgeFunction('queue-bulk-email', { bookingIds: [BOOKING_B], subject: 'Org propagation bulk email test', body: 'test body' }, await tokenFor(platformAdmin)),
+    ]);
+    assert.equal(callA.status, 200, JSON.stringify(callA.json));
+    assert.equal(callA.json.queued, 1, JSON.stringify(callA.json));
+    assert.equal(callB.status, 200, JSON.stringify(callB.json));
+    assert.equal(callB.json.queued, 1, JSON.stringify(callB.json));
 
     const { data: rows } = await service.from('email_queue').select('id, recipient').in('recipient', [RECIPIENT_A, RECIPIENT_B]);
     const rowA = rows.find((r) => r.recipient === RECIPIENT_A);

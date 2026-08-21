@@ -39,9 +39,21 @@ function genTestPassword() {
   return randomUUID() + randomUUID().slice(0, 8).toUpperCase() + '!';
 }
 
+// ORG_A/ORG_B differ only before the shared RUN_ID suffix, which a trailing
+// slice would cut off entirely (see rpc-authorisation.test.mjs's identical
+// shortHash). Hashing the full string keeps the distinguishing text
+// participating, so EVENT_A/EVENT_B get distinct booking_prefix values.
+function shortHash(str) {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) >>> 0;
+  return h.toString(36).toUpperCase().padStart(8, '0').slice(-8);
+}
+
 const RUN_ID = Date.now();
 const ORG_A = `e521-org-a-${RUN_ID}`;
 const ORG_B = `e521-org-b-${RUN_ID}`;
+const EVENT_A = `${ORG_A}-evt`;
+const EVENT_B = `${ORG_B}-evt`;
 const OWNER_A_EMAIL = `e521-owner-a-${RUN_ID}@example.test`;
 const OWNER_A_PASSWORD = genTestPassword();
 const STEWARD_A_EMAIL = `e521-steward-a-${RUN_ID}@example.test`;
@@ -53,10 +65,17 @@ const BOOKING_B = `E521-B-${RUN_ID}`;
 let ownerAId, stewardAId;
 let ownerA, stewardA;
 
-async function seedOrgWithPaidBooking(orgId, bookingId, paymentIntentId) {
+async function seedOrgWithPaidBooking(orgId, eventId, bookingId, paymentIntentId) {
   const { error: orgErr } = await service.from('organisations')
     .insert({ id: orgId, name: `E5-21 Test ${orgId}`, slug: orgId, contact_email: 'owner@example.test' });
   assert.equal(orgErr, null, orgErr?.message);
+
+  // Phase 2C (composite bookings_org_event_fkey): a booking's event_id must
+  // now belong to the SAME org_id, so this brand-new org needs its own real
+  // event rather than reusing 'event_default' (which belongs to org_default).
+  const { error: evtErr } = await service.from('events')
+    .insert({ id: eventId, org_id: orgId, name: `${orgId} Event`, slug: `${orgId}-evt`, booking_prefix: shortHash(eventId), status: 'open' });
+  assert.equal(evtErr, null, evtErr?.message);
 
   // -DEV- forces Stripe Test mode (see _shared/stripe.ts's resolveStripeMode)
   // regardless of this brand-new org's settings, and the stripe_secret_key_test
@@ -65,9 +84,7 @@ async function seedOrgWithPaidBooking(orgId, bookingId, paymentIntentId) {
   // rejects the synthetic payment_intent id below with Stripe's own "No such
   // PaymentIntent" error. No real Stripe object is ever created; only rejected.
   const { error: bErr } = await service.from('bookings').insert({
-    // event_id: this file never creates a dedicated event for orgId, so it
-    // stays 'event_default' explicitly, matching current default behaviour.
-    id: bookingId, org_id: orgId, event_id: 'event_default', status: 'Confirmed',
+    id: bookingId, org_id: orgId, event_id: eventId, status: 'Confirmed',
     business_name: 'E5-21 Test Co', owner_name: 'Test Owner',
     email: 'trader@example.test', instance_prefix: `${orgId}-DEV-`,
     stall_type: 'Food', stall_cost: 100,
@@ -88,11 +105,12 @@ async function seedOrgWithPaidBooking(orgId, bookingId, paymentIntentId) {
   }
 }
 
-async function cleanupOrg(orgId, bookingId) {
+async function cleanupOrg(orgId, eventId, bookingId) {
   await service.from('payments').delete().eq('booking_id', bookingId);
   await service.from('bookings').delete().eq('id', bookingId);
   await service.from('settings').delete().eq('org_id', orgId);
   await service.from('organisation_members').delete().eq('org_id', orgId);
+  await service.from('events').delete().eq('id', eventId);
   await service.from('organisations').delete().eq('id', orgId);
 }
 
@@ -102,8 +120,8 @@ async function tokenFor(client) {
 }
 
 before(async () => {
-  await seedOrgWithPaidBooking(ORG_A, BOOKING_A, `pi_test_e521_a_${RUN_ID}`);
-  await seedOrgWithPaidBooking(ORG_B, BOOKING_B, `pi_test_e521_b_${RUN_ID}`);
+  await seedOrgWithPaidBooking(ORG_A, EVENT_A, BOOKING_A, `pi_test_e521_a_${RUN_ID}`);
+  await seedOrgWithPaidBooking(ORG_B, EVENT_B, BOOKING_B, `pi_test_e521_b_${RUN_ID}`);
 
   const { data: ownerCreated, error: ownerErr } = await service.auth.admin.createUser({
     email: OWNER_A_EMAIL, password: OWNER_A_PASSWORD, email_confirm: true,
@@ -135,8 +153,8 @@ before(async () => {
 });
 
 after(async () => {
-  await cleanupOrg(ORG_A, BOOKING_A);
-  await cleanupOrg(ORG_B, BOOKING_B);
+  await cleanupOrg(ORG_A, EVENT_A, BOOKING_A);
+  await cleanupOrg(ORG_B, EVENT_B, BOOKING_B);
   if (ownerAId) await service.auth.admin.deleteUser(ownerAId);
   if (stewardAId) await service.auth.admin.deleteUser(stewardAId);
 });
