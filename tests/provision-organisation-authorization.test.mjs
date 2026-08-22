@@ -58,6 +58,13 @@ async function tokenFor(client) {
 // FK-safe order, matching provision-organisation's own rollback catch block
 // and phase3-provisioning.test.mjs / e2e/provisioning.spec.mjs's cleanup.
 async function cleanupProvisionedOrg(orgSlug, ownerEmail) {
+  // audit_logs first: a successful provisioning run always writes a
+  // provision_organisation row (provision-organisation/index.ts's own
+  // Step E) that nothing else here would ever clean up (no FK, no cascade)
+  // once the organisation below is deleted - the exact gap that let TEST
+  // accumulate orphaned audit_logs rows from this file's own "platform
+  // admin" test (Phase 2D Part 2 remediation).
+  await service.from('audit_logs').delete().eq('org_id', orgSlug);
   await service.from('events').delete().eq('org_id', orgSlug);
   await service.from('settings').delete().eq('org_id', orgSlug);
   await service.from('email_templates').delete().eq('org_id', orgSlug);
