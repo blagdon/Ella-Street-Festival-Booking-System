@@ -85,6 +85,7 @@ decisions are all about tenant isolation.
 13. [TypeScript checking is per-file opt-in, not a repo-wide `checkJs: true`](#13-typescript-checking-is-per-file-opt-in-not-a-repo-wide-checkjs-true)
 14. [`email_templates`/`sms_templates` use a composite `(org_id, id)` primary key](#14-email_templatessms_templates-use-a-composite-org_id-id-primary-key)
 15. [`locations` keeps its composite `(id, dataset)` primary key with no `org_id`](#15-locations-keeps-its-composite-id-dataset-primary-key-with-no-org_id)
+16. [Phase 2B–2E: tenant/event integrity closed with database constraints wherever safely possible from this repo alone](#16-phase-2b2e-tenantevent-integrity-closed-with-database-constraints-wherever-safely-possible-from-this-repo-alone)
 
 ---
 
@@ -632,3 +633,104 @@ database to reject a cross-organisation clash the way it would on
 `email_templates`/`sms_templates`. If `locations` ever gains enough further
 dependents to make a key migration worthwhile on its own terms, decision 14's
 `(org_id, id)` shape is the precedent to follow, not a new design.
+
+**Revisited (2026-08-22, Phase 2E discovery).** Re-examined as part of the Phase
+2B–2E tenant-integrity hardening sequence (Decision 16) to determine whether this
+should finally be fixed. The conclusion held, for a stronger and more specific
+reason than originally on record: `schedules_location_fkey`, a live foreign key
+into this exact `(id, dataset)` key, is owned by a separate application
+(`ellafestperformersadmin.vercel.app`) this repo cannot modify or fully audit, and
+`schedules` has no `org_id` column of its own to migrate alongside a key change.
+Changing `locations`' primary key would require coordinating a schema change in a
+codebase outside this repo's control — not just a bigger migration, a cross-system
+one. Production data was also checked directly: only `org_default` has ever
+populated `locations` (140 rows; the other three organisations have none), so zero
+real collisions have ever occurred — this remains a genuine but currently
+theoretical gap, not a live defect. Do not act on this without either (a)
+coordinating directly with whoever maintains the external application, or (b) new
+evidence of an actual production collision.
+
+---
+
+## 16. Phase 2B–2E: tenant/event integrity closed with database constraints wherever safely possible from this repo alone
+
+> **Status:** Accepted · **Established:** 2026-08-21 to 2026-08-22 · **Related:** [Decision 4](#4-has_org_role-replaced-the-global-fallback-role-check-for-tenant-scoped-tables), [Decision 14](#14-email_templatessms_templates-use-a-composite-org_id-id-primary-key), [Decision 15](#15-locations-keeps-its-composite-id-dataset-primary-key-with-no-org_id)
+
+**Context.** A read-only investigation found that most tenant/event relationships
+in the schema were enforced only by application discipline — RLS, RPC-internal
+checks, and convention — never by the database itself. This was the same defect
+class as an earlier real incident (`booking_type DEFAULT 'dev'` silently
+mislabelling Misc bookings): a gap that costs nothing until the day a write path
+gets it wrong, at which point it fails silently rather than loudly. This decision
+covers the four-part sequence that closed it (see `HANDOVER.md`'s "Tenant/event
+referential-integrity hardening (Phase 2B–2E)" entry in [Current State](
+HANDOVER.md#4-current-state) for the full narrative; this entry records the *why*
+behind each part's specific shape).
+
+**Decisions.**
+
+- **Phase 2B — remove the 13 transitional `org_id`/`event_id` column defaults.**
+  Every live write path already supplied these explicitly; the defaults were inert
+  Phase-1-to-Phase-2 migration scaffolding. Dropping the default (not adding a
+  `NOT NULL` — most were already `NOT NULL`) turns a silent fallback into a loud
+  failure for any future write path that forgets to supply one.
+- **Phase 2C — enforce composite org/event ownership at the database level.**
+  `bookings`/`locations` each had a single-column `event_id → events.id` FK, which
+  checked the event existed but never that it belonged to the same organisation as
+  the row referencing it. Replaced with composite FKs, `(org_id, event_id) →
+  events(org_id, id)`, backed by a new `events_org_id_id_unique` constraint (a
+  redundant-but-legal superset of `events.id`'s own uniqueness — zero risk to add).
+  `ON DELETE RESTRICT` preserved unchanged from the FKs being replaced.
+- **Phase 2D — add organisation FKs where the relationship was already clear and
+  the data already clean.** `payments`, `sms_queue`, `email_queue`, `settings`,
+  `email_templates`, `sms_templates` each had an `org_id` column with no FK to
+  `organisations` at all. `ON DELETE RESTRICT` for the three operational-record
+  tables (payments, queues — losing them to a cascading org deletion would be real
+  data loss); `ON DELETE CASCADE` for the three organisation-owned-configuration
+  tables (settings, templates — reasonable to remove alongside the organisation
+  itself). Separately, `audit_logs.org_id` got the same `RESTRICT` treatment once
+  two genuine historical production rows (real admin activity referencing
+  since-deleted organisations) were deliberately deleted under an explicit
+  decision that the audit history worth retaining is archived elsewhere — not a
+  default assumption, a specific approved exception. `audit_logs.event_id` was
+  deliberately left unconstrained: the data shows it isn't populated as a reliable
+  relationship in practice (production: >90% of rows read `event_default`
+  regardless of the row's real organisation), so a FK there would encode a
+  relationship the data doesn't reflect. Whether/how `event_id` should ever become
+  a hard fact is a separate, not-yet-made product decision.
+- **Phase 2E — give `booking_locations` a real FK to `locations`, without
+  changing `locations`' own primary key.** `booking_locations.location_id` had no
+  FK at all; only a trigger and an RPC's own pre-check protected it, and only for
+  those two write paths. Gave `booking_locations` its own `dataset` column
+  (`NOT NULL DEFAULT 'LIVE'`, `CHECK (dataset = 'LIVE')` — DEV is retired) so a
+  composite FK could reference `locations`' existing `(id, dataset)` key — the
+  same precedent `schedules.dataset` already established for the same reason.
+  `ON DELETE CASCADE`, deliberately not `RESTRICT`: the admin UI's own delete
+  confirmation already promised "any booking currently assigned to it will be
+  unassigned," which was false before this FK existed (the row was silently
+  orphaned) — CASCADE makes that existing promise true rather than introducing a
+  new failure mode the UI doesn't handle. The FK proves the location *exists*;
+  org/event *ownership* matching remains exclusively the trigger's and RPC's job,
+  unchanged — a plain FK cannot express "belongs to the same org/event as some
+  other table's row" the way a trigger's join-based check can.
+- **Do not force the externally-owned performer/schedules application's schema
+  into this repo's migrations.** `locations`' primary key was deliberately not
+  changed to include `org_id` (reaffirming Decision 15 — see its 2026-08-22
+  addendum) precisely because doing so would require also changing `schedules`,
+  which is owned by a separate application this repo cannot modify or safely
+  audit. The same boundary applies to `performers`/`schedules` more generally:
+  neither gained tenant-scope columns in this sequence, and none should be added
+  here unilaterally.
+
+**Consequences.** Every `org_id`/`event_id` column in the schema now has a real FK
+except `audit_logs.event_id` (a deliberate, documented exception) and `locations`'
+own primary key (a deliberate, documented, externally-gated exception). A
+dedicated read-only audit performed immediately after Phase 2E found no further
+gap that can be safely closed from this repo alone. **There is no "Phase 2F."**
+The next tenant-hardening-adjacent work, if any is ever justified, should come
+from new evidence (an actual production collision, a way to safely coordinate
+with the external application, or a product decision about `audit_logs.event_id`)
+— not from a numbering scheme. Each part shipped as its own migration with
+dedicated regression tests, applied to TEST first and to production only after
+independent verification; see the individual PR history (#226–#229) for the
+full validation trail.

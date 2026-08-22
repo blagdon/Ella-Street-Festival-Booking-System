@@ -1281,6 +1281,54 @@ the direct query path (`locations` + `public_bookings_info`).
   against it; downstream confirmation email/SMS/payment sends use that booking's
   real `org_id`, not a hardcoded default; see item 76
 
+### Tenant/event referential-integrity hardening (Phase 2B–2E) — COMPLETE
+Closed 2026-08-22. A multi-part hardening sequence (distinct from — and much later
+than — the "Multi-Tenant Phase 1"/"Multi-Event Architecture Phase 1–3" epics referenced
+elsewhere in this file) that replaced application-only tenant/event ownership discipline
+with real database constraints wherever that was safely possible from this repo alone:
+
+- **Phase 2B** — removed the 13 transitional `org_id`/`event_id` column defaults
+  (`'org_default'`/`'event_default'`) across `bookings`, `locations`, `payments`,
+  `audit_logs`, `email_queue`, `sms_queue`, `email_templates`, `sms_templates`,
+  `settings`, `event_settings` — every write path already supplied these explicitly;
+  the defaults were inert scaffolding that had already caused one real incident
+  (`booking_type DEFAULT 'dev'` mislabelling Misc bookings) and nearly caused a second.
+- **Phase 2C** — added composite foreign keys `bookings_org_event_fkey`/
+  `locations_org_event_fkey`, `(org_id, event_id) → events(org_id, id)`, backed by a
+  new `events_org_id_id_unique` constraint. A booking or location can no longer
+  reference an event belonging to a different organisation — previously only the
+  single-column `event_id → events.id` FK existed, which checked the event existed
+  but not that it belonged to the right tenant.
+- **Phase 2D** — added `org_id → organisations.id` foreign keys to `payments`,
+  `sms_queue`, `email_queue`, `settings`, `email_templates`, `sms_templates`
+  (`ON DELETE RESTRICT` for the three operational-record tables, `ON DELETE CASCADE`
+  for the three organisation-owned-configuration tables), and separately to
+  `audit_logs.org_id` (`ON DELETE RESTRICT`) once two genuine historical production
+  audit rows referencing already-deleted organisations were confirmed disposable
+  (the audit history that needed retaining is archived elsewhere) and removed.
+  `audit_logs.event_id` was deliberately left unconstrained — see the `audit_logs`
+  entry in [Data Model](#5-data-model) below for why.
+- **Phase 2E** — added `booking_locations.dataset` (`NOT NULL DEFAULT 'LIVE'`,
+  `CHECK (dataset = 'LIVE')`) and a composite FK `booking_locations_location_id_fkey`,
+  `(location_id, dataset) → locations(id, dataset)`, `ON DELETE CASCADE` — see the
+  `booking_locations` entry in [Data Model](#5-data-model) for the reasoning
+  (previously `booking_locations` had no FK to `locations` at all).
+
+All five parts are validated in TEST and PRODUCTION with dedicated regression tests
+and full-suite passes at each step (see `DECISIONS.md`'s new Phase 2B–2E entry for the
+architectural reasoning). A dedicated read-only audit at the end of this sequence found
+**no remaining tenant/event integrity gap that can safely be fixed from this repo
+alone** — the two intentionally-unconstrained relationships that remain
+(`audit_logs.event_id`, and `locations`' `(id, dataset)` primary key not including
+`org_id`) are both deliberate, evidence-backed deferrals, not oversights — see their
+respective `Data Model` entries and Decision 15.
+
+**There is no "Phase 2F."** Do not restart or reopen this sequence on the assumption
+one more numbered part must exist — the next tenant-hardening-adjacent work, if any is
+ever justified by new evidence, should be selected from the broader roadmap
+([Next Steps](#8-next-steps)) or from the explicitly-deferred items above, not invented
+to complete a numbering scheme.
+
 ### Partially built / not integrated into this repo
 - **Performer booking feature**: `performers` and `schedules` tables exist in the same
   Supabase project with full RLS policies and billing logic, but **nothing in this
@@ -1390,6 +1438,13 @@ persists the real values from the booking form's URL slug (or the same defaults,
 resolved through the identical path, when no slug is present). Every consumer of a
 booking's own organisation (`cancel-booking`, `stripe-webhook`, `create-checkout-session`
 email/SMS sends) reads these columns off the row rather than re-resolving anything.
+**Phase 2B (2026-08-21) removed both columns' defaults entirely** — they are plain
+`NOT NULL` now, so an insert that omits either fails loudly instead of silently landing
+on `org_default`/`event_default`. **Phase 2C (2026-08-21) added a composite FK**,
+`bookings_org_event_fkey (org_id, event_id) → events(org_id, id)`, replacing the old
+single-column `event_id → events.id` FK — a booking can no longer reference an event
+belonging to a different organisation; see [Tenant/event referential-integrity
+hardening](#4-current-state) above.
 
 ### `booking_locations` — replaces the old CSV location column
 Join table: `(booking_id, location_id)`. Superseded `bookings.location_id` (which used
@@ -1398,6 +1453,22 @@ the `rpc_set_booking_locations()` RPC** — there's no direct-write RLS policy, 
 `INSERT`/`UPDATE` this table directly. A `booking_locations_check_conflict` trigger
 blocks assigning the same pitch to two different `Confirmed` bookings **within the same
 dataset** (see the DEV/LIVE note below).
+
+**Phase 2E (2026-08-22) added a real FK to `locations`.** A `dataset` column was added
+(`NOT NULL DEFAULT 'LIVE'`, `CHECK (dataset = 'LIVE')` — the DEV dataset is retired, see
+below) so `booking_locations_location_id_fkey` could reference `locations`' existing
+`(id, dataset)` key: `(location_id, dataset) → locations(id, dataset) ON DELETE CASCADE`.
+Previously `booking_locations.location_id` had **no FK at all** — only the trigger above
+and `rpc_set_booking_locations`'s own pre-check protected it, and only for those two
+write paths; a location referencing nothing at all had no backstop. `ON DELETE CASCADE`
+was chosen deliberately over `RESTRICT`: `js/page-admin-locations.js`'s own delete
+confirmation already told the admin "any booking currently assigned to it will be
+unassigned" — previously false (the row was silently orphaned, not removed); CASCADE
+makes that existing promise true. The FK only proves the location *exists*; org/event
+*ownership* matching remains exclusively the trigger's and RPC's job, unchanged — a
+plain FK can't express "belongs to the same org/event as some other table's row." See
+Decision 15 (`DECISIONS.md`) for why `locations`' own primary key was not changed to
+make this a fully tenant-scoped relationship.
 
 ### `locations` — pitch reference data
 **Primary key is the composite `(id, dataset)`, not `id` alone.** `id` values (e.g.
@@ -1421,6 +1492,25 @@ those three bulk-populate ids the admin didn't hand-pick one at a time. If this 
 ever needs real multi-tenant uniqueness (not just multi-tenant *filtering*), the actual
 fix is adding `org_id` to the primary key — a real migration, not more client-side
 workaround layering.
+
+**Phase 2C (2026-08-21) added `locations_org_event_fkey`**, `(org_id, event_id) →
+events(org_id, id)` — a location can no longer reference an event belonging to a
+different organisation (previously only `event_id → events.id` existed, checking the
+event existed but not its owner). This is orthogonal to the dataset-wide-uniqueness
+limitation described above: the composite FK constrains *which event a location
+belongs to*; it does nothing about *whether two organisations can use the same id*.
+
+**Phase 2E discovery (2026-08-22) re-examined the "add `org_id` to the primary key"
+idea above and explicitly decided against it for now** — not because it stopped being
+a real gap, but because `schedules_location_fkey` (owned by the separate performer
+application, `ellafestperformersadmin.vercel.app`) has a live FK into this exact
+`(id, dataset)` key shape, and `schedules` has no `org_id` column of its own to migrate
+alongside it. Changing this key crosses a system boundary this repo cannot safely
+audit alone. See Decision 15 (`DECISIONS.md`) for the full reasoning, including why the
+current data (only `org_default` has ever populated `locations` in production — zero
+collisions have ever actually occurred) makes this a real-but-currently-theoretical gap
+rather than a live defect. Do not reopen this without new evidence of an actual current
+collision or a way to safely coordinate the `schedules` side of the change.
 
 ### `payments`
 One row per chargeable booking that has a payment resolved one way or another:
@@ -1455,6 +1545,11 @@ happened; the refund is separate state, not a reversal of that fact.
 **Only ONE refund per booking is representable** by this shape; see item 64 for
 why that was deliberate and how to migrate to a child table if it ever changes.
 
+**Phase 2D (2026-08-22) added `payments_org_id_fkey → organisations(id) ON DELETE
+RESTRICT`** — previously `org_id` had no FK at all; every write path already derived it
+correctly from the booking row, so this closes a purely theoretical gap (defense in
+depth), not a live one.
+
 ### `stripe_webhook_events`
 Pure email-send dedup ledger for `stripe-webhook` (`event_id` PK, `event_type`,
 `received_at`). RLS enabled, zero policies — `service_role` (the webhook, only) bypasses
@@ -1475,6 +1570,9 @@ confirmation/rejection/location emails, the "received" auto-responder, cancellat
 confirmation) are all send-then-log — they call Zoho synchronously and insert the row
 with the *final* status already known. Only the bulk-email path (`queue-bulk-email`)
 ever inserts a genuinely `Pending` row that something processes later.
+**Phase 2D (2026-08-22) added `email_queue_org_id_fkey → organisations(id) ON DELETE
+RESTRICT`** (and the identical shape on `sms_queue.org_id`) — same reasoning as
+`payments` above.
 
 ### `google_reviews_cache`
 Server-side cache of SerpApi Google Maps lookups (added 2026-07-19).
@@ -1495,6 +1593,11 @@ Editable via `more.html`. `id` (template key, e.g. `application_received`,
 `payment_link` — the last one only populated by `create-checkout-session` for
 `payment_requested`). No "create new" UI exists — a new template id must be seeded via
 migration/SQL, as `payment_requested` was.
+**Phase 2D (2026-08-22) added `email_templates_org_id_fkey → organisations(id) ON
+DELETE CASCADE`** (and the identical shape on `sms_templates.org_id` and
+`settings.org_id`, see below) — `CASCADE`, not `RESTRICT`, since these are
+organisation-owned configuration, not operational history; deleting an organisation
+should reasonably take its own templates/settings with it.
 
 ### `audit_logs`
 Append-only. Every admin mutation writes here via `api.js → auditLog()`:
@@ -1504,6 +1607,24 @@ Three columns (`user_name`, `action_type`, `booking_id`) were dropped 2026-07-16
 dead weight, never written by `auditLog()` and never read anywhere. That second half
 is no longer true: `audit_log.html` (see Next Steps item 40) now browses this table
 back out, searchable by `target_id`/`user_email`/`action`/`details`, admin-only.
+
+**Phase 2D Part 2 (2026-08-22) added `audit_logs_org_id_fkey → organisations(id) ON
+DELETE RESTRICT`.** Before this, two genuine historical production rows referenced
+organisations that had since been deleted — confirmed as real past admin activity
+(`update_event_status`, real `user_email`, matching the account owner), not test
+debris. They were deliberately deleted under an explicit decision that the audit
+history worth retaining is already archived elsewhere, clearing the way for the FK.
+TEST's own accumulated orphans (368 rows, all traced to specific test files' cleanup
+gaps — since fixed) were removed the same way.
+**`audit_logs.event_id` remains intentionally unconstrained** — this was explicitly
+reviewed, not overlooked. The data shows `event_id` is not populated as a reliable
+relationship in practice (on production, over 90% of rows read `event_default`
+regardless of the row's real `org_id`, and only a handful of distinct event ids have
+ever been used across the table's whole history) — constraining it with a FK today
+would encode a relationship the data doesn't actually reflect. Whether/how
+`event_id` should ever become a hard fact (versus optional best-effort context) is a
+separate, not-yet-made product/design decision — do not add a FK here without
+revisiting that question first.
 
 ### `hcc_checks` — REMOVED
 Retired along with the whole HCC Checks feature, 2026-08-17. See
@@ -1534,6 +1655,10 @@ structured fields wherever it's used (`js/shared.js`'s `getEmailFromTemplate`,
 `stripe-webhook`'s post-payment confirmation email), rather than reading a
 separate freeform setting. The "BANK DETAILS FOR CONFIRMATIONS" field was
 removed from settings.html's System Constants card accordingly.
+
+**Phase 2D (2026-08-22) added `settings_org_id_fkey → organisations(id) ON DELETE
+CASCADE`** — see the `email_templates` entry above for the shared reasoning
+(organisation-owned configuration, `CASCADE` not `RESTRICT`).
 
 #### Regulatory Authority
 `regulatory_authority_name` / `insurance_minimum_amount`, added V1.1 Sprint 1,
@@ -4203,9 +4328,16 @@ stay in the separate `ellafestperformersadmin.vercel.app` codebase.
   schema, so the corrected migration still has real work to do when it runs.
 
 - **`locations`' primary key is `(id, dataset)`, not `id`.** Never assume a bare
-  `location_id` is globally unique. `booking_locations.location_id` deliberately has no
-  FK to `locations` for this reason (occupancy conflicts are enforced by a
-  dataset-scoped trigger instead).
+  `location_id` is globally unique. ~~`booking_locations.location_id` deliberately has
+  no FK to `locations` for this reason (occupancy conflicts are enforced by a
+  dataset-scoped trigger instead).~~ **Updated 2026-08-22 (Phase 2E)**: this is no
+  longer true. `booking_locations` gained its own `dataset` column (`NOT NULL DEFAULT
+  'LIVE'`) specifically so a composite FK, `(location_id, dataset) → locations(id,
+  dataset)`, could be added — the same precedent `schedules.dataset` already
+  established. The trigger remains the enforcement for org/event *ownership* matching
+  (which a plain FK can't express); the FK's job is purely proving the location
+  *exists* at all, which nothing previously verified. See the `booking_locations`
+  entry in [Data Model](#5-data-model) for the full reasoning.
 
 - **Two different "environment" axes, easy to conflate:** `bookings.instance_prefix` is
   4-way (`DEV`/`FOOD`/`GENERAL`/`MISC`), but `locations.dataset` and
