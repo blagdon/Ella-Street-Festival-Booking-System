@@ -109,7 +109,13 @@ before(async () => {
 });
 
 after(async () => {
-  await service.from('audit_logs').delete().like('target_id', `${TARGET}%`);
+  // org_id, not target_id: the "an authenticated caller can freely choose
+  // action/details/target_id" test below deliberately inserts a target_id
+  // that doesn't match TARGET's own prefix (proving the shape is
+  // unconstrained), which a target_id-LIKE cleanup would silently miss -
+  // this is exactly the gap that leaked that row into a permanent orphan
+  // (Phase 2D TEST audit_logs remediation) once ORG_A was deleted below.
+  await service.from('audit_logs').delete().in('org_id', [ORG_A, ORG_B]);
   await service.from('organisation_members').delete().in('org_id', [ORG_A, ORG_B]);
   await service.from('organisations').delete().in('id', [ORG_A, ORG_B]);
   if (ownerAId) await service.auth.admin.deleteUser(ownerAId);

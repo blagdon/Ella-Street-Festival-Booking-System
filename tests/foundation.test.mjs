@@ -167,7 +167,15 @@ describe('settings table composite PK', () => {
   });
 
   it('settings supports composite PK (org_id, key)', async () => {
-    // Prove composite PK works by inserting/upserting a key under a different org_id
+    // Prove composite PK works by inserting/upserting a key under a different
+    // org_id. Phase 2D (settings_org_id_fkey) now requires this second org_id
+    // to be a real organisations row, not a fictitious string, so this test
+    // creates and cleans up a real (if otherwise unused) one.
+    const otherOrgId = `org_other_test_${Date.now()}`;
+    const { error: orgErr } = await service.from('organisations')
+      .insert({ id: otherOrgId, name: 'Foundation Composite PK Test Org', slug: otherOrgId });
+    assert.ifError(orgErr);
+
     const testKey = `test_composite_pk_${Date.now()}`;
     const { error: ins1 } = await service.from('settings').upsert(
       { org_id: 'org_default', key: testKey, value: 'val1' },
@@ -176,7 +184,7 @@ describe('settings table composite PK', () => {
     assert.ifError(ins1);
 
     const { error: ins2 } = await service.from('settings').upsert(
-      { org_id: 'org_other_test', key: testKey, value: 'val2' },
+      { org_id: otherOrgId, key: testKey, value: 'val2' },
       { onConflict: 'org_id,key' }
     );
     assert.ifError(ins2, 'Should allow same key under different org_id');
@@ -191,6 +199,7 @@ describe('settings table composite PK', () => {
 
     // Cleanup
     await service.from('settings').delete().eq('key', testKey);
+    await service.from('organisations').delete().eq('id', otherOrgId);
   });
 
   it('loadStallCosts()-equivalent SELECT still returns all settings rows', async () => {

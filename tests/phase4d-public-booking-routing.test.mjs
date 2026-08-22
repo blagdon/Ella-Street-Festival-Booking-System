@@ -248,6 +248,13 @@ describe('a booking resolved to a non-default organisation sends through THAT or
     });
 
     after(async () => {
+        // email_queue and bookings: submit-booking (called below) creates a
+        // real booking and, via sendReceivedEmail(), a real email_queue row -
+        // neither is cleaned up anywhere else in this describe block, and
+        // (no FK/cascade on email_queue.org_id) the queue row would otherwise
+        // orphan permanently once the organisation below is deleted.
+        await service.from('email_queue').delete().eq('org_id', orgId);
+        await service.from('bookings').delete().eq('org_id', orgId);
         await service.from('email_templates').delete().eq('org_id', orgId).eq('id', 'application_received');
         await service.from('events').delete().eq('id', eventId);
         await service.from('organisations').delete().eq('id', orgId);
