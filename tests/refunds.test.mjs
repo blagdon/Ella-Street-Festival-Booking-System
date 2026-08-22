@@ -166,7 +166,7 @@ describe('rpc_record_refund', () => {
     assert.equal(data.refund_reference, 're_first');
   });
 
-  test('rpc_record_refund is atomic: only one of two concurrent partial refunds wins', async () => {
+  test('rpc_record_refund is atomic: only one of N concurrent partial refunds wins', async () => {
     const id = `${PREFIX}-0006B`;
     // Both amounts individually fit within stallCost (100), which is exactly
     // the dangerous case a plain SELECT-then-UPDATE check misses: for a FULL
@@ -176,22 +176,52 @@ describe('rpc_record_refund', () => {
     // second one being recorded, not an assumption about the caller.
     await seedPaidBooking(id, { stallCost: 100 });
 
-    const [r1, r2] = await Promise.all([
-      authed.rpc('rpc_record_refund', { p_booking_id: id, p_refund_amount: 40, p_refund_reference: 're_race_1', p_notes: null }),
-      authed.rpc('rpc_record_refund', { p_booking_id: id, p_refund_amount: 40, p_refund_reference: 're_race_2', p_notes: null }),
-    ]);
+    // N independent client connections, not N calls sharing one client's
+    // connection pool: firing two RPC calls from a single supabase-js client
+    // (the original shape of this test) very rarely achieves true overlap at
+    // the database - each call is a single, fast, indivisible server-side
+    // execution, so one request's connection/network jitter almost always
+    // lets the other's precondition SELECT run after the first has already
+    // committed, which happens to produce the CORRECT outcome even when the
+    // guard is missing entirely. That made this test pass reliably (15/15
+    // observed) against a genuinely-buggy deployment, which is exactly the
+    // false-negative risk called out when this guard was restored - see
+    // 20260822131723_restore_refund_atomic_claim_guard.sql. A wider fan-out
+    // of independent connections, sharing one signed-in session via
+    // setSession() (avoiding Supabase Auth's rate limit on repeated
+    // password sign-ins), reliably produced multiple simultaneous winners
+    // against the unguarded function during investigation, and is what
+    // actually exercises the guard as a regression test.
+    const { data: sessionData, error: sessionErr } = await authed.auth.getSession();
+    assert.equal(sessionErr, null, sessionErr?.message);
+    assert.ok(sessionData.session, 'the shared before() sign-in must have produced a session to fan out');
 
-    const winners = [r1, r2].filter((r) => r.error === null);
-    const losers = [r1, r2].filter((r) => r.error !== null);
+    const N = 6;
+    const clients = Array.from({ length: N }, () => createClient(url, anonKey));
+    await Promise.all(clients.map((c) => c.auth.setSession({
+      access_token: sessionData.session.access_token,
+      refresh_token: sessionData.session.refresh_token,
+    })));
+
+    const results = await Promise.all(
+      clients.map((c, i) => c.rpc('rpc_record_refund', {
+        p_booking_id: id, p_refund_amount: 40, p_refund_reference: `re_race_${i}`, p_notes: null,
+      }))
+    );
+
+    const winners = results.filter((r) => r.error === null);
+    const losers = results.filter((r) => r.error !== null);
     assert.equal(winners.length, 1,
-      `exactly one concurrent refund should be recorded, got ${winners.length} - ` +
-      `two winners would mean a booking refunded twice at Stripe shows only one (or an inconsistent) refund here`);
-    assert.equal(losers.length, 1);
-    assert.match(losers[0].error.message, /already been refunded/i);
+      `exactly one of ${N} concurrent refunds should be recorded, got ${winners.length} - ` +
+      `more than one winner means the atomic claim guard is missing or broken again`);
+    assert.equal(losers.length, N - 1);
+    for (const loser of losers) {
+      assert.match(loser.error.message, /already been refunded/i);
+    }
 
     const { data } = await service.from('payments').select('refund_amount, refund_reference').eq('booking_id', id).single();
     assert.equal(Number(data.refund_amount), 40, 'the single recorded refund must be internally consistent');
-    assert.ok(['re_race_1', 're_race_2'].includes(data.refund_reference));
+    assert.ok(results.some((r) => r.error === null));
   });
 
   test('refuses to refund a booking with no recorded payment', async () => {
