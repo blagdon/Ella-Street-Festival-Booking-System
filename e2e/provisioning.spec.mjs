@@ -25,6 +25,10 @@ test.describe('Organisation Setup Wizard', () => {
     // FK-safe order, same as provision-organisation's own rollback catch
     // block and phase3-provisioning.test.mjs's cleanup — best-effort: if the
     // test failed before provisioning completed, most of these are no-ops.
+    // audit_logs first: provision-organisation's own Step E writes a
+    // provision_organisation row that nothing else here would ever clean up
+    // (no FK, no cascade) once the organisation below is deleted.
+    await service.from('audit_logs').delete().eq('org_id', testOrgSlug);
     await service.from('events').delete().eq('org_id', testOrgSlug);
     await service.from('settings').delete().eq('org_id', testOrgSlug);
     await service.from('email_templates').delete().eq('org_id', testOrgSlug);

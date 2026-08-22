@@ -37,6 +37,11 @@ test.describe.serial('Settings System Constants — no hardcoded platform identi
   });
 
   test.afterAll(async () => {
+    // audit_logs is never cleaned up by settings/organisations deletion (no
+    // FK, no cascade) - the admin settings-save flow this spec drives writes
+    // an 'update_system_constants' row via js/audit.js, which would
+    // otherwise orphan permanently once the organisation above is deleted.
+    await service.from('audit_logs').delete().eq('org_id', orgId);
     await service.from('settings').delete().eq('org_id', orgId);
     await service.from('organisations').delete().eq('id', orgId);
   });
